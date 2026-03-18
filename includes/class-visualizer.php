@@ -1,0 +1,594 @@
+<?php
+/**
+ * Visualizer — CPT de gráficas, shortcodes y generación de datos.
+ *
+ * Mejoras de seguridad respecto al plugin original:
+ *  - Validación de nombres de tabla contra whitelist (get_available_tables)
+ *  - Validación de nombres de columna contra DESCRIBE real de la tabla
+ *  - Las queries personalizadas se restringen a SELECT y se validan
+ *  - Funciones de agregación contra whitelist
+ *
+ * @package SecopSuite
+ */
+
+declare(strict_types=1);
+
+namespace SecopSuite;
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+final class Visualizer
+{
+    private Database $db;
+    private const POST_TYPE = 'secop_chart';
+
+    /** Funciones de agregación permitidas */
+    private const ALLOWED_AGGREGATES = ['SUM', 'COUNT', 'AVG', 'MAX', 'MIN'];
+
+    /** Operadores de filtro permitidos */
+    private const ALLOWED_OPERATORS = ['=', '!=', '>', '<', '>=', '<=', 'LIKE'];
+
+    public function __construct(Database $db)
+    {
+        $this->db = $db;
+        $this->register_hooks();
+    }
+
+    private function register_hooks(): void
+    {
+        // CPT
+        add_action('init', [$this, 'register_post_type']);
+        add_action('add_meta_boxes', [$this, 'add_meta_boxes']);
+        add_action('save_post_' . self::POST_TYPE, [$this, 'save_chart_meta'], 10, 2);
+
+        // Assets
+        add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_assets']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
+
+        // Shortcodes (mantener compatibilidad hacia atrás)
+        add_shortcode('sdv_chart',   [$this, 'render_chart_shortcode']);
+        add_shortcode('secop_chart', [$this, 'render_chart_shortcode']);
+
+        // AJAX
+        add_action('wp_ajax_secop_suite_get_chart_data',    [$this, 'ajax_get_chart_data']);
+        add_action('wp_ajax_nopriv_secop_suite_get_chart_data', [$this, 'ajax_get_chart_data']);
+        add_action('wp_ajax_secop_suite_get_table_columns', [$this, 'ajax_get_table_columns']);
+        add_action('wp_ajax_secop_suite_preview_data',      [$this, 'ajax_preview_data']);
+
+        // Admin columns
+        add_filter('manage_' . self::POST_TYPE . '_posts_columns', [$this, 'add_admin_columns']);
+        add_action('manage_' . self::POST_TYPE . '_posts_custom_column', [$this, 'render_admin_columns'], 10, 2);
+    }
+
+    // ── CPT ────────────────────────────────────────────────────
+    public function register_post_type(): void
+    {
+        $labels = [
+            'name'               => __('Gráficas SECOP', 'secop-suite'),
+            'singular_name'      => __('Gráfica', 'secop-suite'),
+            'menu_name'          => __('Gráficas', 'secop-suite'),
+            'add_new'            => __('Nueva Gráfica', 'secop-suite'),
+            'add_new_item'       => __('Añadir Nueva Gráfica', 'secop-suite'),
+            'edit_item'          => __('Editar Gráfica', 'secop-suite'),
+            'new_item'           => __('Nueva Gráfica', 'secop-suite'),
+            'view_item'          => __('Ver Gráfica', 'secop-suite'),
+            'search_items'       => __('Buscar Gráficas', 'secop-suite'),
+            'not_found'          => __('No se encontraron gráficas', 'secop-suite'),
+            'not_found_in_trash' => __('No hay gráficas en la papelera', 'secop-suite'),
+        ];
+
+        register_post_type(self::POST_TYPE, [
+            'labels'              => $labels,
+            'public'              => false,
+            'publicly_queryable'  => false,
+            'show_ui'             => true,
+            'show_in_menu'        => 'secop-suite',
+            'query_var'           => false,
+            'capability_type'     => 'post',
+            'has_archive'         => false,
+            'hierarchical'        => false,
+            'menu_icon'           => 'dashicons-chart-bar',
+            'supports'            => ['title'],
+            'show_in_rest'        => true,
+        ]);
+    }
+
+    // ── Meta Boxes ─────────────────────────────────────────────
+    public function add_meta_boxes(): void
+    {
+        add_meta_box('secop_chart_config',    __('Configuración de la Gráfica', 'secop-suite'), [$this, 'render_config_metabox'],    self::POST_TYPE, 'normal', 'high');
+        add_meta_box('secop_chart_shortcode', __('Shortcode', 'secop-suite'),                   [$this, 'render_shortcode_metabox'], self::POST_TYPE, 'side',   'high');
+        add_meta_box('secop_chart_preview',   __('Vista Previa', 'secop-suite'),                [$this, 'render_preview_metabox'],   self::POST_TYPE, 'normal', 'default');
+    }
+
+    public function render_config_metabox(\WP_Post $post): void
+    {
+        wp_nonce_field('secop_suite_chart_config', 'secop_suite_chart_nonce');
+        $config = get_post_meta($post->ID, '_secop_chart_config', true) ?: [];
+        $tables = $this->db->get_available_tables();
+        include SECOP_SUITE_DIR . 'templates/admin/chart-config.php';
+    }
+
+    public function render_shortcode_metabox(\WP_Post $post): void
+    {
+        ?>
+        <div class="ss-shortcode-box">
+            <p><?php _e('Copia este shortcode para insertar la gráfica:', 'secop-suite'); ?></p>
+            <code id="ss-shortcode-display">[secop_chart id="<?php echo esc_attr($post->ID); ?>"]</code>
+            <button type="button" class="button ss-copy-shortcode" data-clipboard-target="#ss-shortcode-display">
+                <span class="dashicons dashicons-clipboard"></span> <?php _e('Copiar', 'secop-suite'); ?>
+            </button>
+        </div>
+        <?php
+    }
+
+    public function render_preview_metabox(\WP_Post $post): void
+    {
+        ?>
+        <div class="ss-preview-container">
+            <button type="button" class="button button-primary" id="ss-refresh-preview">
+                <span class="dashicons dashicons-update"></span> <?php _e('Actualizar Vista Previa', 'secop-suite'); ?>
+            </button>
+            <div id="ss-chart-preview" class="ss-chart-wrapper">
+                <p class="ss-preview-placeholder"><?php _e('Configure la gráfica y haga clic en "Actualizar Vista Previa"', 'secop-suite'); ?></p>
+            </div>
+        </div>
+        <?php
+    }
+
+    // ── Guardar meta ───────────────────────────────────────────
+    public function save_chart_meta(int $post_id, \WP_Post $post): void
+    {
+        if (!isset($_POST['secop_suite_chart_nonce']) ||
+            !wp_verify_nonce($_POST['secop_suite_chart_nonce'], 'secop_suite_chart_config')) {
+            return;
+        }
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+        if (!current_user_can('edit_post', $post_id)) return;
+
+        $config = [
+            'chart_type'       => sanitize_text_field($_POST['ss_chart_type'] ?? 'bar'),
+            'table_name'       => sanitize_text_field($_POST['ss_table_name'] ?? ''),
+            'x_field'          => sanitize_text_field($_POST['ss_x_field'] ?? ''),
+            'x_date_grouping'  => sanitize_text_field($_POST['ss_x_date_grouping'] ?? ''),
+            'y_field'          => sanitize_text_field($_POST['ss_y_field'] ?? ''),
+            'group_by'         => sanitize_text_field($_POST['ss_group_by'] ?? ''),
+            'aggregate'        => sanitize_text_field($_POST['ss_aggregate'] ?? 'SUM'),
+            'color_field'      => sanitize_text_field($_POST['ss_color_field'] ?? ''),
+            'filters'          => $this->sanitize_filters($_POST['ss_filters'] ?? []),
+            'date_field'       => sanitize_text_field($_POST['ss_date_field'] ?? ''),
+            'date_from'        => sanitize_text_field($_POST['ss_date_from'] ?? ''),
+            'date_to'          => sanitize_text_field($_POST['ss_date_to'] ?? ''),
+            'limit'            => intval($_POST['ss_limit'] ?? 0),
+            'order_by'         => sanitize_text_field($_POST['ss_order_by'] ?? ''),
+            'order_dir'        => sanitize_text_field($_POST['ss_order_dir'] ?? 'DESC'),
+            'colors'           => $this->sanitize_colors($_POST['ss_colors'] ?? ''),
+            'show_legend'      => isset($_POST['ss_show_legend']),
+            'show_timeline'    => isset($_POST['ss_show_timeline']),
+            'show_toolbar'     => isset($_POST['ss_show_toolbar']),
+            'toolbar_options'  => array_map('sanitize_text_field', $_POST['ss_toolbar_options'] ?? ['share', 'data', 'image', 'download']),
+            'chart_height'     => intval($_POST['ss_chart_height'] ?? 400),
+            'y_axis_title'     => sanitize_text_field($_POST['ss_y_axis_title'] ?? ''),
+            'x_axis_title'     => sanitize_text_field($_POST['ss_x_axis_title'] ?? ''),
+            'number_format'    => sanitize_text_field($_POST['ss_number_format'] ?? 'colombiano'),
+            'custom_query'     => isset($_POST['ss_use_custom_query']) ? $this->sanitize_custom_query($_POST['ss_custom_query'] ?? '') : '',
+        ];
+
+        update_post_meta($post_id, '_secop_chart_config', $config);
+    }
+
+    private function sanitize_filters(array $filters): array
+    {
+        $sanitized = [];
+        foreach ($filters as $filter) {
+            if (!empty($filter['field'])) {
+                $sanitized[] = [
+                    'field'    => sanitize_text_field($filter['field']),
+                    'operator' => sanitize_text_field($filter['operator'] ?? '='),
+                    'value'    => sanitize_text_field($filter['value'] ?? ''),
+                ];
+            }
+        }
+        return $sanitized;
+    }
+
+    private function sanitize_colors(string $colors): array
+    {
+        $arr = array_filter(array_map('trim', explode(',', $colors)));
+        return array_map(fn($c) => preg_match('/^#[a-fA-F0-9]{6}$/', $c) ? $c : '#0082c6', $arr);
+    }
+
+    /**
+     * ★ SEGURIDAD: Validar que la query personalizada sea solo SELECT.
+     */
+    private function sanitize_custom_query(string $query): string
+    {
+        $query   = wp_kses_post($query);
+        $trimmed = trim($query);
+
+        if (empty($trimmed)) {
+            return '';
+        }
+
+        // Solo permitir SELECT
+        if (!preg_match('/^\s*SELECT\s/i', $trimmed)) {
+            return ''; // Rechazar cualquier cosa que no sea SELECT
+        }
+
+        // Prohibir palabras peligrosas
+        $forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER', 'CREATE', 'TRUNCATE', 'GRANT', 'REVOKE', 'EXEC', 'EXECUTE', 'UNION\s+ALL', 'INTO\s+OUTFILE', 'INTO\s+DUMPFILE', 'LOAD_FILE'];
+        foreach ($forbidden as $word) {
+            if (preg_match('/\b' . $word . '\b/i', $trimmed)) {
+                Logger::log("SEGURIDAD: Query personalizada rechazada — contiene '{$word}'");
+                return '';
+            }
+        }
+
+        return $trimmed;
+    }
+
+    // ── Assets ─────────────────────────────────────────────────
+    public function enqueue_frontend_assets(): void
+    {
+        global $post;
+        if (!is_a($post, 'WP_Post') ||
+            (!has_shortcode($post->post_content, 'sdv_chart') &&
+             !has_shortcode($post->post_content, 'secop_chart'))) {
+            return;
+        }
+
+        $this->enqueue_chart_libraries();
+
+        wp_enqueue_style('secop-suite-frontend', SECOP_SUITE_URL . 'assets/css/frontend.css', [], SECOP_SUITE_VERSION);
+        wp_enqueue_script('secop-suite-frontend', SECOP_SUITE_URL . 'assets/js/frontend.js', ['jquery', 'd3plus'], SECOP_SUITE_VERSION, true);
+
+        wp_localize_script('secop-suite-frontend', 'secopSuiteChart', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'restUrl' => rest_url('secop-suite/v1/'),
+            'nonce'   => wp_create_nonce('secop_suite_frontend'),
+            'strings' => [
+                'loading'  => __('Cargando datos...', 'secop-suite'),
+                'error'    => __('Error al cargar los datos', 'secop-suite'),
+                'noData'   => __('No hay datos disponibles', 'secop-suite'),
+                'share'    => __('Compartir', 'secop-suite'),
+                'data'     => __('Datos', 'secop-suite'),
+                'image'    => __('Imagen', 'secop-suite'),
+                'download' => __('Descarga', 'secop-suite'),
+                'detail'   => __('Detalle', 'secop-suite'),
+                'close'    => __('Cerrar', 'secop-suite'),
+                'copied'   => __('¡Enlace copiado!', 'secop-suite'),
+            ],
+        ]);
+    }
+
+    public function enqueue_admin_assets(string $hook): void
+    {
+        global $post_type;
+        if ($post_type !== self::POST_TYPE) return;
+
+        $this->enqueue_chart_libraries();
+
+        wp_enqueue_style('secop-suite-admin-charts', SECOP_SUITE_URL . 'assets/css/admin.css', [], SECOP_SUITE_VERSION);
+        wp_enqueue_script('secop-suite-admin-charts', SECOP_SUITE_URL . 'assets/js/admin-charts.js', ['jquery', 'd3plus', 'wp-color-picker'], SECOP_SUITE_VERSION, true);
+        wp_enqueue_style('wp-color-picker');
+
+        wp_localize_script('secop-suite-admin-charts', 'secopSuiteChartAdmin', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce'   => wp_create_nonce('secop_suite_chart_admin'),
+            'strings' => [
+                'selectTable'    => __('Seleccione una tabla primero', 'secop-suite'),
+                'loadingColumns' => __('Cargando columnas...', 'secop-suite'),
+                'previewError'   => __('Error al generar la vista previa', 'secop-suite'),
+            ],
+        ]);
+    }
+
+    private function enqueue_chart_libraries(): void
+    {
+        wp_enqueue_script('d3',         'https://d3js.org/d3.v5.min.js',                                              [],    '5.16.0', true);
+        wp_enqueue_script('d3plus',     'https://cdn.jsdelivr.net/npm/d3plus@2',                                       ['d3'], '2.0.0',  true);
+        wp_enqueue_script('topojson',   'https://d3js.org/topojson.v2.min.js',                                         ['d3'], '2.0.0',  true);
+        wp_enqueue_script('html2canvas','https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', [],    '1.4.1',  true);
+    }
+
+    // ── Shortcode ──────────────────────────────────────────────
+    public function render_chart_shortcode(array $atts): string
+    {
+        $atts = shortcode_atts(['id' => 0, 'height' => null, 'class' => ''], $atts, 'secop_chart');
+        $chart_id = intval($atts['id']);
+
+        if (!$chart_id) {
+            return '<p class="ss-error">' . esc_html__('ID de gráfica no válido', 'secop-suite') . '</p>';
+        }
+
+        $post = get_post($chart_id);
+        if (!$post || $post->post_type !== self::POST_TYPE) {
+            return '<p class="ss-error">' . esc_html__('Gráfica no encontrada', 'secop-suite') . '</p>';
+        }
+
+        $config = get_post_meta($chart_id, '_secop_chart_config', true) ?: [];
+        if (empty($config['chart_type']) || empty($config['table_name'])) {
+            return '<p class="ss-error">' . esc_html__('Gráfica no configurada correctamente', 'secop-suite') . '</p>';
+        }
+
+        if ($atts['height']) {
+            $config['chart_height'] = intval($atts['height']);
+        }
+
+        $unique_id   = 'ss-chart-' . $chart_id . '-' . wp_unique_id();
+        $extra_class = !empty($atts['class']) ? ' ' . esc_attr($atts['class']) : '';
+
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/chart.php';
+        return ob_get_clean();
+    }
+
+    // ── AJAX ───────────────────────────────────────────────────
+    public function ajax_get_chart_data(): void
+    {
+        check_ajax_referer('secop_suite_frontend', 'nonce');
+
+        $chart_id = intval($_POST['chart_id'] ?? 0);
+        if (!$chart_id) {
+            wp_send_json_error(['message' => 'ID inválido']);
+        }
+
+        $config = get_post_meta($chart_id, '_secop_chart_config', true);
+        if (!$config) {
+            wp_send_json_error(['message' => 'Configuración no encontrada']);
+        }
+
+        wp_send_json_success([
+            'data'   => $this->get_chart_data($config),
+            'config' => $config,
+        ]);
+    }
+
+    public function ajax_get_table_columns(): void
+    {
+        check_ajax_referer('secop_suite_chart_admin', 'nonce');
+
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error(['message' => 'Permisos insuficientes']);
+        }
+
+        $table = sanitize_text_field($_POST['table'] ?? '');
+
+        // ★ SEGURIDAD: Validar tabla contra whitelist
+        $tables = $this->db->get_available_tables();
+        if (!isset($tables[$table])) {
+            wp_send_json_error(['message' => 'Tabla no válida']);
+        }
+
+        $columns = $this->db->get_table_columns($table);
+        $formatted = [];
+        foreach ($columns as $name => $type) {
+            $formatted[] = [
+                'name'     => $name,
+                'type'     => $type,
+                'nullable' => true,
+            ];
+        }
+
+        wp_send_json_success(['columns' => $formatted]);
+    }
+
+    public function ajax_preview_data(): void
+    {
+        check_ajax_referer('secop_suite_chart_admin', 'nonce');
+
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error(['message' => 'Permisos insuficientes']);
+        }
+
+        $config = [
+            'chart_type'      => sanitize_text_field($_POST['chart_type'] ?? 'bar'),
+            'table_name'      => sanitize_text_field($_POST['table_name'] ?? ''),
+            'x_field'         => sanitize_text_field($_POST['x_field'] ?? ''),
+            'x_date_grouping' => sanitize_text_field($_POST['x_date_grouping'] ?? ''),
+            'y_field'         => sanitize_text_field($_POST['y_field'] ?? ''),
+            'group_by'        => sanitize_text_field($_POST['group_by'] ?? ''),
+            'aggregate'       => sanitize_text_field($_POST['aggregate'] ?? 'SUM'),
+            'color_field'     => sanitize_text_field($_POST['color_field'] ?? ''),
+            'date_field'      => sanitize_text_field($_POST['date_field'] ?? ''),
+            'date_from'       => sanitize_text_field($_POST['date_from'] ?? ''),
+            'date_to'         => sanitize_text_field($_POST['date_to'] ?? ''),
+            'limit'           => intval($_POST['limit'] ?? 100),
+            'filters'         => $this->sanitize_filters($_POST['filters'] ?? []),
+        ];
+
+        wp_send_json_success([
+            'data'  => $this->get_chart_data($config),
+            'count' => count($this->get_chart_data($config)),
+        ]);
+    }
+
+    // ── Generación de datos para la gráfica ────────────────────
+    public function get_chart_data(array $config): array
+    {
+        global $wpdb;
+
+        // Query personalizada (validada)
+        if (!empty($config['custom_query'])) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $results = $wpdb->get_results($config['custom_query'], ARRAY_A);
+            return $results ?: [];
+        }
+
+        $table = $config['table_name'] ?? '';
+
+        // ★ SEGURIDAD: Validar tabla
+        $tables = $this->db->get_available_tables();
+        if (!isset($tables[$table])) {
+            return [];
+        }
+
+        $x_field         = $config['x_field'] ?? '';
+        $y_field         = $config['y_field'] ?? '';
+        $group_by        = $config['group_by'] ?? '';
+        $aggregate       = strtoupper($config['aggregate'] ?? 'SUM');
+        $x_date_grouping = $config['x_date_grouping'] ?? '';
+
+        // ★ SEGURIDAD: Validar campos contra columnas reales
+        $valid_columns = $this->db->get_table_columns($table);
+        if ($x_field && !isset($valid_columns[$x_field])) return [];
+        if ($y_field && !isset($valid_columns[$y_field])) return [];
+        if ($group_by && !isset($valid_columns[$group_by])) return [];
+
+        // ★ SEGURIDAD: Validar función de agregación
+        if (!in_array($aggregate, self::ALLOWED_AGGREGATES, true)) {
+            $aggregate = 'SUM';
+        }
+
+        // Construir expresión X con agrupación de fecha
+        $x_expression = $this->build_date_expression($x_field, $x_date_grouping);
+
+        // SELECT
+        $select_parts = [];
+        if ($x_field) {
+            $select_parts[] = "{$x_expression} AS x_value";
+        }
+        if ($group_by && $group_by !== $x_field) {
+            $select_parts[] = "`{$group_by}` AS group_value";
+        }
+        if ($y_field) {
+            $select_parts[] = "{$aggregate}(`{$y_field}`) AS y_value";
+        }
+
+        if (empty($select_parts)) return [];
+        $select = implode(', ', $select_parts);
+
+        // WHERE
+        $where_clauses = ['1=1'];
+        $where_values  = [];
+
+        if (!empty($config['date_field']) && isset($valid_columns[$config['date_field']])) {
+            if (!empty($config['date_from'])) {
+                $where_clauses[] = "`{$config['date_field']}` >= %s";
+                $where_values[]  = $config['date_from'] . ' 00:00:00';
+            }
+            if (!empty($config['date_to'])) {
+                $where_clauses[] = "`{$config['date_field']}` <= %s";
+                $where_values[]  = $config['date_to'] . ' 23:59:59';
+            }
+        }
+
+        // Filtros personalizados
+        if (!empty($config['filters'])) {
+            foreach ($config['filters'] as $filter) {
+                if (empty($filter['field']) || !isset($filter['value'])) continue;
+
+                // ★ SEGURIDAD: Validar columna del filtro
+                if (!isset($valid_columns[$filter['field']])) continue;
+
+                $operator = in_array($filter['operator'], self::ALLOWED_OPERATORS, true)
+                    ? $filter['operator']
+                    : '=';
+
+                if ($operator === 'LIKE') {
+                    $where_clauses[] = "`{$filter['field']}` LIKE %s";
+                    $where_values[]  = '%' . $wpdb->esc_like($filter['value']) . '%';
+                } else {
+                    $where_clauses[] = "`{$filter['field']}` {$operator} %s";
+                    $where_values[]  = $filter['value'];
+                }
+            }
+        }
+
+        $where = implode(' AND ', $where_clauses);
+
+        // GROUP BY
+        $group_parts = [];
+        if ($x_field) $group_parts[] = $x_expression;
+        if ($group_by && $group_by !== $x_field) $group_parts[] = "`{$group_by}`";
+        $group_sql = !empty($group_parts) ? 'GROUP BY ' . implode(', ', $group_parts) : '';
+
+        // ORDER BY
+        $order_sql = '';
+        if (!empty($config['order_by']) && isset($valid_columns[$config['order_by']])) {
+            $dir = ($config['order_dir'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
+            $order_field = ($config['order_by'] === $x_field && $x_date_grouping)
+                ? $x_expression
+                : "`{$config['order_by']}`";
+            $order_sql = "ORDER BY {$order_field} {$dir}";
+        } elseif ($x_date_grouping) {
+            $order_sql = "ORDER BY {$x_expression} ASC";
+        }
+
+        // LIMIT
+        $limit_sql = '';
+        if (!empty($config['limit']) && $config['limit'] > 0) {
+            $limit_sql = 'LIMIT ' . intval($config['limit']);
+        }
+
+        // Build & execute
+        $sql = "SELECT {$select} FROM `{$table}` WHERE {$where} {$group_sql} {$order_sql} {$limit_sql}";
+
+        if (!empty($where_values)) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $sql = $wpdb->prepare($sql, ...$where_values);
+        }
+
+        $results = $wpdb->get_results($sql, ARRAY_A);
+
+        // Post-procesar nombres de meses
+        if ($x_date_grouping === 'month_name' && $results) {
+            $month_names = [
+                '01' => 'Enero',    '02' => 'Febrero',   '03' => 'Marzo',
+                '04' => 'Abril',    '05' => 'Mayo',       '06' => 'Junio',
+                '07' => 'Julio',    '08' => 'Agosto',     '09' => 'Septiembre',
+                '10' => 'Octubre',  '11' => 'Noviembre',  '12' => 'Diciembre',
+            ];
+            foreach ($results as &$row) {
+                if (isset($month_names[$row['x_value']])) {
+                    $row['x_value'] = $month_names[$row['x_value']];
+                }
+            }
+        }
+
+        return $results ?: [];
+    }
+
+    private function build_date_expression(string $field, string $grouping): string
+    {
+        return match ($grouping) {
+            'year'       => "YEAR(`{$field}`)",
+            'month'      => "DATE_FORMAT(`{$field}`, '%Y-%m')",
+            'month_name' => "DATE_FORMAT(`{$field}`, '%m')",
+            'quarter'    => "CONCAT(YEAR(`{$field}`), '-Q', QUARTER(`{$field}`))",
+            'week'       => "CONCAT(YEAR(`{$field}`), '-W', LPAD(WEEK(`{$field}`), 2, '0'))",
+            default      => "`{$field}`",
+        };
+    }
+
+    // ── Admin columns ──────────────────────────────────────────
+    public function add_admin_columns(array $columns): array
+    {
+        $new = [];
+        foreach ($columns as $k => $v) {
+            $new[$k] = $v;
+            if ($k === 'title') {
+                $new['chart_type'] = __('Tipo', 'secop-suite');
+                $new['shortcode']  = __('Shortcode', 'secop-suite');
+            }
+        }
+        return $new;
+    }
+
+    public function render_admin_columns(string $column, int $post_id): void
+    {
+        $config = get_post_meta($post_id, '_secop_chart_config', true);
+        $types  = [
+            'bar' => 'Barras', 'line' => 'Líneas', 'pie' => 'Pie', 'treemap' => 'Treemap',
+            'donut' => 'Donut', 'area' => 'Área', 'stacked_bar' => 'Apiladas', 'grouped_bar' => 'Agrupadas',
+        ];
+
+        match ($column) {
+            'chart_type' => print esc_html($types[$config['chart_type'] ?? 'bar'] ?? '-'),
+            'shortcode'  => print '<code>[secop_chart id="' . $post_id . '"]</code>',
+            default      => null,
+        };
+    }
+}

@@ -1,0 +1,1133 @@
+/**
+ * Elements API Data Upload - Admin Styles
+ * 
+ * @package ElementsAPIDataUpload
+ * @version 3.0.0
+ */
+
+/* ==========================================================================
+   Variables
+   ========================================================================== */
+:root {
+    --ss-primary: #2271b1;
+    --ss-primary-hover: #135e96;
+    --ss-success: #00a32a;
+    --ss-warning: #dba617;
+    --ss-error: #d63638;
+    --ss-gray-100: #f6f7f7;
+    --ss-gray-200: #dcdcde;
+    --ss-gray-300: #c3c4c7;
+    --ss-gray-600: #50575e;
+    --ss-gray-900: #1d2327;
+    --ss-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --ss-radius: 4px;
+    --ss-transition: all 0.2s ease;
+}
+
+/* ==========================================================================
+   Layout
+   ========================================================================== */
+.ss-admin-wrap {
+    max-width: 1400px;
+    margin: 20px 20px 20px 0;
+}
+
+.ss-admin-wrap h1 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 23px;
+    font-weight: 400;
+    margin-bottom: 20px;
+}
+
+.ss-admin-wrap h1 .dashicons {
+    font-size: 28px;
+    width: 28px;
+    height: 28px;
+}
+
+.ss-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* ==========================================================================
+   Cards
+   ========================================================================== */
+.ss-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.ss-card {
+    background: #fff;
+    border: 1px solid var(--ss-gray-200);
+    border-radius: var(--ss-radius);
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: var(--ss-shadow);
+    transition: var(--ss-transition);
+}
+
+.ss-card:hover {
+    border-color: var(--ss-primary);
+}
+
+.ss-card-icon {
+    width: 50px;
+    height: 50px;
+    background: var(--ss-gray-100);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.ss-card-icon .dashicons {
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+    color: var(--ss-primary);
+}
+
+.ss-card-content h3 {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 0 0 5px 0;
+    color: var(--ss-gray-900);
+}
+
+.ss-card-content p {
+    margin: 0;
+    color: var(--ss-gray-600);
+    font-size: 13px;
+}
+
+.ss-card-success .ss-card-icon {
+    background: #d8f3dc;
+}
+
+.ss-card-success .ss-card-icon .dashicons {
+    color: var(--ss-success);
+}
+
+.ss-card-warning .ss-card-icon {
+    background: #fff3cd;
+}
+
+.ss-card-warning .ss-card-icon .dashicons {
+    color: var(--ss-warning);
+    animation: ss-spin 1s linear infinite;
+}
+
+@keyframes ss-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   Panels
+   ========================================================================== */
+.ss-panel {
+    background: #fff;
+    border: 1px solid var(--ss-gray-200);
+    border-radius: var(--ss-radius);
+    padding: 20px;
+    box-shadow: var(--ss-shadow);
+}
+
+.ss-panel h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 15px 0;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--ss-gray-200);
+}
+
+.ss-panel h2 .dashicons {
+    color: var(--ss-primary);
+}
+
+.ss-panel h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 20px 0 10px 0;
+}
+
+/* ==========================================================================
+   Progress Bar
+   ========================================================================== */
+.ss-progress-bar {
+    width: 100%;
+    height: 20px;
+    background: var(--ss-gray-100);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 15px 0;
+}
+
+.ss-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--ss-primary), #4fa3d9);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+.ss-progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    animation: ss-shimmer 1.5s infinite;
+}
+
+@keyframes ss-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.ss-progress-text {
+    text-align: center;
+    font-size: 13px;
+    color: var(--ss-gray-600);
+    margin: 10px 0;
+}
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+.ss-button-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.ss-button-group .button-large {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 16px;
+}
+
+.ss-button-group .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+/* ==========================================================================
+   Notices
+   ========================================================================== */
+.ss-notice {
+    padding: 12px 15px;
+    border-radius: var(--ss-radius);
+    margin: 15px 0;
+}
+
+.ss-notice-success {
+    background: #d8f3dc;
+    border-left: 4px solid var(--ss-success);
+    color: #155724;
+}
+
+.ss-notice-error {
+    background: #f8d7da;
+    border-left: 4px solid var(--ss-error);
+    color: #721c24;
+}
+
+.ss-notice-info {
+    background: #cce5ff;
+    border-left: 4px solid var(--ss-primary);
+    color: #004085;
+}
+
+/* ==========================================================================
+   Form Elements
+   ========================================================================== */
+.ss-settings-form .form-table th {
+    width: 200px;
+    padding: 20px 10px 20px 0;
+}
+
+.ss-settings-form .form-table td {
+    padding: 15px 10px;
+}
+
+.ss-date-range {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ss-date-range input[type="date"] {
+    padding: 5px 10px;
+}
+
+/* Toggle Switch */
+.ss-toggle {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 26px;
+    vertical-align: middle;
+    margin-right: 10px;
+}
+
+.ss-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.ss-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--ss-gray-300);
+    transition: var(--ss-transition);
+    border-radius: 26px;
+}
+
+.ss-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: var(--ss-transition);
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.ss-toggle input:checked + .ss-toggle-slider {
+    background-color: var(--ss-success);
+}
+
+.ss-toggle input:checked + .ss-toggle-slider:before {
+    transform: translateX(24px);
+}
+
+/* ==========================================================================
+   API Documentation
+   ========================================================================== */
+.ss-api-docs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 15px 0;
+}
+
+.ss-api-endpoint,
+.ss-cli-command {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 10px 15px;
+    background: var(--ss-gray-100);
+    border-radius: var(--ss-radius);
+}
+
+.ss-api-endpoint code,
+.ss-cli-command code {
+    background: #fff;
+    padding: 5px 10px;
+    border-radius: var(--ss-radius);
+    font-family: Consolas, Monaco, monospace;
+    font-size: 13px;
+    color: var(--ss-primary);
+}
+
+.ss-params-list {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.ss-params-list li {
+    margin: 8px 0;
+}
+
+.ss-params-list code {
+    background: var(--ss-gray-100);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+/* ==========================================================================
+   Records Table
+   ========================================================================== */
+.ss-filters-panel {
+    background: #fff;
+    border: 1px solid var(--ss-gray-200);
+    border-radius: var(--ss-radius);
+    padding: 15px 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--ss-shadow);
+}
+
+.ss-filters-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 15px;
+}
+
+.ss-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.ss-filter-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ss-gray-600);
+    text-transform: uppercase;
+}
+
+.ss-filter-group input[type="text"],
+.ss-filter-group select {
+    min-width: 200px;
+    padding: 6px 10px;
+}
+
+.ss-filter-actions {
+    display: flex;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.ss-records-summary {
+    margin-bottom: 15px;
+    color: var(--ss-gray-600);
+}
+
+.ss-table-responsive {
+    overflow-x: auto;
+}
+
+.ss-records-table {
+    border-collapse: collapse;
+}
+
+.ss-records-table th {
+    background: var(--ss-gray-100);
+    font-weight: 600;
+}
+
+.ss-records-table .column-referencia { width: 15%; }
+.ss-records-table .column-proveedor { width: 25%; }
+.ss-records-table .column-tipo { width: 15%; }
+.ss-records-table .column-valor { width: 12%; }
+.ss-records-table .column-fecha { width: 10%; }
+.ss-records-table .column-estado { width: 10%; }
+.ss-records-table .column-acciones { width: 10%; text-align: center; }
+
+.ss-records-table .row-actions {
+    color: var(--ss-gray-600);
+    font-size: 12px;
+}
+
+.ss-proveedor-name {
+    font-weight: 500;
+}
+
+/* Estado badges */
+.ss-estado {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.ss-estado-default {
+    background: var(--ss-gray-100);
+    color: var(--ss-gray-600);
+}
+
+.ss-estado-aprobado {
+    background: #d8f3dc;
+    color: #155724;
+}
+
+.ss-estado-liquidado {
+    background: #cce5ff;
+    color: #004085;
+}
+
+.ss-estado-terminado {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* Pagination */
+.ss-pagination {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.ss-pagination .page-numbers {
+    display: inline-block;
+    padding: 5px 10px;
+    margin: 0 2px;
+    background: #fff;
+    border: 1px solid var(--ss-gray-200);
+    border-radius: var(--ss-radius);
+    text-decoration: none;
+    color: var(--ss-gray-600);
+}
+
+.ss-pagination .page-numbers.current {
+    background: var(--ss-primary);
+    border-color: var(--ss-primary);
+    color: #fff;
+}
+
+.ss-pagination .page-numbers:hover:not(.current) {
+    border-color: var(--ss-primary);
+    color: var(--ss-primary);
+}
+
+/* No records */
+.ss-no-records,
+.ss-no-logs {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--ss-gray-600);
+}
+
+.ss-no-records .dashicons,
+.ss-no-logs .dashicons {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: var(--ss-gray-300);
+    margin-bottom: 10px;
+}
+
+/* ==========================================================================
+   Modal
+   ========================================================================== */
+.ss-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ss-modal-content {
+    background: #fff;
+    border-radius: var(--ss-radius);
+    width: 90%;
+    max-width: 800px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 5px 30px rgba(0, 0, 0, 0.3);
+}
+
+.ss-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--ss-gray-200);
+    background: var(--ss-gray-100);
+}
+
+.ss-modal-header h2 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.ss-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--ss-gray-600);
+    padding: 0;
+    line-height: 1;
+}
+
+.ss-modal-close:hover {
+    color: var(--ss-error);
+}
+
+.ss-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+}
+
+/* ==========================================================================
+   Logs
+   ========================================================================== */
+.ss-logs-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--ss-gray-200);
+}
+
+.ss-logs-header h2 {
+    margin: 0;
+    border: none;
+    padding: 0;
+}
+
+.ss-logs-container {
+    background: var(--ss-gray-900);
+    border-radius: var(--ss-radius);
+    padding: 15px;
+    max-height: 500px;
+    overflow: auto;
+}
+
+.ss-logs-content {
+    margin: 0;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #0f0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.ss-system-info {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.ss-system-info th,
+.ss-system-info td {
+    padding: 10px 15px;
+    text-align: left;
+    border-bottom: 1px solid var(--ss-gray-200);
+}
+
+.ss-system-info th {
+    width: 40%;
+    font-weight: 600;
+    color: var(--ss-gray-600);
+}
+
+.ss-system-info .dashicons-yes {
+    color: var(--ss-success);
+}
+
+.ss-system-info .dashicons-no-alt {
+    color: var(--ss-error);
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+@media screen and (max-width: 782px) {
+    .ss-admin-wrap {
+        margin: 10px;
+    }
+
+    .ss-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .ss-filters-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ss-filter-group input[type="text"],
+    .ss-filter-group select {
+        min-width: auto;
+        width: 100%;
+    }
+
+    .ss-filter-actions {
+        margin-left: 0;
+        justify-content: flex-start;
+    }
+
+    .ss-settings-form .form-table th {
+        width: auto;
+        display: block;
+        padding-bottom: 5px;
+    }
+
+    .ss-settings-form .form-table td {
+        display: block;
+        padding-top: 0;
+    }
+}
+
+/* ======================================================================
+   CHART VISUALIZER ADMIN STYLES
+   ====================================================================== */
+
+/**
+ * SECOP Data Visualizer - Admin Styles
+ * 
+ * @package SecopDataVisualizer
+ * @version 1.0.0
+ */
+
+/* ==========================================================================
+   Variables
+   ========================================================================== */
+:root {
+    --ss-primary: #2271b1;
+    --ss-primary-hover: #135e96;
+    --ss-success: #00a32a;
+    --ss-warning: #dba617;
+    --ss-error: #d63638;
+    --ss-gray-100: #f6f7f7;
+    --ss-gray-200: #dcdcde;
+    --ss-gray-300: #c3c4c7;
+    --ss-gray-600: #50575e;
+    --ss-gray-900: #1d2327;
+    --ss-radius: 4px;
+}
+
+/* ==========================================================================
+   Config Wrapper
+   ========================================================================== */
+.ss-config-wrapper {
+    max-width: 100%;
+}
+
+.ss-config-section {
+    background: #fff;
+    border: 1px solid var(--ss-gray-200);
+    border-radius: var(--ss-radius);
+    margin-bottom: 20px;
+    padding: 0;
+}
+
+.ss-config-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 15px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--ss-gray-200);
+    background: var(--ss-gray-100);
+}
+
+.ss-config-section h3 .dashicons {
+    color: var(--ss-primary);
+}
+
+.ss-form-table {
+    margin: 0 !important;
+    padding: 10px 20px 20px;
+}
+
+.ss-form-table th {
+    width: 200px;
+    padding: 15px 10px 15px 0 !important;
+    font-weight: 600;
+}
+
+.ss-form-table td {
+    padding: 15px 10px !important;
+}
+
+/* ==========================================================================
+   Chart Type Selector
+   ========================================================================== */
+.ss-chart-types {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 15px;
+    padding: 20px;
+}
+
+.ss-chart-type-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px 10px;
+    border: 2px solid var(--ss-gray-200);
+    border-radius: var(--ss-radius);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ss-chart-type-option:hover {
+    border-color: var(--ss-primary);
+    background: #f0f6fc;
+}
+
+.ss-chart-type-option.selected {
+    border-color: var(--ss-primary);
+    background: #f0f6fc;
+}
+
+.ss-chart-type-option input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ss-chart-type-icon {
+    width: 48px;
+    height: 48px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    margin-bottom: 8px;
+    opacity: 0.7;
+}
+
+.ss-chart-type-option:hover .ss-chart-type-icon,
+.ss-chart-type-option.selected .ss-chart-type-icon {
+    opacity: 1;
+}
+
+/* Chart type icons using CSS shapes */
+.ss-chart-type-icon[data-type="bar"] {
+    background: linear-gradient(to top, var(--ss-primary) 60%, transparent 60%),
+                linear-gradient(to top, #ff7300 40%, transparent 40%) 15px 0,
+                linear-gradient(to top, var(--ss-primary) 80%, transparent 80%) 30px 0;
+    background-size: 12px 100%;
+    background-repeat: no-repeat;
+}
+
+.ss-chart-type-icon[data-type="line"] {
+    position: relative;
+    border-bottom: 2px solid var(--ss-gray-300);
+}
+
+.ss-chart-type-icon[data-type="line"]::before {
+    content: '';
+    position: absolute;
+    bottom: 5px;
+    left: 0;
+    width: 100%;
+    height: 30px;
+    background: linear-gradient(135deg, transparent 30%, var(--ss-primary) 30%, var(--ss-primary) 32%, transparent 32%);
+}
+
+.ss-chart-type-icon[data-type="pie"],
+.ss-chart-type-icon[data-type="donut"] {
+    background: conic-gradient(var(--ss-primary) 0deg 120deg, #ff7300 120deg 220deg, #ffc53b 220deg 360deg);
+    border-radius: 50%;
+}
+
+.ss-chart-type-icon[data-type="donut"]::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+}
+
+.ss-chart-type-icon[data-type="treemap"] {
+    background: 
+        linear-gradient(var(--ss-primary), var(--ss-primary)) 0 0,
+        linear-gradient(#ff7300, #ff7300) 25px 0,
+        linear-gradient(#ffc53b, #ffc53b) 0 25px,
+        linear-gradient(#3eba6a, #3eba6a) 25px 25px;
+    background-size: 23px 23px;
+    background-repeat: no-repeat;
+}
+
+.ss-chart-type-icon[data-type="area"] {
+    position: relative;
+    overflow: hidden;
+}
+
+.ss-chart-type-icon[data-type="area"]::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, transparent 30%, rgba(34, 113, 177, 0.3) 30%);
+    clip-path: polygon(0% 80%, 25% 50%, 50% 70%, 75% 30%, 100% 60%, 100% 100%, 0% 100%);
+}
+
+.ss-chart-type-icon[data-type="stacked_bar"],
+.ss-chart-type-icon[data-type="grouped_bar"] {
+    background: 
+        linear-gradient(var(--ss-primary) 40%, #ff7300 40% 70%, #ffc53b 70%) 0 0,
+        linear-gradient(var(--ss-primary) 30%, #ff7300 30% 60%, #ffc53b 60%) 20px 0;
+    background-size: 15px 100%;
+    background-repeat: no-repeat;
+}
+
+.ss-chart-type-label {
+    font-size: 12px;
+    color: var(--ss-gray-600);
+    text-align: center;
+}
+
+.ss-chart-type-option.selected .ss-chart-type-label {
+    color: var(--ss-primary);
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   Form Elements
+   ========================================================================== */
+.ss-date-range {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ss-date-range input[type="date"] {
+    padding: 5px 10px;
+}
+
+/* Filters */
+.ss-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.ss-filter-field {
+    min-width: 150px;
+}
+
+.ss-filter-operator {
+    width: 70px;
+}
+
+.ss-filter-value {
+    min-width: 150px;
+}
+
+.ss-remove-filter {
+    padding: 4px 8px !important;
+    color: var(--ss-error) !important;
+}
+
+.ss-remove-filter .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+#ss-add-filter {
+    margin-top: 5px;
+}
+
+#ss-add-filter .dashicons {
+    margin-right: 3px;
+}
+
+/* Date grouping row highlight */
+.ss-date-grouping-row {
+    background: #f0f6fc;
+}
+
+.ss-date-grouping-row th,
+.ss-date-grouping-row td {
+    border-left: 3px solid var(--ss-primary);
+}
+
+.ss-date-grouping-row select {
+    max-width: 300px;
+}
+
+/* Color preview */
+.ss-color-preview {
+    display: flex;
+    gap: 5px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.ss-color-preview .ss-color-swatch {
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    border: 1px solid rgba(0,0,0,0.1);
+}
+
+/* Toolbar options */
+.ss-toolbar-option {
+    display: inline-block;
+    margin-right: 15px;
+    margin-bottom: 5px;
+}
+
+/* ==========================================================================
+   Advanced Section
+   ========================================================================== */
+.ss-advanced-section h3 {
+    justify-content: space-between;
+}
+
+.ss-toggle-advanced {
+    font-size: 12px !important;
+}
+
+.ss-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    color: var(--ss-warning);
+    background: #fff3cd;
+    padding: 10px;
+    border-radius: var(--ss-radius);
+}
+
+.ss-warning .dashicons {
+    flex-shrink: 0;
+}
+
+#ss_custom_query {
+    font-family: Consolas, Monaco, monospace;
+    font-size: 13px;
+}
+
+/* ==========================================================================
+   Shortcode Box
+   ========================================================================== */
+.ss-shortcode-box {
+    padding: 10px 0;
+}
+
+.ss-shortcode-box code {
+    display: block;
+    padding: 10px;
+    background: var(--ss-gray-100);
+    border-radius: var(--ss-radius);
+    margin: 10px 0;
+    font-size: 13px;
+    word-break: break-all;
+}
+
+.ss-copy-shortcode {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 5px;
+}
+
+.ss-copy-shortcode .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+/* ==========================================================================
+   Preview Section
+   ========================================================================== */
+.ss-preview-container {
+    padding: 0;
+}
+
+#ss-refresh-preview {
+    margin: 15px;
+}
+
+#ss-refresh-preview .dashicons {
+    margin-right: 5px;
+}
+
+#ss-chart-preview {
+    min-height: 400px;
+    border-top: 1px solid var(--ss-gray-200);
+    position: relative;
+}
+
+.ss-preview-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 400px;
+    color: var(--ss-gray-600);
+    font-style: italic;
+}
+
+/* ==========================================================================
+   Admin List Columns
+   ========================================================================== */
+.column-chart_type {
+    width: 100px;
+}
+
+.column-shortcode {
+    width: 200px;
+}
+
+.column-shortcode code {
+    background: var(--ss-gray-100);
+    padding: 3px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+@media screen and (max-width: 782px) {
+    .ss-chart-types {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .ss-form-table th {
+        width: auto;
+        display: block;
+        padding-bottom: 5px !important;
+    }
+
+    .ss-form-table td {
+        display: block;
+        padding-top: 0 !important;
+    }
+
+    .ss-filter-row {
+        flex-wrap: wrap;
+    }
+
+    .ss-filter-field,
+    .ss-filter-value {
+        min-width: 100%;
+    }
+}
