@@ -92,9 +92,7 @@ final class Importer
      */
     public function run_scheduled(): void
     {
-        set_transient(SECOP_SUITE_PREFIX . 'import_running', true, HOUR_IN_SECONDS);
         $this->run();
-        delete_transient(SECOP_SUITE_PREFIX . 'import_running');
     }
 
     /**
@@ -110,15 +108,32 @@ final class Importer
      */
     public function run(): array
     {
+        // Proteger contra importaciones simultáneas (CLI + Admin)
+        if (get_transient(SECOP_SUITE_PREFIX . 'import_running') && !defined('SECOP_SUITE_FORCE_IMPORT')) {
+            $msg = 'Ya hay una importación en curso';
+            Logger::warning($msg);
+            return ['success' => false, 'message' => $msg];
+        }
+        set_transient(SECOP_SUITE_PREFIX . 'import_running', true, HOUR_IN_SECONDS);
+
         $api_url      = get_option(SECOP_SUITE_PREFIX . 'api_url');
         $nit          = get_option(SECOP_SUITE_PREFIX . 'nit_entidad', '800103923');
         $fecha_inicio = get_option(SECOP_SUITE_PREFIX . 'fecha_inicio', '2016-01-01');
         $fecha_fin    = get_option(SECOP_SUITE_PREFIX . 'fecha_fin', date('Y-12-31'));
 
         if (empty($api_url)) {
-            Logger::log('ERROR: URL de API no configurada');
+            Logger::error('URL de API no configurada');
+            delete_transient(SECOP_SUITE_PREFIX . 'import_running');
             return ['success' => false, 'message' => 'URL de API no configurada'];
         }
+
+        /**
+         * Hook antes de iniciar la importación.
+         *
+         * @param string $api_url URL de la API
+         * @param string $nit     NIT de la entidad
+         */
+        do_action('secop_suite_before_import', $api_url, $nit);
 
         $where_clause = sprintf(
             'nit_entidad="%s" AND fecha_de_firma >= "%sT00:00:00.000" AND fecha_de_firma <= "%sT23:59:59.999"',
@@ -127,12 +142,12 @@ final class Importer
             $fecha_fin
         );
 
-        Logger::log('=== Iniciando importación ===');
-        Logger::log("API: {$api_url} | NIT: {$nit} | Fechas: {$fecha_inicio} → {$fecha_fin}");
+        Logger::info('=== Iniciando importación ===');
+        Logger::info("API: {$api_url} | NIT: {$nit} | Fechas: {$fecha_inicio} → {$fecha_fin}");
 
         // Obtener total estimado
         $estimated_total = $this->fetch_total_count($api_url, $where_clause);
-        Logger::log("Total estimado: {$estimated_total}");
+        Logger::info("Total estimado: {$estimated_total}");
 
         $this->update_progress(0, $estimated_total, 'running', 'Iniciando importación...');
 
@@ -145,7 +160,7 @@ final class Importer
         do {
             // ¿Se canceló?
             if (!get_transient(SECOP_SUITE_PREFIX . 'import_running')) {
-                Logger::log('Importación cancelada por el usuario');
+                Logger::warning('Importación cancelada por el usuario');
                 break;
             }
 
@@ -157,7 +172,7 @@ final class Importer
                 '$order'  => 'fecha_de_firma DESC',
             ], $api_url);
 
-            Logger::log("Batch #{$batch_number}: offset {$offset}");
+            Logger::debug("Batch #{$batch_number}: offset {$offset}");
 
             $items = $this->fetch_batch($url, $batch_number, $errors);
 
@@ -167,7 +182,7 @@ final class Importer
             }
 
             if (empty($items)) {
-                Logger::log("Batch #{$batch_number}: sin más registros");
+                Logger::debug("Batch #{$batch_number}: sin más registros");
                 break;
             }
 
@@ -175,7 +190,7 @@ final class Importer
             $total_imported += $batch_stats['inserted'];
             $total_updated  += $batch_stats['updated'];
 
-            Logger::log("Batch #{$batch_number}: {$batch_stats['inserted']} insertados, {$batch_stats['updated']} actualizados");
+            Logger::info("Batch #{$batch_number}: {$batch_stats['inserted']} insertados, {$batch_stats['updated']} actualizados");
 
             $this->update_progress(
                 $total_imported + $total_updated,
@@ -198,6 +213,9 @@ final class Importer
         update_option(SECOP_SUITE_PREFIX . 'last_import', current_time('mysql'));
         update_option(SECOP_SUITE_PREFIX . 'total_records', $this->db->get_total_records());
 
+        // Invalidar cache de gráficas tras importación
+        $this->invalidate_chart_cache();
+
         $summary = sprintf(
             'Importación completada: %d insertados, %d actualizados, %d errores',
             $total_imported,
@@ -205,16 +223,25 @@ final class Importer
             count($errors)
         );
 
-        Logger::log("=== {$summary} ===");
+        Logger::info("=== {$summary} ===");
         $this->update_progress($total_imported + $total_updated, $estimated_total, 'complete', $summary);
 
-        return [
+        $result = [
             'success'  => true,
             'imported' => $total_imported,
             'updated'  => $total_updated,
             'errors'   => $errors,
             'message'  => $summary,
         ];
+
+        /**
+         * Hook después de completar la importación.
+         *
+         * @param array $result Resultado de la importación
+         */
+        do_action('secop_suite_after_import', $result);
+
+        return $result;
     }
 
     // ── Métodos internos ───────────────────────────────────────
@@ -253,7 +280,7 @@ final class Importer
 
             if (is_wp_error($response)) {
                 $msg = $response->get_error_message();
-                Logger::log("ERROR batch #{$batch_number} (intento {$attempt}): {$msg}");
+                Logger::error("Batch #{$batch_number} (intento {$attempt}): {$msg}");
                 if ($attempt === 1) {
                     sleep(self::RETRY_DELAY);
                     continue;
@@ -264,7 +291,7 @@ final class Importer
 
             $status = wp_remote_retrieve_response_code($response);
             if ($status !== 200) {
-                Logger::log("ERROR: HTTP {$status} en batch #{$batch_number}");
+                Logger::error("HTTP {$status} en batch #{$batch_number}");
                 $errors[] = "HTTP {$status}";
                 return null;
             }
@@ -273,7 +300,7 @@ final class Importer
             $items = json_decode($body, true);
 
             if (json_last_error() !== JSON_ERROR_NONE) {
-                Logger::log('ERROR: JSON inválido - ' . json_last_error_msg());
+                Logger::error('JSON inválido - ' . json_last_error_msg());
                 $errors[] = 'JSON: ' . json_last_error_msg();
                 return null;
             }
@@ -303,6 +330,20 @@ final class Importer
         }
 
         return $stats;
+    }
+
+    /**
+     * Invalidar cache de gráficas tras importación.
+     */
+    private function invalidate_chart_cache(): void
+    {
+        global $wpdb;
+        // Eliminar transients de cache de charts
+        $wpdb->query(
+            "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_secop_chart_%' OR option_name LIKE '_transient_timeout_secop_chart_%'"
+        );
+        // Limpiar object cache
+        wp_cache_delete('secop_available_tables', 'secop_suite');
     }
 
     private function update_progress(int $processed, int $total, string $status, string $message): void

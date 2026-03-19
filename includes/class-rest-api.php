@@ -22,6 +22,21 @@ final class Rest_Api
     {
         $this->db = $db;
         add_action('rest_api_init', [$this, 'register_routes']);
+        add_filter('rest_post_dispatch', [$this, 'add_security_headers'], 10, 3);
+    }
+
+    /**
+     * Agregar headers de seguridad a respuestas REST.
+     */
+    public function add_security_headers(\WP_HTTP_Response $response, \WP_REST_Server $server, \WP_REST_Request $request): \WP_HTTP_Response
+    {
+        $route = $request->get_route();
+        if (str_starts_with($route, '/' . self::NAMESPACE)) {
+            $response->header('X-Content-Type-Options', 'nosniff');
+            $response->header('X-Frame-Options', 'DENY');
+            $response->header('Cache-Control', 'no-store, max-age=0');
+        }
+        return $response;
     }
 
     public function register_routes(): void
@@ -32,11 +47,13 @@ final class Rest_Api
             'callback'            => [$this, 'get_contracts'],
             'permission_callback' => '__return_true',
             'args'                => [
-                'per_page' => ['default' => 10, 'sanitize_callback' => 'absint'],
-                'page'     => ['default' => 1,  'sanitize_callback' => 'absint'],
-                'anno'     => ['sanitize_callback' => 'sanitize_text_field'],
-                'estado'   => ['sanitize_callback' => 'sanitize_text_field'],
-                'search'   => ['sanitize_callback' => 'sanitize_text_field'],
+                'per_page'    => ['default' => 10, 'sanitize_callback' => 'absint'],
+                'page'        => ['default' => 1,  'sanitize_callback' => 'absint'],
+                'anno'        => ['sanitize_callback' => 'sanitize_text_field'],
+                'estado'      => ['sanitize_callback' => 'sanitize_text_field'],
+                'search'      => ['sanitize_callback' => 'sanitize_text_field'],
+                'fecha_desde' => ['sanitize_callback' => 'sanitize_text_field'],
+                'fecha_hasta' => ['sanitize_callback' => 'sanitize_text_field'],
             ],
         ]);
 
@@ -94,6 +111,18 @@ final class Rest_Api
             $values[] = $like;
             $values[] = $like;
         }
+        if ($fecha_desde = $request->get_param('fecha_desde')) {
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_desde)) {
+                $where[]  = 'fecha_de_firma >= %s';
+                $values[] = $fecha_desde . ' 00:00:00';
+            }
+        }
+        if ($fecha_hasta = $request->get_param('fecha_hasta')) {
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_hasta)) {
+                $where[]  = 'fecha_de_firma <= %s';
+                $values[] = $fecha_hasta . ' 23:59:59';
+            }
+        }
 
         $where_sql = implode(' AND ', $where);
         $values[]  = $per_page;
@@ -104,7 +133,16 @@ final class Rest_Api
             $values
         ));
 
-        $total = $this->db->get_total_records();
+        // Total filtrado (sin LIMIT/OFFSET) para paginación correcta
+        $count_values = array_slice($values, 0, -2); // Quitar per_page y offset
+        if (!empty($count_values)) {
+            $total = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}",
+                $count_values
+            ));
+        } else {
+            $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table} WHERE {$where_sql}");
+        }
 
         return new \WP_REST_Response([
             'data' => $contracts,
@@ -112,7 +150,7 @@ final class Rest_Api
                 'total'        => $total,
                 'per_page'     => $per_page,
                 'current_page' => $page,
-                'total_pages'  => (int) ceil($total / $per_page),
+                'total_pages'  => max(1, (int) ceil($total / $per_page)),
             ],
         ]);
     }
@@ -166,34 +204,39 @@ final class Rest_Api
         ]);
     }
 
-    public function get_chart_csv(\WP_REST_Request $request): \WP_REST_Response
+    public function get_chart_csv(\WP_REST_Request $request): void
     {
         $chart_id = (int) $request->get_param('id');
         $config   = get_post_meta($chart_id, '_secop_chart_config', true);
 
         if (!$config) {
-            return new \WP_REST_Response(['error' => 'Chart not found'], 404);
+            status_header(404);
+            echo 'Chart not found';
+            exit;
         }
 
         $data = Plugin::get_instance()->visualizer()->get_chart_data($config);
 
         if (empty($data)) {
-            return new \WP_REST_Response(['error' => 'No data'], 404);
+            status_header(404);
+            echo 'No data';
+            exit;
         }
 
-        $output = fopen('php://temp', 'r+');
+        // Cabeceras para descarga CSV
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="chart-' . intval($chart_id) . '.csv"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('X-Content-Type-Options: nosniff');
+
+        $output = fopen('php://output', 'w');
+        // BOM para Excel
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
         fputcsv($output, array_keys($data[0]));
         foreach ($data as $row) {
             fputcsv($output, $row);
         }
-        rewind($output);
-        $csv = stream_get_contents($output);
         fclose($output);
-
-        $response = new \WP_REST_Response($csv);
-        $response->header('Content-Type', 'text/csv; charset=utf-8');
-        $response->header('Content-Disposition', 'attachment; filename="chart-' . $chart_id . '.csv"');
-
-        return $response;
+        exit;
     }
 }

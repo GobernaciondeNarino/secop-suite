@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
     <!-- Filtros -->
     <div class="ss-filters-panel">
         <form method="get" class="ss-filters-form">
-            <input type="hidden" name="page" value="ss-records" />
+            <input type="hidden" name="page" value="secop-suite-records" />
             
             <div class="ss-filter-group">
                 <label for="search"><?php esc_html_e('Buscar', 'secop-suite'); ?></label>
@@ -58,7 +58,7 @@ if (!defined('ABSPATH')) {
                     <span class="dashicons dashicons-search"></span>
                     <?php esc_html_e('Filtrar', 'secop-suite'); ?>
                 </button>
-                <a href="<?php echo esc_url(admin_url('admin.php?page=ss-records')); ?>" class="button">
+                <a href="<?php echo esc_url(admin_url('admin.php?page=secop-suite-records')); ?>" class="button">
                     <?php esc_html_e('Limpiar', 'secop-suite'); ?>
                 </a>
             </div>
@@ -84,13 +84,13 @@ if (!defined('ABSPATH')) {
             <table class="wp-list-table widefat fixed striped ss-records-table">
                 <thead>
                     <tr>
-                        <th class="column-referencia"><?php esc_html_e('Referencia', 'secop-suite'); ?></th>
-                        <th class="column-proveedor"><?php esc_html_e('Proveedor', 'secop-suite'); ?></th>
-                        <th class="column-tipo"><?php esc_html_e('Tipo', 'secop-suite'); ?></th>
-                        <th class="column-valor"><?php esc_html_e('Valor', 'secop-suite'); ?></th>
-                        <th class="column-fecha"><?php esc_html_e('Fecha Firma', 'secop-suite'); ?></th>
-                        <th class="column-estado"><?php esc_html_e('Estado', 'secop-suite'); ?></th>
-                        <th class="column-acciones"><?php esc_html_e('Acciones', 'secop-suite'); ?></th>
+                        <th scope="col" class="column-referencia"><?php esc_html_e('Referencia', 'secop-suite'); ?></th>
+                        <th scope="col" class="column-proveedor"><?php esc_html_e('Proveedor', 'secop-suite'); ?></th>
+                        <th scope="col" class="column-tipo"><?php esc_html_e('Tipo', 'secop-suite'); ?></th>
+                        <th scope="col" class="column-valor"><?php esc_html_e('Valor', 'secop-suite'); ?></th>
+                        <th scope="col" class="column-fecha"><?php esc_html_e('Fecha Firma', 'secop-suite'); ?></th>
+                        <th scope="col" class="column-estado"><?php esc_html_e('Estado', 'secop-suite'); ?></th>
+                        <th scope="col" class="column-acciones"><?php esc_html_e('Acciones', 'secop-suite'); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -161,7 +161,7 @@ if (!defined('ABSPATH')) {
         <?php if ($total_pages > 1): ?>
             <div class="ss-pagination">
                 <?php
-                $base_url = admin_url('admin.php?page=ss-records');
+                $base_url = admin_url('admin.php?page=secop-suite-records');
                 if (!empty($_GET['search'])) {
                     $base_url = add_query_arg('search', sanitize_text_field($_GET['search']), $base_url);
                 }

@@ -3,7 +3,7 @@
  * Plugin Name: SECOP Suite
  * Plugin URI: https://github.com/gobabordo/secop-suite
  * Description: Plugin integral para la importación, almacenamiento y visualización interactiva de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia. Combina importación automatizada desde datos.gov.co con gráficas D3plus configurables mediante shortcodes.
- * Version: 4.0.0
+ * Version: 4.1.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Jonnathan Bucheli Galindo - Gobernación de Nariño
@@ -25,8 +25,8 @@ if (!defined('ABSPATH')) {
 }
 
 // ─── Constantes ────────────────────────────────────────────────
-define('SECOP_SUITE_VERSION', '4.0.0');
-define('SECOP_SUITE_DB_VERSION', '4.0.0');
+define('SECOP_SUITE_VERSION', '4.1.0');
+define('SECOP_SUITE_DB_VERSION', '4.1.0');
 define('SECOP_SUITE_DIR', plugin_dir_path(__FILE__));
 define('SECOP_SUITE_URL', plugin_dir_url(__FILE__));
 define('SECOP_SUITE_BASENAME', plugin_basename(__FILE__));
@@ -82,6 +82,7 @@ final class Plugin
         register_activation_hook(__FILE__, [$this, 'activate']);
         register_deactivation_hook(__FILE__, [$this, 'deactivate']);
 
+        add_action('init', [$this, 'load_textdomain']);
         add_action('admin_menu', [$this, 'register_admin_menu']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
@@ -101,17 +102,42 @@ final class Plugin
         add_filter('plugin_action_links_' . SECOP_SUITE_BASENAME, [$this, 'add_action_links']);
     }
 
+    // ── Internacionalización ─────────────────────────────────────
+    public function load_textdomain(): void
+    {
+        load_plugin_textdomain('secop-suite', false, dirname(SECOP_SUITE_BASENAME) . '/languages');
+    }
+
     // ── Activación / Desactivación ─────────────────────────────
     public function activate(): void
     {
         $this->database->create_table();
         $this->set_default_options();
+        $this->maybe_upgrade();
 
         if (get_option(SECOP_SUITE_PREFIX . 'auto_update_enabled', false)) {
             $this->schedule_import();
         }
 
         flush_rewrite_rules();
+    }
+
+    /**
+     * Ejecutar migraciones pendientes al actualizar el plugin.
+     */
+    private function maybe_upgrade(): void
+    {
+        $current_version = get_option(SECOP_SUITE_PREFIX . 'db_version', '0');
+
+        if (version_compare($current_version, SECOP_SUITE_DB_VERSION, '<')) {
+            // Re-crear tabla (dbDelta es idempotente, agrega columnas faltantes)
+            $this->database->create_table();
+
+            // Hook para extensiones
+            do_action('secop_suite_after_upgrade', $current_version, SECOP_SUITE_DB_VERSION);
+
+            update_option(SECOP_SUITE_PREFIX . 'db_version', SECOP_SUITE_DB_VERSION);
+        }
     }
 
     public function deactivate(): void
@@ -186,13 +212,22 @@ final class Plugin
     // ── Registro de configuraciones ────────────────────────────
     public function register_settings(): void
     {
+        $sanitize_date = static function (string $value): string {
+            $value = sanitize_text_field($value);
+            return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) && strtotime($value) ? $value : '';
+        };
+
+        $sanitize_frequency = static function (string $value): string {
+            return in_array($value, ['daily', 'weekly', 'monthly'], true) ? $value : 'daily';
+        };
+
         $fields = [
             'api_url'               => ['sanitize_callback' => 'esc_url_raw'],
             'nit_entidad'           => ['sanitize_callback' => 'sanitize_text_field'],
-            'fecha_inicio'          => ['sanitize_callback' => 'sanitize_text_field'],
-            'fecha_fin'             => ['sanitize_callback' => 'sanitize_text_field'],
+            'fecha_inicio'          => ['sanitize_callback' => $sanitize_date],
+            'fecha_fin'             => ['sanitize_callback' => $sanitize_date],
             'auto_update_enabled'   => ['type' => 'boolean'],
-            'auto_update_frequency' => ['sanitize_callback' => 'sanitize_text_field'],
+            'auto_update_frequency' => ['sanitize_callback' => $sanitize_frequency],
         ];
 
         foreach ($fields as $key => $args) {
