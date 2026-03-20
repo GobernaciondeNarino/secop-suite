@@ -256,26 +256,31 @@ final class Database
             return null;
         }
 
-        // UPSERT: verificar si existe
-        $existing = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM {$this->table_name} WHERE id_contrato = %s AND referencia_del_contrato = %s",
-            $data['id_contrato'],
-            $data['referencia_del_contrato']
-        ));
+        // UPSERT con INSERT ... ON DUPLICATE KEY UPDATE (una sola query)
+        $columns      = array_keys($data);
+        $placeholders = implode(', ', $formats);
+        $col_list     = '`' . implode('`, `', $columns) . '`';
 
-        if ($existing) {
-            $result = $wpdb->update(
-                $this->table_name,
-                $data,
-                ['id_contrato' => $data['id_contrato'], 'referencia_del_contrato' => $data['referencia_del_contrato']],
-                $formats,
-                ['%s', '%s']
-            );
-            return $result !== false ? 'updated' : null;
+        $update_parts = [];
+        foreach ($columns as $col) {
+            if ($col !== 'id_contrato' && $col !== 'referencia_del_contrato') {
+                $update_parts[] = "`{$col}` = VALUES(`{$col}`)";
+            }
+        }
+        $update_sql = implode(', ', $update_parts);
+
+        $sql = "INSERT INTO {$this->table_name} ({$col_list}) VALUES ({$placeholders})
+                ON DUPLICATE KEY UPDATE {$update_sql}";
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $result = $wpdb->query($wpdb->prepare($sql, array_values($data)));
+
+        if ($result === false) {
+            return null;
         }
 
-        $result = $wpdb->insert($this->table_name, $data, $formats);
-        return $result !== false ? 'inserted' : null;
+        // INSERT ON DUPLICATE: 1 = inserted, 2 = updated, 0 = no change
+        return $result === 1 ? 'inserted' : 'updated';
     }
 
     /**
@@ -336,6 +341,13 @@ final class Database
      */
     public function get_table_columns(string $table): array
     {
+        // Cache en object cache para evitar DESCRIBE repetidos
+        $cache_key = 'secop_cols_' . md5($table);
+        $cached    = wp_cache_get($cache_key, 'secop_suite');
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         global $wpdb;
         $columns = [];
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -343,6 +355,8 @@ final class Database
         foreach ($rows as $row) {
             $columns[$row['Field']] = $row['Type'];
         }
+
+        wp_cache_set($cache_key, $columns, 'secop_suite', 300); // 5 minutos
         return $columns;
     }
 
@@ -360,6 +374,11 @@ final class Database
      */
     public function get_available_tables(): array
     {
+        $cached = wp_cache_get('secop_available_tables', 'secop_suite');
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         global $wpdb;
         $tables = [];
 
@@ -383,6 +402,7 @@ final class Database
             $tables[$row[0]] = str_replace($wpdb->prefix, '', $row[0]);
         }
 
+        wp_cache_set('secop_available_tables', $tables, 'secop_suite', 300);
         return $tables;
     }
 }

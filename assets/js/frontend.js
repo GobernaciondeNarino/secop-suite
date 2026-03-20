@@ -177,7 +177,7 @@
                 type: 'POST',
                 data: {
                     action: 'secop_suite_get_chart_data',
-                    nonce: secopSuiteChart.nonce,
+                    nonce: this.config.chartNonce || secopSuiteChart.nonce,
                     chart_id: this.chartId
                 },
                 success: function(response) {
@@ -401,13 +401,19 @@
             // Renderizar
             this.chart.render();
 
-            // Marcar como cargado
+            // Marcar como cargado (con timeout máximo de 30s)
             const self = this;
+            let attempts = 0;
+            const maxAttempts = 300; // 300 * 100ms = 30s
             const checkRendered = setInterval(function() {
+                attempts++;
                 const svgElement = document.querySelector(renderTarget + ' svg');
                 if (svgElement) {
                     self.$container.addClass('ss-loaded');
                     clearInterval(checkRendered);
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(checkRendered);
+                    self.showError(secopSuiteChart.strings.error || 'Error al renderizar la gráfica');
                 }
             }, 100);
         }
@@ -537,7 +543,7 @@
             // Remove existing toast
             $('.ss-toast').remove();
 
-            const $toast = $('<div class="ss-toast">' + message + '</div>');
+            const $toast = $('<div class="ss-toast">').text(message);
             $('body').append($toast);
 
             setTimeout(function() {
@@ -549,12 +555,28 @@
     }
 
     /**
-     * Initialize all charts on page load
+     * Initialize all charts on page load with lazy loading (Intersection Observer)
      */
     $(document).ready(function() {
-        $('.ss-chart-container').each(function() {
-            new ChartManager(this);
-        });
+        if ('IntersectionObserver' in window) {
+            const observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        new ChartManager(entry.target);
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { rootMargin: '200px' });
+
+            $('.ss-chart-container').each(function() {
+                observer.observe(this);
+            });
+        } else {
+            // Fallback para navegadores sin IntersectionObserver
+            $('.ss-chart-container').each(function() {
+                new ChartManager(this);
+            });
+        }
     });
 
     // Expose for external use

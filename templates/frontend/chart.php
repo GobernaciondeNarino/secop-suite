@@ -28,63 +28,63 @@ $chart_height = $config['chart_height'] ?? 400;
     
     <?php if ($show_toolbar): ?>
     <!-- Barra de herramientas -->
-    <div class="ss-toolbar">
+    <div class="ss-toolbar" role="toolbar" aria-label="<?php esc_attr_e('Herramientas de la gráfica', 'secop-suite'); ?>">
         <?php if (in_array('detail', $toolbar_options)): ?>
-        <button type="button" class="ss-toolbar-btn" data-action="detail" title="<?php esc_attr_e('Detalle', 'secop-suite'); ?>">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" class="ss-toolbar-btn" data-action="detail" aria-label="<?php esc_attr_e('Ver detalle de la gráfica', 'secop-suite'); ?>" title="<?php esc_attr_e('Detalle', 'secop-suite'); ?>">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10"></circle>
                 <line x1="12" y1="16" x2="12" y2="12"></line>
                 <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
-            <span><?php _e('Detalle', 'secop-suite'); ?></span>
+            <span><?php esc_html_e('Detalle', 'secop-suite'); ?></span>
         </button>
         <?php endif; ?>
 
         <?php if (in_array('share', $toolbar_options)): ?>
-        <button type="button" class="ss-toolbar-btn" data-action="share" title="<?php esc_attr_e('Compartir', 'secop-suite'); ?>">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" class="ss-toolbar-btn" data-action="share" aria-label="<?php esc_attr_e('Compartir gráfica', 'secop-suite'); ?>" title="<?php esc_attr_e('Compartir', 'secop-suite'); ?>">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="18" cy="5" r="3"></circle>
                 <circle cx="6" cy="12" r="3"></circle>
                 <circle cx="18" cy="19" r="3"></circle>
                 <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
                 <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
             </svg>
-            <span><?php _e('Compartir', 'secop-suite'); ?></span>
+            <span><?php esc_html_e('Compartir', 'secop-suite'); ?></span>
         </button>
         <?php endif; ?>
 
         <?php if (in_array('data', $toolbar_options)): ?>
-        <button type="button" class="ss-toolbar-btn" data-action="data" title="<?php esc_attr_e('Datos', 'secop-suite'); ?>">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" class="ss-toolbar-btn" data-action="data" aria-label="<?php esc_attr_e('Ver datos de la gráfica', 'secop-suite'); ?>" title="<?php esc_attr_e('Datos', 'secop-suite'); ?>">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                 <line x1="3" y1="9" x2="21" y2="9"></line>
                 <line x1="3" y1="15" x2="21" y2="15"></line>
                 <line x1="9" y1="3" x2="9" y2="21"></line>
                 <line x1="15" y1="3" x2="15" y2="21"></line>
             </svg>
-            <span><?php _e('Datos', 'secop-suite'); ?></span>
+            <span><?php esc_html_e('Datos', 'secop-suite'); ?></span>
         </button>
         <?php endif; ?>
 
         <?php if (in_array('image', $toolbar_options)): ?>
-        <button type="button" class="ss-toolbar-btn" data-action="image" title="<?php esc_attr_e('Imagen', 'secop-suite'); ?>">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" class="ss-toolbar-btn" data-action="image" aria-label="<?php esc_attr_e('Descargar como imagen', 'secop-suite'); ?>" title="<?php esc_attr_e('Imagen', 'secop-suite'); ?>">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                 <circle cx="8.5" cy="8.5" r="1.5"></circle>
                 <polyline points="21 15 16 10 5 21"></polyline>
             </svg>
-            <span><?php _e('Imagen', 'secop-suite'); ?></span>
+            <span><?php esc_html_e('Imagen', 'secop-suite'); ?></span>
         </button>
         <?php endif; ?>
 
         <?php if (in_array('download', $toolbar_options)): ?>
-        <button type="button" class="ss-toolbar-btn" data-action="download" title="<?php esc_attr_e('Descarga', 'secop-suite'); ?>">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" class="ss-toolbar-btn" data-action="download" aria-label="<?php esc_attr_e('Descargar datos CSV', 'secop-suite'); ?>" title="<?php esc_attr_e('Descarga', 'secop-suite'); ?>">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                 <polyline points="7 10 12 15 17 10"></polyline>
                 <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
-            <span><?php _e('Descarga', 'secop-suite'); ?></span>
+            <span><?php esc_html_e('Descarga', 'secop-suite'); ?></span>
         </button>
         <?php endif; ?>
     </div>
@@ -95,7 +95,7 @@ $chart_height = $config['chart_height'] ?? 400;
         <!-- Loading -->
         <div class="ss-loading">
             <div class="ss-spinner"></div>
-            <p><?php _e('Cargando datos...', 'secop-suite'); ?></p>
+            <p><?php esc_html_e('Cargando datos...', 'secop-suite'); ?></p>
         </div>
 
         <!-- Chart render area -->
@@ -108,17 +108,17 @@ $chart_height = $config['chart_height'] ?? 400;
                 <line x1="12" y1="8" x2="12" y2="12"></line>
                 <line x1="12" y1="16" x2="12.01" y2="16"></line>
             </svg>
-            <p><?php _e('Error al cargar los datos', 'secop-suite'); ?></p>
+            <p><?php esc_html_e('Error al cargar los datos', 'secop-suite'); ?></p>
         </div>
     </div>
 </div>
 
 <!-- Modal para ver datos -->
-<div class="ss-modal" id="<?php echo esc_attr($unique_id); ?>-data-modal" style="display: none;">
+<div class="ss-modal" id="<?php echo esc_attr($unique_id); ?>-data-modal" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e('Datos de la gráfica', 'secop-suite'); ?>" style="display: none;">
     <div class="ss-modal-overlay"></div>
     <div class="ss-modal-content">
         <div class="ss-modal-header">
-            <h3><?php echo esc_html($chart_title); ?> - <?php _e('Datos', 'secop-suite'); ?></h3>
+            <h3><?php echo esc_html($chart_title); ?> - <?php esc_html_e('Datos', 'secop-suite'); ?></h3>
             <button type="button" class="ss-modal-close">&times;</button>
         </div>
         <div class="ss-modal-body">
@@ -130,18 +130,18 @@ $chart_height = $config['chart_height'] ?? 400;
             </div>
         </div>
         <div class="ss-modal-footer">
-            <button type="button" class="ss-btn ss-btn-secondary ss-modal-close-btn"><?php _e('Cerrar', 'secop-suite'); ?></button>
-            <button type="button" class="ss-btn ss-btn-primary" data-action="download-from-modal"><?php _e('Descargar CSV', 'secop-suite'); ?></button>
+            <button type="button" class="ss-btn ss-btn-secondary ss-modal-close-btn"><?php esc_html_e('Cerrar', 'secop-suite'); ?></button>
+            <button type="button" class="ss-btn ss-btn-primary" data-action="download-from-modal"><?php esc_html_e('Descargar CSV', 'secop-suite'); ?></button>
         </div>
     </div>
 </div>
 
 <!-- Modal para compartir -->
-<div class="ss-modal ss-share-modal" id="<?php echo esc_attr($unique_id); ?>-share-modal" style="display: none;">
+<div class="ss-modal ss-share-modal" id="<?php echo esc_attr($unique_id); ?>-share-modal" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e('Compartir gráfica', 'secop-suite'); ?>" style="display: none;">
     <div class="ss-modal-overlay"></div>
     <div class="ss-modal-content ss-modal-small">
         <div class="ss-modal-header">
-            <h3><?php _e('Compartir', 'secop-suite'); ?></h3>
+            <h3><?php esc_html_e('Compartir', 'secop-suite'); ?></h3>
             <button type="button" class="ss-modal-close">&times;</button>
         </div>
         <div class="ss-modal-body">
@@ -181,34 +181,34 @@ $chart_height = $config['chart_height'] ?? 400;
 </div>
 
 <!-- Modal de detalle -->
-<div class="ss-modal ss-detail-modal" id="<?php echo esc_attr($unique_id); ?>-detail-modal" style="display: none;">
+<div class="ss-modal ss-detail-modal" id="<?php echo esc_attr($unique_id); ?>-detail-modal" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e('Detalle de la gráfica', 'secop-suite'); ?>" style="display: none;">
     <div class="ss-modal-overlay"></div>
     <div class="ss-modal-content ss-modal-small">
         <div class="ss-modal-header">
-            <h3><?php _e('Información de la Gráfica', 'secop-suite'); ?></h3>
+            <h3><?php esc_html_e('Información de la Gráfica', 'secop-suite'); ?></h3>
             <button type="button" class="ss-modal-close">&times;</button>
         </div>
         <div class="ss-modal-body">
             <table class="ss-detail-table">
                 <tr>
-                    <th><?php _e('Título', 'secop-suite'); ?></th>
+                    <th><?php esc_html_e('Título', 'secop-suite'); ?></th>
                     <td><?php echo esc_html($chart_title); ?></td>
                 </tr>
                 <tr>
-                    <th><?php _e('Tipo', 'secop-suite'); ?></th>
+                    <th><?php esc_html_e('Tipo', 'secop-suite'); ?></th>
                     <td><?php echo esc_html(ucfirst($config['chart_type'])); ?></td>
                 </tr>
                 <tr>
-                    <th><?php _e('Fuente', 'secop-suite'); ?></th>
+                    <th><?php esc_html_e('Fuente', 'secop-suite'); ?></th>
                     <td>SECOP - Sistema Electrónico de Contratación Pública</td>
                 </tr>
                 <tr>
-                    <th><?php _e('Entidad', 'secop-suite'); ?></th>
+                    <th><?php esc_html_e('Entidad', 'secop-suite'); ?></th>
                     <td>Gobernación de Nariño</td>
                 </tr>
                 <?php if (!empty($config['date_from']) || !empty($config['date_to'])): ?>
                 <tr>
-                    <th><?php _e('Período', 'secop-suite'); ?></th>
+                    <th><?php esc_html_e('Período', 'secop-suite'); ?></th>
                     <td>
                         <?php 
                         $from = $config['date_from'] ?? 'Inicio';
@@ -219,7 +219,7 @@ $chart_height = $config['chart_height'] ?? 400;
                 </tr>
                 <?php endif; ?>
                 <tr>
-                    <th><?php _e('Última actualización', 'secop-suite'); ?></th>
+                    <th><?php esc_html_e('Última actualización', 'secop-suite'); ?></th>
                     <td><?php echo esc_html(get_the_modified_date('', $chart_id) . ' ' . get_the_modified_time('', $chart_id)); ?></td>
                 </tr>
             </table>
@@ -241,5 +241,6 @@ $chart_height = $config['chart_height'] ?? 400;
     'xAxisTitle' => $config['x_axis_title'] ?? '',
     'numberFormat' => $config['number_format'] ?? 'colombiano',
     'title' => $chart_title,
+    'chartNonce' => wp_create_nonce('secop_suite_chart_' . $chart_id),
 ]); ?>
 </script>

@@ -202,31 +202,80 @@ final class Visualizer
 
     /**
      * ★ SEGURIDAD: Validar que la query personalizada sea solo SELECT.
+     * Se eliminan comentarios SQL, se normalizan espacios, y se aplica
+     * una lista extensa de palabras y funciones prohibidas.
      */
     private function sanitize_custom_query(string $query): string
     {
-        $query   = wp_kses_post($query);
         $trimmed = trim($query);
 
         if (empty($trimmed)) {
             return '';
         }
 
-        // Solo permitir SELECT
-        if (!preg_match('/^\s*SELECT\s/i', $trimmed)) {
-            return ''; // Rechazar cualquier cosa que no sea SELECT
+        // Eliminar comentarios SQL (/* ... */, --, #) para evitar evasión
+        $cleaned = preg_replace('/\/\*.*?\*\//s', ' ', $trimmed);
+        $cleaned = preg_replace('/--.*$/m', ' ', $cleaned);
+        $cleaned = preg_replace('/#.*$/m', ' ', $cleaned);
+        // Normalizar espacios
+        $cleaned = preg_replace('/\s+/', ' ', trim($cleaned));
+
+        // Solo permitir SELECT al inicio
+        if (!preg_match('/^SELECT\s/i', $cleaned)) {
+            Logger::log('SEGURIDAD: Query personalizada rechazada — no inicia con SELECT');
+            return '';
         }
 
-        // Prohibir palabras peligrosas
-        $forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER', 'CREATE', 'TRUNCATE', 'GRANT', 'REVOKE', 'EXEC', 'EXECUTE', 'UNION\s+ALL', 'INTO\s+OUTFILE', 'INTO\s+DUMPFILE', 'LOAD_FILE'];
+        // Prohibir palabras y funciones peligrosas
+        $forbidden = [
+            'INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER', 'CREATE', 'TRUNCATE',
+            'GRANT', 'REVOKE', 'EXEC', 'EXECUTE', 'UNION', 'INTO\s+OUTFILE',
+            'INTO\s+DUMPFILE', 'LOAD_FILE', 'LOAD\s+DATA', 'BENCHMARK', 'SLEEP',
+            'EXTRACTVALUE', 'UPDATEXML', 'EXP\s*\(', 'GET_LOCK', 'RELEASE_LOCK',
+            'IS_FREE_LOCK', 'MASTER_POS_WAIT', 'PG_SLEEP', 'WAITFOR', 'HANDLER',
+            'RENAME', 'REPLACE', 'SET\s', 'SHOW\s+GRANTS', 'FILE\s*\(',
+        ];
         foreach ($forbidden as $word) {
-            if (preg_match('/\b' . $word . '\b/i', $trimmed)) {
+            if (preg_match('/\b' . $word . '\b/i', $cleaned)) {
                 Logger::log("SEGURIDAD: Query personalizada rechazada — contiene '{$word}'");
                 return '';
             }
         }
 
-        return $trimmed;
+        // Prohibir punto y coma (múltiples sentencias)
+        if (str_contains($cleaned, ';')) {
+            Logger::log('SEGURIDAD: Query personalizada rechazada — contiene punto y coma');
+            return '';
+        }
+
+        // Prohibir subconsultas anidadas (máximo 1 nivel de paréntesis con SELECT)
+        if (preg_match('/\(\s*SELECT\b/i', $cleaned)) {
+            Logger::log('SEGURIDAD: Query personalizada rechazada — contiene subconsulta');
+            return '';
+        }
+
+        // Prohibir acceso a tablas del sistema
+        if (preg_match('/\b(information_schema|mysql|performance_schema|sys)\b/i', $cleaned)) {
+            Logger::log('SEGURIDAD: Query personalizada rechazada — acceso a tablas del sistema');
+            return '';
+        }
+
+        // Validar que la tabla referenciada esté en la whitelist
+        $available_tables = $this->db->get_available_tables();
+        $has_valid_table  = false;
+        foreach (array_keys($available_tables) as $table) {
+            if (stripos($cleaned, $table) !== false) {
+                $has_valid_table = true;
+                break;
+            }
+        }
+
+        if (!$has_valid_table) {
+            Logger::log('SEGURIDAD: Query personalizada rechazada — tabla no autorizada');
+            return '';
+        }
+
+        return $cleaned;
     }
 
     // ── Assets ─────────────────────────────────────────────────
@@ -287,10 +336,23 @@ final class Visualizer
 
     private function enqueue_chart_libraries(): void
     {
-        wp_enqueue_script('d3',         'https://d3js.org/d3.v5.min.js',                                              [],    '5.16.0', true);
-        wp_enqueue_script('d3plus',     'https://cdn.jsdelivr.net/npm/d3plus@2',                                       ['d3'], '2.0.0',  true);
-        wp_enqueue_script('topojson',   'https://d3js.org/topojson.v2.min.js',                                         ['d3'], '2.0.0',  true);
-        wp_enqueue_script('html2canvas','https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', [],    '1.4.1',  true);
+        $vendor_url = SECOP_SUITE_URL . 'assets/js/vendor/';
+
+        // Librerías servidas localmente para evitar dependencia de CDNs externos
+        // y cumplir con políticas de privacidad (GDPR).
+        // Si los archivos locales no existen, usar CDN como fallback.
+        $libs = [
+            'd3'          => ['file' => 'd3.v5.min.js',      'cdn' => 'https://d3js.org/d3.v5.min.js',                                              'deps' => [],    'ver' => '5.16.0'],
+            'd3plus'      => ['file' => 'd3plus.min.js',     'cdn' => 'https://cdn.jsdelivr.net/npm/d3plus@2',                                       'deps' => ['d3'], 'ver' => '2.0.0'],
+            'topojson'    => ['file' => 'topojson.v2.min.js', 'cdn' => 'https://d3js.org/topojson.v2.min.js',                                         'deps' => ['d3'], 'ver' => '2.0.0'],
+            'html2canvas' => ['file' => 'html2canvas.min.js','cdn' => 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'deps' => [],    'ver' => '1.4.1'],
+        ];
+
+        foreach ($libs as $handle => $lib) {
+            $local_path = SECOP_SUITE_DIR . 'assets/js/vendor/' . $lib['file'];
+            $url = file_exists($local_path) ? $vendor_url . $lib['file'] : $lib['cdn'];
+            wp_enqueue_script($handle, $url, $lib['deps'], $lib['ver'], true);
+        }
     }
 
     // ── Shortcode ──────────────────────────────────────────────
@@ -328,12 +390,26 @@ final class Visualizer
     // ── AJAX ───────────────────────────────────────────────────
     public function ajax_get_chart_data(): void
     {
-        check_ajax_referer('secop_suite_frontend', 'nonce');
-
         $chart_id = intval($_POST['chart_id'] ?? 0);
+
+        // Nonce específico por chart para mayor seguridad
+        $nonce_action = 'secop_suite_chart_' . $chart_id;
+        if (!wp_verify_nonce(sanitize_text_field($_POST['nonce'] ?? ''), $nonce_action)) {
+            // Fallback al nonce global por compatibilidad
+            check_ajax_referer('secop_suite_frontend', 'nonce');
+        }
+
         if (!$chart_id) {
             wp_send_json_error(['message' => 'ID inválido']);
         }
+
+        // Rate limiting básico por IP (máx. 60 requests/minuto)
+        $ip_key = 'secop_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        $requests = (int) get_transient($ip_key);
+        if ($requests > 60) {
+            wp_send_json_error(['message' => 'Demasiadas solicitudes. Intente más tarde.'], 429);
+        }
+        set_transient($ip_key, $requests + 1, MINUTE_IN_SECONDS);
 
         $config = get_post_meta($chart_id, '_secop_chart_config', true);
         if (!$config) {
@@ -399,14 +475,36 @@ final class Visualizer
             'filters'         => $this->sanitize_filters($_POST['filters'] ?? []),
         ];
 
+        $data = $this->get_chart_data($config);
         wp_send_json_success([
-            'data'  => $this->get_chart_data($config),
-            'count' => count($this->get_chart_data($config)),
+            'data'  => $data,
+            'count' => count($data),
         ]);
     }
 
     // ── Generación de datos para la gráfica ────────────────────
     public function get_chart_data(array $config): array
+    {
+        global $wpdb;
+
+        // Cache de resultados (invalidado tras importación)
+        $cache_key = 'secop_chart_' . md5(wp_json_encode($config));
+        $cached    = get_transient($cache_key);
+        if ($cached !== false) {
+            return $cached;
+        }
+
+        $result = $this->build_chart_query($config);
+
+        // Cachear por 15 minutos
+        set_transient($cache_key, $result, 15 * MINUTE_IN_SECONDS);
+        return $result;
+    }
+
+    /**
+     * Construir y ejecutar la query para datos de gráfica.
+     */
+    private function build_chart_query(array $config): array
     {
         global $wpdb;
 
@@ -554,6 +652,7 @@ final class Visualizer
     private function build_date_expression(string $field, string $grouping): string
     {
         return match ($grouping) {
+            'full'       => "DATE_FORMAT(`{$field}`, '%Y-%m-%d')",
             'year'       => "YEAR(`{$field}`)",
             'month'      => "DATE_FORMAT(`{$field}`, '%Y-%m')",
             'month_name' => "DATE_FORMAT(`{$field}`, '%m')",
