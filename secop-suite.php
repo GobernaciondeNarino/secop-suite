@@ -1,9 +1,9 @@
 <?php
 /**
  * Plugin Name: SECOP Suite
- * Plugin URI: https://github.com/gobabordo/secop-suite
+ * Plugin URI: https://github.com/GobernaciondeNarino/secop-suite
  * Description: Plugin integral para la importación, almacenamiento y visualización interactiva de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia. Combina importación automatizada desde datos.gov.co con gráficas D3plus configurables mediante shortcodes.
- * Version: 4.1.0
+ * Version: 4.2.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Jonnathan Bucheli Galindo - Gobernación de Nariño
@@ -25,8 +25,8 @@ if (!defined('ABSPATH')) {
 }
 
 // ─── Constantes ────────────────────────────────────────────────
-define('SECOP_SUITE_VERSION', '4.1.0');
-define('SECOP_SUITE_DB_VERSION', '4.1.0');
+define('SECOP_SUITE_VERSION', '4.2.0');
+define('SECOP_SUITE_DB_VERSION', '4.2.0');
 define('SECOP_SUITE_DIR', plugin_dir_path(__FILE__));
 define('SECOP_SUITE_URL', plugin_dir_url(__FILE__));
 define('SECOP_SUITE_BASENAME', plugin_basename(__FILE__));
@@ -55,6 +55,7 @@ final class Plugin
     private Importer $importer;
     private Visualizer $visualizer;
     private Rest_Api $rest_api;
+    private Updater $updater;
 
     private function __construct()
     {
@@ -62,6 +63,7 @@ final class Plugin
         $this->importer   = new Importer($this->database);
         $this->visualizer = new Visualizer($this->database);
         $this->rest_api   = new Rest_Api($this->database);
+        $this->updater    = new Updater();
 
         $this->register_hooks();
     }

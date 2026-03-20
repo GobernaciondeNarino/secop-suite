@@ -652,6 +652,7 @@ final class Visualizer
     private function build_date_expression(string $field, string $grouping): string
     {
         return match ($grouping) {
+            'full'       => "DATE_FORMAT(`{$field}`, '%Y-%m-%d')",
             'year'       => "YEAR(`{$field}`)",
             'month'      => "DATE_FORMAT(`{$field}`, '%Y-%m')",
             'month_name' => "DATE_FORMAT(`{$field}`, '%m')",
