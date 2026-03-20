@@ -1,4 +1,4 @@
-# SECOP Suite v4.1.0 - Guia de Instalacion en WordPress
+# SECOP Suite v4.0.1 - Guia de Instalacion en WordPress
 
 ## Requisitos del Sistema
 
@@ -177,7 +177,7 @@ location ~* /wp-content/plugins/secop-suite/logs/ {
 
 Tras la instalacion, verifique en **SECOP Suite > Logs** que:
 
-- La version del plugin es 4.1.0
+- La version del plugin es 4.0.1
 - La version de PHP cumple el requisito (8.1+)
 - El estado del sistema es "Listo"
 - WP-Cron esta activo (si usa actualizaciones automaticas)
