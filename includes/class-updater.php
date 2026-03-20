@@ -124,12 +124,18 @@ final class Updater
 
         global $wp_filesystem;
 
-        $proper_destination = WP_PLUGIN_DIR . '/' . $this->plugin_slug;
-        $wp_filesystem->move($result['destination'], $proper_destination);
-        $result['destination'] = $proper_destination;
+        if (!$wp_filesystem) {
+            return $result;
+        }
 
-        // Reactivar el plugin
-        activate_plugin($this->plugin_file);
+        $proper_destination = WP_PLUGIN_DIR . '/' . $this->plugin_slug;
+
+        if ($wp_filesystem->move($result['destination'], $proper_destination)) {
+            $result['destination'] = $proper_destination;
+
+            // Reactivar el plugin solo si el move fue exitoso
+            activate_plugin($this->plugin_file);
+        }
 
         // Limpiar cache
         delete_transient(self::CACHE_KEY);
