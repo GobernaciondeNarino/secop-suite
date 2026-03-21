@@ -1,8 +1,130 @@
 /**
- * Elements API Data Upload - Admin Styles
- * 
- * @package ElementsAPIDataUpload
- * @version 3.0.0
+ * SECOP Suite - Admin Styles
+ *
+ * @package SecopSuite
+ * @version 4.1.0
+ *
+ * ═══════════════════════════════════════════════════════════════════════
+ * CSS REFERENCE — Admin Variables, Classes & IDs
+ * ═══════════════════════════════════════════════════════════════════════
+ *
+ * ── CSS Custom Properties (Variables) ─────────────────────────────────
+ *   --ss-primary           #2271b1   WordPress admin primary blue
+ *   --ss-primary-hover     #135e96   Hover state
+ *   --ss-success           #00a32a   Green (success, active)
+ *   --ss-warning           #dba617   Yellow (warning, importing)
+ *   --ss-error             #d63638   Red (error, delete)
+ *   --ss-gray-100          #f6f7f7   Lightest gray (backgrounds)
+ *   --ss-gray-200          #dcdcde   Borders
+ *   --ss-gray-300          #c3c4c7   Disabled states
+ *   --ss-gray-600          #50575e   Secondary text
+ *   --ss-gray-900          #1d2327   Primary text
+ *   --ss-shadow            Default box shadow
+ *   --ss-radius            4px       Border radius
+ *   --ss-transition        Default transition
+ *
+ * ── Layout Classes ────────────────────────────────────────────────────
+ *   .ss-admin-wrap         Top-level wrapper (max-width 1400px)
+ *   .ss-dashboard          Flex column layout
+ *   .ss-dashboard-row      Flex row for 50/50 split
+ *   .ss-cards              KPI card grid
+ *   .ss-card               Single KPI card
+ *   .ss-card-icon          Card icon circle
+ *   .ss-card-content       Card text area
+ *   .ss-card-success       Green variant
+ *   .ss-card-warning       Yellow variant (animated icon)
+ *   .ss-card-primary       Blue variant
+ *   .ss-panel              White card panel
+ *   .ss-panel-half         50% width panel
+ *
+ * ── Import Page ───────────────────────────────────────────────────────
+ *   .ss-progress-bar       Progress bar container
+ *   .ss-progress-fill      Animated fill
+ *   .ss-progress-text      Status text
+ *   .ss-button-group       Flex button row
+ *   .ss-notice             Notice box
+ *   .ss-notice-success     Green notice
+ *   .ss-notice-error       Red notice
+ *   .ss-notice-info        Blue notice
+ *
+ * ── Settings Form ─────────────────────────────────────────────────────
+ *   .ss-settings-form      Form wrapper
+ *   .ss-date-range         Flex row for date inputs
+ *   .ss-toggle             Toggle switch
+ *   .ss-toggle-slider      Toggle track
+ *
+ * ── Records Page ──────────────────────────────────────────────────────
+ *   .ss-filters-panel      Filter bar panel
+ *   .ss-filters-form       Flex filter form
+ *   .ss-filter-group       Filter field group
+ *   .ss-filter-actions     Filter action buttons
+ *   .ss-records-table      Records data table
+ *   .ss-estado             Status badge
+ *   .ss-estado-aprobado    Green badge
+ *   .ss-estado-liquidado   Blue badge
+ *   .ss-estado-terminado   Yellow badge
+ *   .ss-pagination         Pagination wrapper
+ *
+ * ── Chart Config ──────────────────────────────────────────────────────
+ *   .ss-config-wrapper     Config form outer wrapper
+ *   .ss-config-section     Collapsible config panel
+ *   .ss-form-table         Form table within panel
+ *   .ss-chart-types        Chart type selector grid
+ *   .ss-chart-type-option  Selectable chart type card
+ *   .ss-chart-type-icon    CSS icon (data-type attr)
+ *   .ss-chart-type-label   Type label text
+ *   .ss-chart-guide        Heat map guide panel
+ *   .ss-guide-matrix       Guide grid
+ *   .ss-guide-cell         Heat cell (.ss-heat-high/medium/low/none)
+ *   .ss-guide-legend       Legend items
+ *   .ss-filter-row         Inline filter row (field + operator + value)
+ *   .ss-advanced-section   Collapsible advanced panel
+ *   .ss-shortcode-box      Shortcode display box
+ *   .ss-preview-container  Chart preview area
+ *
+ * ── Dashboard ─────────────────────────────────────────────────────────
+ *   .ss-status-table       Status key-value table
+ *   .ss-status-badge       Inline status badge
+ *   .ss-status-ok          Green status
+ *   .ss-status-warning     Yellow status
+ *   .ss-quick-actions      Quick action grid
+ *   .ss-quick-action       Action link card
+ *   .ss-year-bars          Year bar chart
+ *   .ss-year-bar-row       Single bar row
+ *   .ss-type-grid          Type card grid
+ *   .ss-type-card          Type summary card
+ *   .ss-modules-grid       Module overview grid
+ *   .ss-module-card        Module card
+ *
+ * ── IDs ───────────────────────────────────────────────────────────────
+ *   #ss_table_name         Table selector (chart config)
+ *   #ss_x_field            X-axis field selector
+ *   #ss_y_field            Y-axis field selector
+ *   #ss_aggregate          Aggregation function selector
+ *   #ss_group_by           Group-by selector
+ *   #ss_color_field        Color field selector
+ *   #ss_date_field         Date field selector
+ *   #ss-fields-section     Fields config section
+ *   #ss-filters-section    Filters config section
+ *   #ss-filters-container  Filter rows container
+ *   #ss-add-filter         Add filter button
+ *   #ss-chart-guide        Heat map guide container
+ *   #ss-guide-matrix       Guide matrix grid
+ *   #ss-chart-preview      Preview render area
+ *   #ss-refresh-preview    Refresh preview button
+ *   #ss_filter_table_name  Filter table selector
+ *   #ss-filter-fields-section  Filter fields section
+ *   #ss-filter-fields-container  Filter field rows
+ *   #ss-result-columns-section   Result columns section
+ *   #ss-result-columns-container Result checkboxes container
+ *   #ss-start-import       Start import button
+ *   #ss-cancel-import      Cancel import button
+ *   #ss-progress-container Progress bar wrapper
+ *   #ss-progress-fill      Progress bar fill
+ *   #ss-progress-text      Progress status text
+ *   #ss-import-result      Import result notice
+ *
+ * ═══════════════════════════════════════════════════════════════════════
  */
 
 /* ==========================================================================
@@ -1187,4 +1309,495 @@
     .ss-filter-value {
         min-width: 100%;
     }
+}
+
+/* ======================================================================
+   DASHBOARD STYLES
+   ====================================================================== */
+
+/*
+ * CSS Reference — Dashboard
+ *
+ * Variables:
+ *   --ss-primary, --ss-success, --ss-warning, --ss-error
+ *   --ss-gray-100..900, --ss-shadow, --ss-radius, --ss-transition
+ *
+ * Layout Classes:
+ *   .ss-dashboard-row     — Flex row for half-panels
+ *   .ss-panel-half        — 50% width panel
+ *
+ * Status:
+ *   .ss-status-table      — Key-value status table
+ *   .ss-status-badge      — Inline badge
+ *   .ss-status-ok         — Green status
+ *   .ss-status-warning    — Yellow status
+ *
+ * Quick Actions:
+ *   .ss-quick-actions     — Grid of action links
+ *   .ss-quick-action      — Single action card
+ *   .ss-qa-icon           — Icon wrapper
+ *   .ss-qa-text           — Text wrapper
+ *
+ * Year Bars:
+ *   .ss-year-bars         — Container
+ *   .ss-year-bar-row      — Single row
+ *   .ss-year-bar-track    — Track bg
+ *   .ss-year-bar-fill     — Filled portion
+ *
+ * Type Grid:
+ *   .ss-type-grid         — Type cards container
+ *   .ss-type-card         — Single type card
+ *
+ * Modules:
+ *   .ss-modules-grid      — 4-col grid
+ *   .ss-module-card       — Module card
+ *   .ss-module-header     — Colored header
+ *   .ss-module-body       — Body content
+ *   .ss-module-shortcode  — Code display
+ *
+ * IDs:
+ *   (none, all class-based)
+ */
+
+.ss-version {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--ss-gray-600);
+    background: var(--ss-gray-100);
+    padding: 2px 8px;
+    border-radius: 10px;
+    vertical-align: middle;
+}
+
+.ss-card-primary .ss-card-icon {
+    background: #e8f4fd;
+}
+
+.ss-card-primary .ss-card-icon .dashicons {
+    color: var(--ss-primary);
+}
+
+.ss-dashboard-row {
+    display: flex;
+    gap: 20px;
+}
+
+.ss-panel-half {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Status Table */
+.ss-status-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.ss-status-table td {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--ss-gray-200);
+}
+
+.ss-status-table td:first-child {
+    color: var(--ss-gray-600);
+    font-size: 13px;
+    width: 50%;
+}
+
+.ss-status-table td:last-child {
+    text-align: right;
+}
+
+.ss-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ss-status-ok {
+    background: #d8f3dc;
+    color: #155724;
+}
+
+.ss-status-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.ss-status-badge .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+
+.ss-spin {
+    animation: ss-spin 1s linear infinite;
+}
+
+/* Quick Actions */
+.ss-quick-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ss-quick-action {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--ss-gray-200);
+    border-radius: var(--ss-radius);
+    text-decoration: none;
+    color: inherit;
+    transition: var(--ss-transition);
+}
+
+.ss-quick-action:hover {
+    border-color: var(--ss-primary);
+    background: #f0f6fc;
+    transform: translateX(4px);
+}
+
+.ss-qa-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+
+.ss-qa-icon .dashicons {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+}
+
+.ss-qa-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.ss-qa-text strong {
+    font-size: 13px;
+    color: var(--ss-gray-900);
+}
+
+.ss-qa-text small {
+    font-size: 11px;
+    color: var(--ss-gray-600);
+}
+
+/* Year Bars */
+.ss-year-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ss-year-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ss-year-label {
+    width: 50px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ss-gray-900);
+    text-align: right;
+}
+
+.ss-year-bar-track {
+    flex: 1;
+    height: 24px;
+    background: var(--ss-gray-100);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.ss-year-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--ss-primary), #4fa3d9);
+    border-radius: 4px;
+    min-width: 2px;
+    transition: width 0.5s ease;
+}
+
+.ss-year-count {
+    width: 60px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ss-gray-900);
+    text-align: right;
+}
+
+.ss-year-value {
+    width: 140px;
+    font-size: 11px;
+    color: var(--ss-gray-600);
+    text-align: right;
+}
+
+/* Type Grid */
+.ss-type-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+.ss-type-card {
+    padding: 12px 16px;
+    background: var(--ss-gray-100);
+    border-radius: var(--ss-radius);
+    transition: var(--ss-transition);
+}
+
+.ss-type-card:hover {
+    background: #f0f6fc;
+}
+
+.ss-type-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ss-gray-900);
+    margin-bottom: 4px;
+}
+
+.ss-type-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+}
+
+.ss-type-count {
+    color: var(--ss-gray-600);
+}
+
+.ss-type-value {
+    color: var(--ss-primary);
+    font-weight: 500;
+}
+
+/* Modules Grid */
+.ss-modules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.ss-module-card {
+    border: 1px solid var(--ss-gray-200);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: var(--ss-transition);
+}
+
+.ss-module-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.ss-module-header {
+    padding: 16px 20px;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ss-module-header .dashicons {
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+}
+
+.ss-module-header h3 {
+    margin: 0;
+    font-size: 16px;
+    color: #fff;
+}
+
+.ss-module-body {
+    padding: 16px 20px;
+}
+
+.ss-module-body p {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: var(--ss-gray-600);
+    line-height: 1.5;
+}
+
+.ss-module-shortcode {
+    padding: 8px 12px;
+    background: var(--ss-gray-100);
+    border-radius: var(--ss-radius);
+}
+
+.ss-module-shortcode code {
+    font-size: 12px;
+    color: var(--ss-primary);
+    background: none;
+    padding: 0;
+}
+
+@media screen and (max-width: 782px) {
+    .ss-dashboard-row {
+        flex-direction: column;
+    }
+
+    .ss-year-value {
+        display: none;
+    }
+}
+
+/* ======================================================================
+   CHART GUIDE — HEAT MAP FOR VARIABLE RECOMMENDATIONS
+   ====================================================================== */
+
+/*
+ * CSS Reference — Chart Guide
+ *
+ * Classes:
+ *   .ss-chart-guide           — Main container (appears below chart type selector)
+ *   .ss-guide-title           — Section title
+ *   .ss-guide-matrix          — Grid table
+ *   .ss-guide-header          — Header cell
+ *   .ss-guide-field           — Field label cell
+ *   .ss-guide-cell            — Heat cell
+ *   .ss-heat-high             — Green (highly recommended)
+ *   .ss-heat-medium           — Yellow (compatible)
+ *   .ss-heat-low              — Light gray (possible)
+ *   .ss-heat-none             — Red/gray (not recommended)
+ *   .ss-guide-legend          — Legend container
+ *   .ss-guide-legend-item     — Legend entry
+ *   .ss-guide-legend-swatch   — Color swatch
+ *
+ * IDs:
+ *   #ss-chart-guide           — Dynamic guide panel
+ */
+
+.ss-chart-guide {
+    margin: 0;
+    padding: 16px 20px;
+    background: #fafbfc;
+    border-top: 1px solid var(--ss-gray-200);
+    animation: ss-fade-in 0.3s ease;
+}
+
+@keyframes ss-fade-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.ss-guide-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ss-gray-900);
+    margin: 0 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ss-guide-title .dashicons {
+    color: var(--ss-primary);
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.ss-guide-matrix {
+    display: grid;
+    grid-template-columns: 140px repeat(auto-fill, minmax(80px, 1fr));
+    gap: 3px;
+    margin-bottom: 12px;
+}
+
+.ss-guide-header {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    text-align: center;
+    padding: 6px 4px;
+    color: var(--ss-gray-600);
+    background: var(--ss-gray-200);
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+}
+
+.ss-guide-field {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 8px;
+    color: var(--ss-gray-900);
+    background: #fff;
+    border-radius: 3px;
+    border: 1px solid var(--ss-gray-200);
+    display: flex;
+    align-items: center;
+}
+
+.ss-guide-cell {
+    text-align: center;
+    padding: 6px 4px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: default;
+    transition: var(--ss-transition);
+}
+
+.ss-guide-cell:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.ss-heat-high {
+    background: #22c55e;
+    color: #fff;
+}
+
+.ss-heat-medium {
+    background: #facc15;
+    color: #1d2327;
+}
+
+.ss-heat-low {
+    background: #e5e7eb;
+    color: #6b7280;
+}
+
+.ss-heat-none {
+    background: #fca5a5;
+    color: #991b1b;
+}
+
+.ss-guide-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.ss-guide-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--ss-gray-600);
+}
+
+.ss-guide-legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
 }

@@ -36,7 +36,14 @@
                 $('.ss-chart-type-option').removeClass('selected');
                 $(this).addClass('selected');
                 $(this).find('input').prop('checked', true);
+                self.updateChartGuide($(this).find('input').val());
             });
+
+            // Initial guide render
+            const initialType = $('input[name="ss_chart_type"]:checked').val();
+            if (initialType) {
+                self.updateChartGuide(initialType);
+            }
 
             // Table selection
             $('#ss_table_name').on('change', function() {
@@ -464,6 +471,71 @@
             }
             
             chart.render();
+        },
+
+        /**
+         * Chart Guide — Heat map of recommended variables per chart type
+         */
+        updateChartGuide: function(chartType) {
+            var $matrix = $('#ss-guide-matrix');
+            var $name = $('#ss-guide-chart-name');
+            $matrix.empty();
+
+            // Chart type display names
+            var chartNames = {
+                bar: 'Barras', line: 'Líneas', area: 'Área', pie: 'Pie/Torta',
+                donut: 'Donut', treemap: 'Treemap', tree: 'Árbol (Tree)',
+                pack: 'Burbujas (Pack)', network: 'Red (Network)',
+                stacked_bar: 'Barras Apiladas', grouped_bar: 'Barras Agrupadas'
+            };
+            $name.text('— ' + (chartNames[chartType] || chartType));
+
+            // Variable fields and their relevance per chart type
+            // 'high' = optimal, 'medium' = compatible, 'low' = possible, 'none' = not recommended
+            var fields = [
+                { label: 'Eje X / Categoría', key: 'x_field' },
+                { label: 'Eje Y / Valor', key: 'y_field' },
+                { label: 'Agrupar Por', key: 'group_by' },
+                { label: 'Color Por', key: 'color_field' },
+                { label: 'Agregación', key: 'aggregate' },
+                { label: 'Fecha Agrupada', key: 'date_grouping' },
+                { label: 'Límite', key: 'limit' },
+                { label: 'Timeline', key: 'timeline' }
+            ];
+
+            var guide = {
+                bar:         { x_field: 'high', y_field: 'high', group_by: 'medium', color_field: 'medium', aggregate: 'high', date_grouping: 'medium', limit: 'medium', timeline: 'medium' },
+                line:        { x_field: 'high', y_field: 'high', group_by: 'high', color_field: 'medium', aggregate: 'high', date_grouping: 'high', limit: 'low', timeline: 'high' },
+                area:        { x_field: 'high', y_field: 'high', group_by: 'high', color_field: 'medium', aggregate: 'high', date_grouping: 'high', limit: 'low', timeline: 'medium' },
+                pie:         { x_field: 'high', y_field: 'high', group_by: 'none', color_field: 'high', aggregate: 'high', date_grouping: 'none', limit: 'high', timeline: 'none' },
+                donut:       { x_field: 'high', y_field: 'high', group_by: 'none', color_field: 'high', aggregate: 'high', date_grouping: 'none', limit: 'high', timeline: 'none' },
+                treemap:     { x_field: 'high', y_field: 'high', group_by: 'low', color_field: 'high', aggregate: 'high', date_grouping: 'none', limit: 'high', timeline: 'none' },
+                tree:        { x_field: 'high', y_field: 'medium', group_by: 'high', color_field: 'medium', aggregate: 'low', date_grouping: 'none', limit: 'high', timeline: 'none' },
+                pack:        { x_field: 'high', y_field: 'high', group_by: 'medium', color_field: 'high', aggregate: 'high', date_grouping: 'none', limit: 'high', timeline: 'none' },
+                network:     { x_field: 'high', y_field: 'medium', group_by: 'high', color_field: 'medium', aggregate: 'low', date_grouping: 'none', limit: 'high', timeline: 'none' },
+                stacked_bar: { x_field: 'high', y_field: 'high', group_by: 'high', color_field: 'medium', aggregate: 'high', date_grouping: 'high', limit: 'medium', timeline: 'medium' },
+                grouped_bar: { x_field: 'high', y_field: 'high', group_by: 'high', color_field: 'medium', aggregate: 'high', date_grouping: 'medium', limit: 'medium', timeline: 'low' }
+            };
+
+            var heatLabels = { high: '●●●', medium: '●●', low: '●', none: '✗' };
+            var heatTips = { high: 'Óptimo', medium: 'Compatible', low: 'Posible', none: 'No recomendado' };
+            var chartGuide = guide[chartType] || guide.bar;
+
+            // Build header row
+            $matrix.append($('<div class="ss-guide-header">').text('Variable'));
+            $matrix.append($('<div class="ss-guide-header">').text('Relevancia'));
+
+            // Build data rows
+            fields.forEach(function(f) {
+                var level = chartGuide[f.key] || 'low';
+                $matrix.append($('<div class="ss-guide-field">').text(f.label));
+                $matrix.append(
+                    $('<div class="ss-guide-cell ss-heat-' + level + '">').text(heatLabels[level]).attr('title', heatTips[level])
+                );
+            });
+
+            // Set grid to 2 columns for this layout
+            $matrix.css('grid-template-columns', '1fr 100px');
         },
 
         restoreSavedConfig: function() {
