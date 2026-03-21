@@ -36,13 +36,16 @@
                 $('.ss-chart-type-option').removeClass('selected');
                 $(this).addClass('selected');
                 $(this).find('input').prop('checked', true);
-                self.updateChartGuide($(this).find('input').val());
+                var chartType = $(this).find('input').val();
+                self.updateChartGuide(chartType);
+                self.updateFieldRequirements(chartType);
             });
 
             // Initial guide render
             const initialType = $('input[name="ss_chart_type"]:checked').val();
             if (initialType) {
                 self.updateChartGuide(initialType);
+                self.updateFieldRequirements(initialType);
             }
 
             // Table selection
@@ -458,6 +461,57 @@
                         .locale('es_ES');
                     break;
 
+                case 'stacked_bar':
+                    chart = new d3plus.BarChart()
+                        .data(chartData)
+                        .groupBy('group')
+                        .x('x')
+                        .y('y')
+                        .stacked(true)
+                        .select('#ss-chart-preview')
+                        .color(function(d) { return colorScale(d.group); })
+                        .legend(true)
+                        .locale('es_ES');
+                    break;
+
+                case 'grouped_bar':
+                    chart = new d3plus.BarChart()
+                        .data(chartData)
+                        .groupBy('group')
+                        .x('x')
+                        .y('y')
+                        .stacked(false)
+                        .select('#ss-chart-preview')
+                        .color(function(d) { return colorScale(d.group); })
+                        .barPadding(2)
+                        .groupPadding(10)
+                        .legend(true)
+                        .locale('es_ES');
+                    break;
+
+                case 'area':
+                    chart = new d3plus.AreaPlot()
+                        .data(chartData)
+                        .groupBy('group')
+                        .x('x')
+                        .y('y')
+                        .select('#ss-chart-preview')
+                        .color(function(d) { return colorScale(d.group); })
+                        .legend(false)
+                        .locale('es_ES');
+                    break;
+
+                case 'donut':
+                    chart = new d3plus.Donut()
+                        .data(chartData)
+                        .groupBy('x')
+                        .value('y')
+                        .select('#ss-chart-preview')
+                        .color(function(d) { return colorScale(d.x); })
+                        .legend(true)
+                        .locale('es_ES');
+                    break;
+
                 default:
                     chart = new d3plus.BarChart()
                         .data(chartData)
@@ -469,8 +523,90 @@
                         .legend(false)
                         .locale('es_ES');
             }
-            
+
             chart.render();
+        },
+
+        /**
+         * Update field requirements based on chart type — highlights required
+         * and hides irrelevant fields with color-coded borders.
+         */
+        updateFieldRequirements: function(chartType) {
+            // Field requirement definitions per chart type
+            // 'required' = red border, 'recommended' = blue border, 'optional' = normal, 'hidden' = dimmed
+            var reqs = {
+                bar:         { x_field: 'required', y_field: 'required', group_by: 'optional', aggregate: 'required' },
+                line:        { x_field: 'required', y_field: 'required', group_by: 'recommended', aggregate: 'required' },
+                area:        { x_field: 'required', y_field: 'required', group_by: 'recommended', aggregate: 'required' },
+                pie:         { x_field: 'required', y_field: 'required', group_by: 'hidden', aggregate: 'required' },
+                donut:       { x_field: 'required', y_field: 'required', group_by: 'hidden', aggregate: 'required' },
+                treemap:     { x_field: 'required', y_field: 'required', group_by: 'optional', aggregate: 'required' },
+                tree:        { x_field: 'required', y_field: 'optional', group_by: 'required', aggregate: 'optional' },
+                pack:        { x_field: 'required', y_field: 'required', group_by: 'optional', aggregate: 'required' },
+                network:     { x_field: 'required', y_field: 'optional', group_by: 'required', aggregate: 'optional' },
+                stacked_bar: { x_field: 'required', y_field: 'required', group_by: 'required', aggregate: 'required' },
+                grouped_bar: { x_field: 'required', y_field: 'required', group_by: 'required', aggregate: 'required' }
+            };
+
+            var fieldMap = {
+                x_field: '#ss_x_field',
+                y_field: '#ss_y_field',
+                group_by: '#ss_group_by',
+                aggregate: '#ss_aggregate'
+            };
+
+            var colors = {
+                required:    { border: '2px solid #e74c3c', bg: '#fdf2f2' },
+                recommended: { border: '2px solid #2271b1', bg: '#f0f6fc' },
+                optional:    { border: '1px solid #dcdcde', bg: '' },
+                hidden:      { border: '1px solid #dcdcde', bg: '#f6f7f7' }
+            };
+
+            var labels = {
+                required:    ' <span class="ss-field-badge ss-field-required">REQUERIDO</span>',
+                recommended: ' <span class="ss-field-badge ss-field-recommended">RECOMENDADO</span>',
+                optional:    '',
+                hidden:      ' <span class="ss-field-badge ss-field-hidden">NO APLICA</span>'
+            };
+
+            var chartReqs = reqs[chartType] || reqs.bar;
+
+            Object.keys(fieldMap).forEach(function(key) {
+                var $select = $(fieldMap[key]);
+                var $row = $select.closest('tr');
+                var level = chartReqs[key] || 'optional';
+                var style = colors[level];
+
+                // Reset
+                $row.find('.ss-field-badge').remove();
+                $select.css({ border: style.border, background: style.bg || '#fff' });
+
+                // Add badge to label
+                if (labels[level]) {
+                    $row.find('th label').append(labels[level]);
+                }
+
+                // Dim hidden fields
+                if (level === 'hidden') {
+                    $row.css('opacity', '0.5');
+                } else {
+                    $row.css('opacity', '1');
+                }
+            });
+
+            // Show note for stacked/grouped requiring group_by
+            var $groupNote = $('#ss-group-by-note');
+            if (!$groupNote.length) {
+                $('#ss_group_by').after('<p class="description ss-group-note" id="ss-group-by-note" style="display:none;"></p>');
+                $groupNote = $('#ss-group-by-note');
+            }
+            if (chartType === 'stacked_bar' || chartType === 'grouped_bar') {
+                $groupNote.html('<strong style="color:#e74c3c;">⚠ Este tipo de gráfica requiere "Agrupar Por" para crear las series apiladas/agrupadas.</strong>').show();
+            } else if (chartType === 'tree' || chartType === 'network') {
+                $groupNote.html('<strong style="color:#e74c3c;">⚠ Este tipo de gráfica requiere "Agrupar Por" para definir las relaciones padre-hijo.</strong>').show();
+            } else {
+                $groupNote.hide();
+            }
         },
 
         /**

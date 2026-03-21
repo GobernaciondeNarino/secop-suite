@@ -69,6 +69,21 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v4.1.1 (2026-03-21)
+
+**Correcciones críticas:**
+- **Fix importación de datos**: Corregido bug donde el proceso de importación en background nunca se ejecutaba porque el transient `import_running` bloqueaba `run()` al ser establecido previamente por `ajax_start_import`. Ahora `run_background()` define `SECOP_SUITE_FORCE_IMPORT` para bypass correcto.
+- **Fix Barras Apiladas**: Cambiado de `StackedArea` (incorrecto) a `BarChart` con `.stacked(true)` para renderizado correcto de barras apiladas.
+- **Fix Barras Agrupadas**: Cambiado groupBy de `['x', 'group']` a `'group'` con `.stacked(false)` para agrupación correcta.
+
+**Mejoras en configuración de gráficas:**
+- **Campos dinámicos por tipo de gráfico**: Al seleccionar un tipo de gráfica, los campos se marcan con badges de color:
+  - **REQUERIDO** (rojo): Campo obligatorio para este tipo de gráfica
+  - **RECOMENDADO** (azul): Campo que mejora la visualización
+  - **NO APLICA** (gris): Campo irrelevante para este tipo
+- Nota de advertencia visible cuando Barras Apiladas/Agrupadas, Árbol o Red requieren "Agrupar Por"
+- Preview admin: Añadidos casos faltantes (stacked_bar, grouped_bar, area, donut)
+
 ### v4.1.0 (2026-03-21)
 
 **Nuevas funcionalidades:**

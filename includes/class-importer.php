@@ -100,6 +100,12 @@ final class Importer
      */
     public function run_background(): void
     {
+        // Background execution was scheduled by ajax_start_import which already
+        // set the import_running transient. Define a constant so run() doesn't
+        // interpret the existing transient as a concurrent import.
+        if (!defined('SECOP_SUITE_FORCE_IMPORT')) {
+            define('SECOP_SUITE_FORCE_IMPORT', true);
+        }
         $this->run();
     }
 

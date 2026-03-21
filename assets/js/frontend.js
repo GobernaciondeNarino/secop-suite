@@ -446,11 +446,12 @@
                     break;
 
                 case 'stacked_bar':
-                    this.chart = new d3plus.StackedArea()
+                    this.chart = new d3plus.BarChart()
                         .data(chartData)
                         .groupBy('group')
                         .x('x')
                         .y('y')
+                        .stacked(true)
                         .select(renderTarget)
                         .color(function(d) { return colorScale(d.group); })
                         .tooltipConfig(baseConfig.tooltipConfig)
@@ -462,9 +463,10 @@
                 case 'grouped_bar':
                     this.chart = new d3plus.BarChart()
                         .data(chartData)
-                        .groupBy(['x', 'group'])
+                        .groupBy('group')
                         .x('x')
                         .y('y')
+                        .stacked(false)
                         .select(renderTarget)
                         .color(function(d) { return colorScale(d.group); })
                         .tooltipConfig(baseConfig.tooltipConfig)
