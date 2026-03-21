@@ -394,7 +394,63 @@
                         .color(function(d) { return colorScale(d.x); })
                         .locale('es_ES');
                     break;
-                    
+
+                case 'tree':
+                    var treeData = chartData.map(function(d) {
+                        return { id: d.x, value: d.y, parent: d.group !== d.x ? d.group : null };
+                    });
+                    var existingIds = treeData.map(function(d) { return d.id; });
+                    var parentIds = [...new Set(treeData.filter(function(d) { return d.parent; }).map(function(d) { return d.parent; }))];
+                    parentIds.forEach(function(p) {
+                        if (existingIds.indexOf(p) === -1) {
+                            treeData.push({ id: p, value: 0, parent: null });
+                        }
+                    });
+                    chart = new d3plus.Tree()
+                        .data(treeData)
+                        .groupBy('id')
+                        .layoutPadding(2)
+                        .select('#ss-chart-preview')
+                        .color(function(d) { return colorScale(d.id); })
+                        .locale('es_ES');
+                    break;
+
+                case 'pack':
+                    chart = new d3plus.Pack()
+                        .data(chartData.map(function(d) { return { id: d.x, value: d.y, group: d.group }; }))
+                        .groupBy('id')
+                        .sum('value')
+                        .select('#ss-chart-preview')
+                        .color(function(d) { return colorScale(d.group || d.id); })
+                        .locale('es_ES');
+                    break;
+
+                case 'network':
+                    var netNodes = [];
+                    var netLinks = [];
+                    var netNodeIds = {};
+                    chartData.forEach(function(d) {
+                        if (!netNodeIds[d.x]) {
+                            netNodeIds[d.x] = true;
+                            netNodes.push({ id: d.x, value: d.y });
+                        }
+                        if (d.group && d.group !== d.x) {
+                            if (!netNodeIds[d.group]) {
+                                netNodeIds[d.group] = true;
+                                netNodes.push({ id: d.group, value: 0 });
+                            }
+                            netLinks.push({ source: d.group, target: d.x });
+                        }
+                    });
+                    chart = new d3plus.Network()
+                        .data(netNodes)
+                        .links(netLinks)
+                        .groupBy('id')
+                        .select('#ss-chart-preview')
+                        .color(function(d) { return colorScale(d.id); })
+                        .locale('es_ES');
+                    break;
+
                 default:
                     chart = new d3plus.BarChart()
                         .data(chartData)

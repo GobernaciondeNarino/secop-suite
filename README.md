@@ -1,6 +1,6 @@
 # SECOP Suite — Plugin WordPress
 
-Plugin integral para la **importación, almacenamiento y visualización interactiva** de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia.
+Plugin integral para la **importación, almacenamiento, visualización interactiva y filtrado** de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia.
 
 Desarrollado para la **Gobernación de Nariño** — Secretaría de TIC, Innovación y Gobierno Abierto.
 
@@ -19,8 +19,8 @@ Desarrollado para la **Gobernación de Nariño** — Secretaría de TIC, Innovac
 - Más de 60 campos contractuales mapeados
 
 ### Módulo de Visualización
-- **8 tipos de gráficas**: Barras, Líneas, Área, Pie, Donut, Treemap, Barras Apiladas, Barras Agrupadas
-- Motor de renderizado **D3plus** (D3.js v5)
+- **11 tipos de gráficas**: Barras, Líneas, Área, Pie, Donut, Treemap, **Árbol (Tree)**, **Burbujas (Pack)**, **Red (Network)**, Barras Apiladas, Barras Agrupadas
+- Motor de renderizado **D3plus** (D3.js v5) + **d3plus-hierarchy**
 - **Custom Post Type** para gestión de gráficas
 - **Shortcodes** flexibles: `[secop_chart id="123"]` y `[sdv_chart id="123"]` (compatibilidad)
 - Agrupación temporal de fechas: año, mes, trimestre, semana, nombre de mes
@@ -29,6 +29,18 @@ Desarrollado para la **Gobernación de Nariño** — Secretaría de TIC, Innovac
 - Formato de números colombiano (1.000.000, Millones, MMll)
 - Barra de herramientas: Compartir (redes sociales), Ver datos, Exportar imagen, Descargar CSV
 - Vista previa en el editor de WordPress
+
+### Módulo de Filtros (Nuevo v4.1.0)
+- **Custom Post Type** para gestión de filtros de búsqueda
+- **Shortcode**: `[secop_filter id="123"]`
+- **4 tipos de campos**: Texto (input), Lista desplegable (select), Rango (desde-hasta), Opciones múltiples (checkbox)
+- Configuración de operadores por campo (=, LIKE, !=, >, <, >=, <=)
+- Selección de columnas visibles en resultados
+- Paginación de resultados configurable
+- **Enlace directo al proceso SECOP** (urlproceso) con icono en cada fila de resultado, abre en nueva ventana
+- Carga dinámica de opciones para select y checkbox desde la base de datos
+- Rate limiting por IP (60 req/min)
+- Validación de tablas y columnas contra whitelist
 
 ### API REST Unificada
 ```
@@ -52,6 +64,35 @@ wp secop truncate --yes                            # Limpiar datos
 - Modal de detalle de contrato con información completa
 - Sistema de logs con información del sistema
 - Panel de información de API REST y comandos CLI
+
+---
+
+## Changelog
+
+### v4.1.0 (2026-03-21)
+
+**Nuevas funcionalidades:**
+- **Módulo de Filtros**: Nuevo submenu "Filtros" con CPT dedicado para crear filtros de búsqueda insertables via shortcode `[secop_filter id="123"]`
+  - Campos configurables: input, select, rango y checkbox
+  - Resultados en lista con columnas personalizables
+  - Icono de enlace al proceso SECOP (urlproceso) al final de cada fila, abre en nueva ventana
+  - Paginación, ordenamiento y rate limiting
+- **3 nuevos tipos de gráficas**: Árbol (Tree), Burbujas (Pack), Red (Network) — basados en [d3plus-hierarchy](https://github.com/d3plus/d3plus-hierarchy)
+- Soporte para librería **d3plus-hierarchy** vía CDN con fallback local
+
+**Mejoras:**
+- Actualizado el selector visual de tipos de gráficas con iconos para los nuevos tipos
+- Vista previa en admin para los nuevos tipos de gráficas
+- Documentación actualizada
+
+### v4.0.1
+- Correcciones menores de estabilidad
+
+### v4.0.0
+- Unificación de plugins Elements API Data Upload v3.0.0 + SECOP Data Visualizer v1.0.0
+- Mejoras masivas de seguridad (ver tabla abajo)
+- PHP 8.1+ con strict types
+- Arquitectura Singleton + Dependency Injection
 
 ---
 
@@ -83,37 +124,58 @@ wp secop truncate --yes                            # Limpiar datos
 5. Configurar la URL de la API y el NIT de la entidad
 6. Ejecutar la primera importación
 
+## Uso de Shortcodes
+
+### Gráficas
+```
+[secop_chart id="123"]
+[secop_chart id="123" height="500" class="mi-grafica"]
+[sdv_chart id="123"]  <!-- compatibilidad -->
+```
+
+### Filtros de Búsqueda
+```
+[secop_filter id="456"]
+[secop_filter id="456" class="mi-filtro"]
+```
+
 ## Estructura del Plugin
 
 ```
 secop-suite/
-├── secop-suite.php          # Archivo principal (autoload + clase Plugin)
-├── uninstall.php            # Limpieza al desinstalar
+├── secop-suite.php            # Archivo principal (autoload + clase Plugin)
+├── uninstall.php              # Limpieza al desinstalar
 ├── includes/
-│   ├── class-database.php   # Tabla, mapeo de campos, validación de columnas
-│   ├── class-importer.php   # Importación SECOP con AJAX y cron
-│   ├── class-visualizer.php # CPT, shortcodes, datos de gráficas (segurizado)
-│   ├── class-rest-api.php   # Endpoints REST unificados
-│   ├── class-cli.php        # Comandos WP-CLI
-│   └── class-logger.php     # Sistema de logs
+│   ├── class-database.php     # Tabla, mapeo de campos, validación de columnas
+│   ├── class-importer.php     # Importación SECOP con AJAX y cron
+│   ├── class-visualizer.php   # CPT gráficas, shortcodes, datos (segurizado)
+│   ├── class-filter.php       # CPT filtros, shortcodes, búsqueda AJAX
+│   ├── class-rest-api.php     # Endpoints REST unificados
+│   ├── class-cli.php          # Comandos WP-CLI
+│   ├── class-logger.php       # Sistema de logs
+│   └── class-updater.php      # Auto-actualización desde GitHub
 ├── templates/
 │   ├── admin/
-│   │   ├── import-page.php  # Dashboard de importación
-│   │   ├── records-page.php # Visor de contratos
-│   │   ├── logs-page.php    # Logs e info del sistema
-│   │   └── chart-config.php # Configuración de gráficas (metabox)
+│   │   ├── import-page.php    # Dashboard de importación
+│   │   ├── records-page.php   # Visor de contratos
+│   │   ├── logs-page.php      # Logs e info del sistema
+│   │   ├── chart-config.php   # Configuración de gráficas (metabox)
+│   │   └── filter-config.php  # Configuración de filtros (metabox)
 │   └── frontend/
-│       └── chart.php        # Renderizado público de gráficas
+│       ├── chart.php          # Renderizado público de gráficas
+│       └── filter.php         # Renderizado público de filtros
 ├── assets/
 │   ├── css/
-│   │   ├── admin.css        # Estilos admin (importación + visualizador)
-│   │   └── frontend.css     # Estilos frontend de gráficas
+│   │   ├── admin.css          # Estilos admin (importación + visualizador + filtros)
+│   │   └── frontend.css       # Estilos frontend (gráficas + filtros)
 │   └── js/
-│       ├── admin-import.js  # Lógica de importación AJAX
-│       ├── admin-charts.js  # Configurador de gráficas
-│       └── frontend.js      # Motor de renderizado D3plus
+│       ├── admin-import.js    # Lógica de importación AJAX
+│       ├── admin-charts.js    # Configurador de gráficas
+│       ├── admin-filters.js   # Configurador de filtros
+│       ├── frontend.js        # Motor de renderizado D3plus
+│       └── frontend-filters.js # Motor de búsqueda y resultados
 └── logs/
-    └── import.log           # Registro de importaciones
+    └── import.log             # Registro de importaciones
 ```
 
 ## Origen

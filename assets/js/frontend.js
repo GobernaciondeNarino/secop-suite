@@ -355,6 +355,96 @@
                         .locale('es_ES');
                     break;
 
+                case 'tree':
+                    // Preparar datos jerárquicos para Tree
+                    var treeData = chartData.map(function(d) {
+                        return {
+                            id: d.x,
+                            value: d.y,
+                            parent: d.group !== d.x ? d.group : null
+                        };
+                    });
+                    // Añadir nodos padre que no existan como nodos propios
+                    var existingIds = treeData.map(function(d) { return d.id; });
+                    var parents = [...new Set(treeData.filter(function(d) { return d.parent; }).map(function(d) { return d.parent; }))];
+                    parents.forEach(function(p) {
+                        if (existingIds.indexOf(p) === -1) {
+                            treeData.push({ id: p, value: 0, parent: null });
+                        }
+                    });
+                    this.chart = new d3plus.Tree()
+                        .data(treeData)
+                        .groupBy('id')
+                        .layoutPadding(2)
+                        .select(renderTarget)
+                        .color(function(d) { return colorScale(d.id); })
+                        .tooltipConfig({
+                            tbody: [
+                                ['Nombre', function(d) { return d.id; }],
+                                ['Valor', function(d) { return NumberFormatter.fullFormat(d.value); }]
+                            ]
+                        })
+                        .legend(config.showLegend || false)
+                        .locale('es_ES');
+                    break;
+
+                case 'pack':
+                    var packData = chartData.map(function(d) {
+                        return {
+                            id: d.x,
+                            value: d.y,
+                            group: d.group
+                        };
+                    });
+                    this.chart = new d3plus.Pack()
+                        .data(packData)
+                        .groupBy('id')
+                        .sum('value')
+                        .select(renderTarget)
+                        .color(function(d) { return colorScale(d.group || d.id); })
+                        .tooltipConfig({
+                            tbody: [
+                                ['Categoría', function(d) { return d.id; }],
+                                ['Valor', function(d) { return NumberFormatter.fullFormat(d.value); }]
+                            ]
+                        })
+                        .legend(config.showLegend || false)
+                        .locale('es_ES');
+                    break;
+
+                case 'network':
+                    // Construir nodos y enlaces para Network
+                    var nodes = [];
+                    var links = [];
+                    var nodeIds = {};
+                    chartData.forEach(function(d) {
+                        if (!nodeIds[d.x]) {
+                            nodeIds[d.x] = true;
+                            nodes.push({ id: d.x, value: d.y });
+                        }
+                        if (d.group && d.group !== d.x) {
+                            if (!nodeIds[d.group]) {
+                                nodeIds[d.group] = true;
+                                nodes.push({ id: d.group, value: 0 });
+                            }
+                            links.push({ source: d.group, target: d.x, strength: d.y });
+                        }
+                    });
+                    this.chart = new d3plus.Network()
+                        .data(nodes)
+                        .links(links)
+                        .groupBy('id')
+                        .select(renderTarget)
+                        .color(function(d) { return colorScale(d.id); })
+                        .tooltipConfig({
+                            tbody: [
+                                ['Nodo', function(d) { return d.id; }],
+                                ['Valor', function(d) { return NumberFormatter.fullFormat(d.value || 0); }]
+                            ]
+                        })
+                        .locale('es_ES');
+                    break;
+
                 case 'stacked_bar':
                     this.chart = new d3plus.StackedArea()
                         .data(chartData)
