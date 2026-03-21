@@ -181,9 +181,18 @@ final class Plugin
             __('SECOP Suite', 'secop-suite'),
             'manage_options',
             'secop-suite',
-            [$this, 'render_import_page'],
+            [$this, 'render_dashboard_page'],
             'dashicons-chart-area',
             80
+        );
+
+        add_submenu_page(
+            'secop-suite',
+            __('Panel de Control', 'secop-suite'),
+            __('Panel de Control', 'secop-suite'),
+            'manage_options',
+            'secop-suite',
+            [$this, 'render_dashboard_page']
         );
 
         add_submenu_page(
@@ -191,7 +200,7 @@ final class Plugin
             __('Importar Datos', 'secop-suite'),
             __('Importar Datos', 'secop-suite'),
             'manage_options',
-            'secop-suite',
+            'secop-suite-import',
             [$this, 'render_import_page']
         );
 
@@ -274,6 +283,29 @@ final class Plugin
     }
 
     // ── Render de páginas ──────────────────────────────────────
+    public function render_dashboard_page(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
+        }
+
+        global $wpdb;
+        $table_name = $this->database->get_table_name();
+
+        $total_records = $this->database->get_total_records();
+        $total_value   = $this->database->get_total_value();
+        $last_import   = get_option(SECOP_SUITE_PREFIX . 'last_import');
+        $is_importing  = (bool) get_transient(SECOP_SUITE_PREFIX . 'import_running');
+
+        $total_charts  = (int) wp_count_posts('secop_chart')->publish + (int) wp_count_posts('secop_chart')->draft;
+        $total_filters = (int) wp_count_posts('secop_filter')->publish + (int) wp_count_posts('secop_filter')->draft;
+
+        $by_year = $wpdb->get_results("SELECT anno_bpin, COUNT(*) AS count, SUM(valor_del_contrato) AS total_value FROM {$table_name} WHERE anno_bpin IS NOT NULL GROUP BY anno_bpin ORDER BY anno_bpin DESC LIMIT 10");
+        $by_type = $wpdb->get_results("SELECT tipo_de_contrato, COUNT(*) AS count, SUM(valor_del_contrato) AS total_value FROM {$table_name} WHERE tipo_de_contrato IS NOT NULL GROUP BY tipo_de_contrato ORDER BY count DESC LIMIT 10");
+
+        include SECOP_SUITE_DIR . 'templates/admin/dashboard-page.php';
+    }
+
     public function render_import_page(): void
     {
         if (!current_user_can('manage_options')) {

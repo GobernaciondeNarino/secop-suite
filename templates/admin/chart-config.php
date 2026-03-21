@@ -61,6 +61,23 @@ $default_colors = '#844e80,#ff7300,#ffc53b,#3eba6a,#0080c3,#e74c3c,#9b59b6,#1abc
                 </label>
             <?php endforeach; ?>
         </div>
+        <!-- Heat Map Guide -->
+        <div class="ss-chart-guide" id="ss-chart-guide">
+            <p class="ss-guide-title">
+                <span class="dashicons dashicons-lightbulb"></span>
+                <?php _e('Guía de Variables Recomendadas', 'secop-suite'); ?>
+                <span id="ss-guide-chart-name" style="color: var(--ss-primary);"></span>
+            </p>
+            <div class="ss-guide-matrix" id="ss-guide-matrix">
+                <!-- Populated by JS -->
+            </div>
+            <div class="ss-guide-legend">
+                <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #22c55e;"></span> <?php _e('Óptimo', 'secop-suite'); ?></span>
+                <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #facc15;"></span> <?php _e('Compatible', 'secop-suite'); ?></span>
+                <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #e5e7eb;"></span> <?php _e('Posible', 'secop-suite'); ?></span>
+                <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #fca5a5;"></span> <?php _e('No recomendado', 'secop-suite'); ?></span>
+            </div>
+        </div>
     </div>
 
     <!-- Fuente de Datos -->
