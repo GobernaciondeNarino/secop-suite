@@ -888,6 +888,63 @@
     clip-path: polygon(0% 80%, 25% 50%, 50% 70%, 75% 30%, 100% 60%, 100% 100%, 0% 100%);
 }
 
+.ss-chart-type-icon[data-type="tree"] {
+    position: relative;
+    border-bottom: 2px solid var(--ss-gray-300);
+}
+
+.ss-chart-type-icon[data-type="tree"]::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    height: 20px;
+    background: var(--ss-primary);
+    transform: translateX(-50%);
+}
+
+.ss-chart-type-icon[data-type="tree"]::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    right: 5px;
+    height: 2px;
+    background: var(--ss-primary);
+    box-shadow: -10px -8px 0 6px var(--ss-primary), 10px -8px 0 6px #ff7300, 0 -16px 0 6px #ffc53b;
+    border-radius: 0;
+}
+
+.ss-chart-type-icon[data-type="pack"] {
+    position: relative;
+    background: radial-gradient(circle at 40% 45%, var(--ss-primary) 18px, transparent 18px),
+                radial-gradient(circle at 70% 30%, #ff7300 10px, transparent 10px),
+                radial-gradient(circle at 65% 70%, #ffc53b 12px, transparent 12px),
+                radial-gradient(circle at 30% 75%, #3eba6a 8px, transparent 8px);
+}
+
+.ss-chart-type-icon[data-type="network"] {
+    position: relative;
+    background:
+        radial-gradient(circle at 25% 25%, var(--ss-primary) 6px, transparent 6px),
+        radial-gradient(circle at 75% 25%, #ff7300 6px, transparent 6px),
+        radial-gradient(circle at 50% 75%, #ffc53b 6px, transparent 6px),
+        radial-gradient(circle at 25% 75%, #3eba6a 6px, transparent 6px);
+}
+
+.ss-chart-type-icon[data-type="network"]::before {
+    content: '';
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 24px;
+    height: 1px;
+    background: var(--ss-gray-300);
+    transform: rotate(0deg);
+    box-shadow: 0 24px 0 0 var(--ss-gray-300), 12px 12px 0 0 var(--ss-gray-300);
+}
+
 .ss-chart-type-icon[data-type="stacked_bar"],
 .ss-chart-type-icon[data-type="grouped_bar"] {
     background: 

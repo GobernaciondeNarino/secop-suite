@@ -16,6 +16,9 @@ $chart_types = [
     'pie' => __('Pie / Torta', 'secop-suite'),
     'donut' => __('Donut', 'secop-suite'),
     'treemap' => __('Treemap', 'secop-suite'),
+    'tree' => __('Árbol (Tree)', 'secop-suite'),
+    'pack' => __('Burbujas (Pack)', 'secop-suite'),
+    'network' => __('Red (Network)', 'secop-suite'),
     'stacked_bar' => __('Barras Apiladas', 'secop-suite'),
     'grouped_bar' => __('Barras Agrupadas', 'secop-suite'),
 ];
