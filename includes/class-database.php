@@ -94,6 +94,7 @@ final class Database
         'urlproceso'                                                      => 'urlproceso',
         'nombre_representante_legal'                                      => 'nombre_representante_legal',
         'nacionalidad_representante_legal'                                => 'nacionalidad_representante_legal',
+        'domicilio_representante_legal'                                   => 'domicilio_representante_legal',
         'tipo_de_identificaci_n_representante_legal'                      => 'tipo_identificacion_representante',
         'identificaci_n_representante_legal'                              => 'identificacion_representante',
         'g_nero_representante_legal'                                      => 'genero_representante_legal',
@@ -106,6 +107,23 @@ final class Database
         'ultima_actualizacion'                                            => 'ultima_actualizacion',
         'codigo_entidad'                                                  => 'codigo_entidad',
         'codigo_proveedor'                                                => 'codigo_proveedor',
+        'objeto_del_contrato'                                             => 'objeto_del_contrato',
+        'duraci_n_del_contrato'                                           => 'duracion_del_contrato',
+        'nombre_del_banco'                                                => 'nombre_del_banco',
+        'tipo_de_cuenta'                                                  => 'tipo_de_cuenta',
+        'n_mero_de_cuenta'                                                => 'numero_de_cuenta',
+        'el_contrato_puede_ser_prorrogado'                                => 'contrato_prorrogado',
+        'nombre_ordenador_del_gasto'                                      => 'nombre_ordenador_gasto',
+        'tipo_de_documento_ordenador_del_gasto'                           => 'tipo_doc_ordenador_gasto',
+        'n_mero_de_documento_ordenador_del_gasto'                         => 'numero_doc_ordenador_gasto',
+        'nombre_supervisor'                                               => 'nombre_supervisor',
+        'tipo_de_documento_supervisor'                                    => 'tipo_doc_supervisor',
+        'n_mero_de_documento_supervisor'                                  => 'numero_doc_supervisor',
+        'nombre_ordenador_de_pago'                                        => 'nombre_ordenador_pago',
+        'tipo_de_documento_ordenador_de_pago'                             => 'tipo_doc_ordenador_pago',
+        'n_mero_de_documento_ordenador_de_pago'                           => 'numero_doc_ordenador_pago',
+        'documentos_tipo'                                                 => 'documentos_tipo',
+        'descripcion_documentos_tipo'                                     => 'descripcion_documentos_tipo',
     ];
 
     public function __construct()
@@ -199,6 +217,24 @@ final class Database
             ultima_actualizacion DATETIME DEFAULT NULL,
             codigo_entidad VARCHAR(50) DEFAULT NULL,
             codigo_proveedor VARCHAR(50) DEFAULT NULL,
+            objeto_del_contrato TEXT DEFAULT NULL,
+            duracion_del_contrato VARCHAR(100) DEFAULT NULL,
+            nombre_del_banco VARCHAR(255) DEFAULT NULL,
+            tipo_de_cuenta VARCHAR(50) DEFAULT NULL,
+            numero_de_cuenta VARCHAR(50) DEFAULT NULL,
+            contrato_prorrogado VARCHAR(10) DEFAULT NULL,
+            nombre_ordenador_gasto VARCHAR(255) DEFAULT NULL,
+            tipo_doc_ordenador_gasto VARCHAR(50) DEFAULT NULL,
+            numero_doc_ordenador_gasto VARCHAR(50) DEFAULT NULL,
+            nombre_supervisor VARCHAR(255) DEFAULT NULL,
+            tipo_doc_supervisor VARCHAR(50) DEFAULT NULL,
+            numero_doc_supervisor VARCHAR(50) DEFAULT NULL,
+            nombre_ordenador_pago VARCHAR(255) DEFAULT NULL,
+            tipo_doc_ordenador_pago VARCHAR(50) DEFAULT NULL,
+            numero_doc_ordenador_pago VARCHAR(50) DEFAULT NULL,
+            domicilio_representante_legal VARCHAR(255) DEFAULT NULL,
+            documentos_tipo VARCHAR(255) DEFAULT NULL,
+            descripcion_documentos_tipo TEXT DEFAULT NULL,
             fecha_importacion DATETIME DEFAULT CURRENT_TIMESTAMP,
             fecha_modificacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
@@ -332,6 +368,24 @@ final class Database
             return '%f';
         }
         return '%s';
+    }
+
+    /**
+     * Eliminar todos los registros de un rango de fechas (para reimportación limpia).
+     *
+     * @return int Número de registros eliminados
+     */
+    public function delete_by_date_range(string $fecha_inicio, string $fecha_fin): int
+    {
+        global $wpdb;
+
+        $result = $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$this->table_name} WHERE fecha_de_firma >= %s AND fecha_de_firma <= %s",
+            $fecha_inicio . ' 00:00:00',
+            $fecha_fin . ' 23:59:59'
+        ));
+
+        return $result !== false ? $result : 0;
     }
 
     // ── Validación de columnas (seguridad para el visualizador) ─

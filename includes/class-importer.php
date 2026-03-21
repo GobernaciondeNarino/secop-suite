@@ -149,6 +149,11 @@ final class Importer
         $estimated_total = $this->fetch_total_count($api_url, $where_clause);
         Logger::info("Total estimado: {$estimated_total}");
 
+        // Eliminar datos existentes del rango de fechas antes de importar
+        $this->update_progress(0, $estimated_total, 'running', 'Eliminando datos anteriores del período...');
+        $deleted = $this->db->delete_by_date_range($fecha_inicio, $fecha_fin);
+        Logger::info("Registros eliminados del período {$fecha_inicio} → {$fecha_fin}: {$deleted}");
+
         $this->update_progress(0, $estimated_total, 'running', 'Iniciando importación...');
 
         $offset         = 0;
