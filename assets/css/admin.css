@@ -1076,35 +1076,11 @@
     background-repeat: no-repeat;
 }
 
-/* Field requirement badges */
-.ss-field-badge {
-    display: inline-block;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    padding: 2px 6px;
-    border-radius: 3px;
-    vertical-align: middle;
-    margin-left: 6px;
-    text-transform: uppercase;
-}
-
-.ss-field-required {
-    background: #fdf2f2;
+/* Required field asterisk */
+.ss-req-mark {
     color: #e74c3c;
-    border: 1px solid #f5c6cb;
-}
-
-.ss-field-recommended {
-    background: #f0f6fc;
-    color: #2271b1;
-    border: 1px solid #b8daff;
-}
-
-.ss-field-hidden {
-    background: var(--ss-gray-100);
-    color: var(--ss-gray-600);
-    border: 1px solid var(--ss-gray-200);
+    font-weight: 700;
+    font-size: 14px;
 }
 
 .ss-group-note {
@@ -1786,17 +1762,26 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
-.ss-guide-title {
+.ss-guide-toggle {
     font-size: 13px;
     font-weight: 600;
     color: var(--ss-gray-900);
-    margin: 0 0 12px;
+    margin: 0;
+    padding: 0;
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
-.ss-guide-title .dashicons {
+.ss-guide-toggle:hover {
+    color: var(--ss-primary);
+}
+
+.ss-guide-content {
+    margin-top: 12px;
+}
+
+.ss-guide-toggle .dashicons {
     color: var(--ss-primary);
     font-size: 16px;
     width: 16px;

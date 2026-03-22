@@ -69,6 +69,18 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v4.1.2 (2026-03-22)
+
+**Correcciones críticas:**
+- **Fix d3plus.BarChart not a constructor**: CDN URL actualizada a `d3plus@2/build/d3plus.full.min.js` (UMD bundle completo). Eliminada dependencia separada de `d3plus-hierarchy` (ya incluida en el bundle full).
+- **Renderizado robusto**: Nueva función `getD3PlusClass()` con fallback que busca constructores en múltiples namespaces. Manejo de errores con try/catch en `renderChart()`.
+- **Fix heat map siempre rojo**: Reescrita `updateFieldRequirements()` — ahora solo muestra `*` rojo en campos requeridos según el tipo de gráfica seleccionado, sin alterar borders ni backgrounds.
+
+**Mejoras UX:**
+- **Multi-Y opcional**: Ahora se activa con checkbox "Habilitar múltiples campos Y". El contenido se oculta/muestra con toggle. Al desactivar, los campos se limpian.
+- **Guía en acordeón**: "Guía de Variables Recomendadas" oculta por defecto, se expande al hacer clic con animación.
+- **Etiquetas simplificadas**: Badges REQUERIDO/RECOMENDADO/NO APLICA reemplazados por simple `*` rojo en campos requeridos.
+
 ### v4.1.1 (2026-03-21)
 
 **Correcciones críticas:**

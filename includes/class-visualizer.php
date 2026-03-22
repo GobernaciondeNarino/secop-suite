@@ -357,11 +357,10 @@ final class Visualizer
         // y cumplir con políticas de privacidad (GDPR).
         // Si los archivos locales no existen, usar CDN como fallback.
         $libs = [
-            'd3'               => ['file' => 'd3.v5.min.js',           'cdn' => 'https://d3js.org/d3.v5.min.js',                                              'deps' => [],    'ver' => '5.16.0'],
-            'd3plus'           => ['file' => 'd3plus.min.js',          'cdn' => 'https://cdn.jsdelivr.net/npm/d3plus@2',                                       'deps' => ['d3'], 'ver' => '2.0.0'],
-            'd3plus-hierarchy' => ['file' => 'd3plus-hierarchy.min.js','cdn' => 'https://cdn.jsdelivr.net/npm/d3plus-hierarchy@1',                              'deps' => ['d3plus'], 'ver' => '1.0.0'],
-            'topojson'         => ['file' => 'topojson.v2.min.js',     'cdn' => 'https://d3js.org/topojson.v2.min.js',                                         'deps' => ['d3'], 'ver' => '2.0.0'],
-            'html2canvas'      => ['file' => 'html2canvas.min.js',     'cdn' => 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'deps' => [],    'ver' => '1.4.1'],
+            'd3'          => ['file' => 'd3.v5.min.js',       'cdn' => 'https://d3js.org/d3.v5.min.js',                                              'deps' => [],     'ver' => '5.16.0'],
+            'd3plus'      => ['file' => 'd3plus.full.min.js', 'cdn' => 'https://cdn.jsdelivr.net/npm/d3plus@2/build/d3plus.full.min.js',              'deps' => ['d3'], 'ver' => '2.1.3'],
+            'topojson'    => ['file' => 'topojson.v2.min.js',  'cdn' => 'https://d3js.org/topojson.v2.min.js',                                        'deps' => ['d3'], 'ver' => '2.0.0'],
+            'html2canvas' => ['file' => 'html2canvas.min.js',  'cdn' => 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js','deps' => [],     'ver' => '1.4.1'],
         ];
 
         foreach ($libs as $handle => $lib) {
