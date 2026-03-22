@@ -1076,6 +1076,41 @@
     background-repeat: no-repeat;
 }
 
+/* Field requirement badges */
+.ss-field-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 6px;
+    text-transform: uppercase;
+}
+
+.ss-field-required {
+    background: #fdf2f2;
+    color: #e74c3c;
+    border: 1px solid #f5c6cb;
+}
+
+.ss-field-recommended {
+    background: #f0f6fc;
+    color: #2271b1;
+    border: 1px solid #b8daff;
+}
+
+.ss-field-hidden {
+    background: var(--ss-gray-100);
+    color: var(--ss-gray-600);
+    border: 1px solid var(--ss-gray-200);
+}
+
+.ss-group-note {
+    margin-top: 8px !important;
+}
+
 .ss-chart-type-label {
     font-size: 12px;
     color: var(--ss-gray-600);
@@ -1085,6 +1120,59 @@
 .ss-chart-type-option.selected .ss-chart-type-label {
     color: var(--ss-primary);
     font-weight: 600;
+}
+
+/* ==========================================================================
+   Multi Y Fields
+   ========================================================================== */
+.ss-y-field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.ss-y-field-select {
+    min-width: 200px;
+}
+
+.ss-y-field-label {
+    min-width: 200px;
+    flex: 1;
+}
+
+.ss-remove-y-field {
+    padding: 4px 8px !important;
+    color: var(--ss-error) !important;
+}
+
+.ss-remove-y-field .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+#ss-add-y-field {
+    margin-top: 5px;
+}
+
+#ss-add-y-field .dashicons {
+    margin-right: 3px;
+}
+
+.ss-multi-y-row {
+    background: #f0f6fc;
+}
+
+.ss-multi-y-row th,
+.ss-multi-y-row td {
+    border-left: 3px solid var(--ss-primary);
+}
+
+.ss-multi-y-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
 }
 
 /* ==========================================================================

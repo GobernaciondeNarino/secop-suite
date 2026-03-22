@@ -167,6 +167,46 @@ $default_colors = '#844e80,#ff7300,#ffc53b,#3eba6a,#0080c3,#e74c3c,#9b59b6,#1abc
                 </td>
             </tr>
 
+            <!-- Multi Y Fields (for bar, stacked_bar, grouped_bar) -->
+            <tr class="ss-multi-y-row" id="ss-multi-y-row" style="display:none;">
+                <th>
+                    <label><?php _e('Valores Y Múltiples', 'secop-suite'); ?></label>
+                </th>
+                <td>
+                    <p class="description" style="margin-bottom:10px;">
+                        <?php _e('Añade múltiples campos Y para comparar valores lado a lado. Cada campo será una serie independiente en la gráfica.', 'secop-suite'); ?>
+                    </p>
+                    <div id="ss-y-fields-container">
+                        <?php
+                        $y_fields = $config['y_fields'] ?? [];
+                        foreach ($y_fields as $index => $yf):
+                        ?>
+                            <div class="ss-y-field-row">
+                                <select name="ss_y_fields[<?php echo $index; ?>][column]" class="ss-column-select ss-y-field-select" data-saved-value="<?php echo esc_attr($yf['column'] ?? ''); ?>">
+                                    <option value=""><?php _e('-- Campo Y --', 'secop-suite'); ?></option>
+                                </select>
+                                <input type="text"
+                                       name="ss_y_fields[<?php echo $index; ?>][label]"
+                                       class="ss-y-field-label"
+                                       value="<?php echo esc_attr($yf['label'] ?? ''); ?>"
+                                       placeholder="<?php esc_attr_e('Etiqueta (ej: Apropiación vigente)', 'secop-suite'); ?>" />
+                                <button type="button" class="button ss-remove-y-field">
+                                    <span class="dashicons dashicons-no-alt"></span>
+                                </button>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <button type="button" class="button" id="ss-add-y-field">
+                        <span class="dashicons dashicons-plus-alt2"></span>
+                        <?php _e('Añadir Campo Y', 'secop-suite'); ?>
+                    </button>
+                    <p class="description ss-multi-y-note" style="margin-top:10px; color:#2271b1;">
+                        <span class="dashicons dashicons-info" style="font-size:14px; width:14px; height:14px;"></span>
+                        <?php _e('Cuando se usan campos Y múltiples, el campo "Eje Y / Valor" simple se ignora y "Agrupar Por" no es necesario (cada campo Y genera su propia serie).', 'secop-suite'); ?>
+                    </p>
+                </td>
+            </tr>
+
             <tr>
                 <th>
                     <label for="ss_aggregate"><?php _e('Función de Agregación', 'secop-suite'); ?></label>
@@ -546,6 +586,22 @@ $default_colors = '#844e80,#ff7300,#ffc53b,#3eba6a,#0080c3,#e74c3c,#9b59b6,#1abc
                class="ss-filter-value"
                placeholder="<?php esc_attr_e('Valor', 'secop-suite'); ?>" />
         <button type="button" class="button ss-remove-filter">
+            <span class="dashicons dashicons-no-alt"></span>
+        </button>
+    </div>
+</script>
+
+<!-- Template para campos Y adicionales -->
+<script type="text/template" id="ss-y-field-template">
+    <div class="ss-y-field-row">
+        <select name="ss_y_fields[{{index}}][column]" class="ss-column-select ss-y-field-select">
+            <option value=""><?php _e('-- Campo Y --', 'secop-suite'); ?></option>
+        </select>
+        <input type="text"
+               name="ss_y_fields[{{index}}][label]"
+               class="ss-y-field-label"
+               placeholder="<?php esc_attr_e('Etiqueta (ej: Apropiación vigente)', 'secop-suite'); ?>" />
+        <button type="button" class="button ss-remove-y-field">
             <span class="dashicons dashicons-no-alt"></span>
         </button>
     </div>

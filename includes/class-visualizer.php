@@ -154,6 +154,7 @@ final class Visualizer
             'x_field'          => sanitize_text_field($_POST['ss_x_field'] ?? ''),
             'x_date_grouping'  => sanitize_text_field($_POST['ss_x_date_grouping'] ?? ''),
             'y_field'          => sanitize_text_field($_POST['ss_y_field'] ?? ''),
+            'y_fields'         => $this->sanitize_y_fields($_POST['ss_y_fields'] ?? []),
             'group_by'         => sanitize_text_field($_POST['ss_group_by'] ?? ''),
             'aggregate'        => sanitize_text_field($_POST['ss_aggregate'] ?? 'SUM'),
             'color_field'      => sanitize_text_field($_POST['ss_color_field'] ?? ''),
@@ -198,6 +199,20 @@ final class Visualizer
     {
         $arr = array_filter(array_map('trim', explode(',', $colors)));
         return array_map(fn($c) => preg_match('/^#[a-fA-F0-9]{6}$/', $c) ? $c : '#0082c6', $arr);
+    }
+
+    private function sanitize_y_fields(array $fields): array
+    {
+        $sanitized = [];
+        foreach ($fields as $field) {
+            if (!empty($field['column'])) {
+                $sanitized[] = [
+                    'column' => sanitize_text_field($field['column']),
+                    'label'  => sanitize_text_field($field['label'] ?? ''),
+                ];
+            }
+        }
+        return $sanitized;
     }
 
     /**
@@ -466,6 +481,7 @@ final class Visualizer
             'x_field'         => sanitize_text_field($_POST['x_field'] ?? ''),
             'x_date_grouping' => sanitize_text_field($_POST['x_date_grouping'] ?? ''),
             'y_field'         => sanitize_text_field($_POST['y_field'] ?? ''),
+            'y_fields'        => $this->sanitize_y_fields($_POST['y_fields'] ?? []),
             'group_by'        => sanitize_text_field($_POST['group_by'] ?? ''),
             'aggregate'       => sanitize_text_field($_POST['aggregate'] ?? 'SUM'),
             'color_field'     => sanitize_text_field($_POST['color_field'] ?? ''),
@@ -526,6 +542,7 @@ final class Visualizer
 
         $x_field         = $config['x_field'] ?? '';
         $y_field         = $config['y_field'] ?? '';
+        $y_fields        = $config['y_fields'] ?? [];
         $group_by        = $config['group_by'] ?? '';
         $aggregate       = strtoupper($config['aggregate'] ?? 'SUM');
         $x_date_grouping = $config['x_date_grouping'] ?? '';
@@ -539,6 +556,20 @@ final class Visualizer
         // ★ SEGURIDAD: Validar función de agregación
         if (!in_array($aggregate, self::ALLOWED_AGGREGATES, true)) {
             $aggregate = 'SUM';
+        }
+
+        // ── Multi-Y fields mode ───────────────────────────────────
+        // When y_fields has entries, run one query per Y column and merge
+        // results into [{x_value, y_value, group_value (= label)}]
+        $valid_y_fields = [];
+        foreach ($y_fields as $yf) {
+            if (!empty($yf['column']) && isset($valid_columns[$yf['column']])) {
+                $valid_y_fields[] = $yf;
+            }
+        }
+
+        if (!empty($valid_y_fields) && $x_field) {
+            return $this->build_multi_y_query($config, $table, $x_field, $x_date_grouping, $valid_y_fields, $aggregate, $valid_columns);
         }
 
         // Construir expresión X con agrupación de fecha
@@ -661,6 +692,109 @@ final class Visualizer
             'week'       => "CONCAT(YEAR(`{$field}`), '-W', LPAD(WEEK(`{$field}`), 2, '0'))",
             default      => "`{$field}`",
         };
+    }
+
+    /**
+     * Build query for multi-Y fields mode.
+     * Each Y column becomes a separate series identified by its label.
+     * Returns data in format: [{x_value, y_value, group_value}]
+     */
+    private function build_multi_y_query(array $config, string $table, string $x_field, string $x_date_grouping, array $y_fields, string $aggregate, array $valid_columns): array
+    {
+        global $wpdb;
+
+        $x_expression = $this->build_date_expression($x_field, $x_date_grouping);
+
+        // Build WHERE clause (shared across all Y fields)
+        $where_clauses = ['1=1'];
+        $where_values  = [];
+
+        if (!empty($config['date_field']) && isset($valid_columns[$config['date_field']])) {
+            if (!empty($config['date_from'])) {
+                $where_clauses[] = "`{$config['date_field']}` >= %s";
+                $where_values[]  = $config['date_from'] . ' 00:00:00';
+            }
+            if (!empty($config['date_to'])) {
+                $where_clauses[] = "`{$config['date_field']}` <= %s";
+                $where_values[]  = $config['date_to'] . ' 23:59:59';
+            }
+        }
+
+        if (!empty($config['filters'])) {
+            foreach ($config['filters'] as $filter) {
+                if (empty($filter['field']) || !isset($filter['value'])) continue;
+                if (!isset($valid_columns[$filter['field']])) continue;
+
+                $operator = in_array($filter['operator'], self::ALLOWED_OPERATORS, true)
+                    ? $filter['operator']
+                    : '=';
+
+                if ($operator === 'LIKE') {
+                    $where_clauses[] = "`{$filter['field']}` LIKE %s";
+                    $where_values[]  = '%' . $wpdb->esc_like($filter['value']) . '%';
+                } else {
+                    $where_clauses[] = "`{$filter['field']}` {$operator} %s";
+                    $where_values[]  = $filter['value'];
+                }
+            }
+        }
+
+        $where_sql = implode(' AND ', $where_clauses);
+
+        // ORDER
+        $order_sql = '';
+        if ($x_date_grouping) {
+            $order_sql = "ORDER BY {$x_expression} ASC";
+        }
+
+        // LIMIT
+        $limit_sql = '';
+        if (!empty($config['limit']) && $config['limit'] > 0) {
+            $limit_sql = 'LIMIT ' . intval($config['limit']);
+        }
+
+        // Run one query per Y field and merge results
+        $all_results = [];
+
+        foreach ($y_fields as $yf) {
+            $column = $yf['column'];
+            $label  = $yf['label'] ?: ucfirst(str_replace('_', ' ', $column));
+
+            $sql = "SELECT {$x_expression} AS x_value, {$aggregate}(`{$column}`) AS y_value FROM `{$table}` WHERE {$where_sql} GROUP BY {$x_expression} {$order_sql} {$limit_sql}";
+
+            if (!empty($where_values)) {
+                $rows = $wpdb->get_results($wpdb->prepare($sql, ...$where_values), ARRAY_A);
+            } else {
+                $rows = $wpdb->get_results($sql, ARRAY_A);
+            }
+
+            if ($rows) {
+                foreach ($rows as $row) {
+                    $all_results[] = [
+                        'x_value'     => $row['x_value'],
+                        'y_value'     => $row['y_value'],
+                        'group_value' => $label,
+                    ];
+                }
+            }
+        }
+
+        // Post-process month names
+        if ($x_date_grouping === 'month_name' && $all_results) {
+            $month_names = [
+                '01' => 'Enero', '02' => 'Febrero', '03' => 'Marzo',
+                '04' => 'Abril', '05' => 'Mayo', '06' => 'Junio',
+                '07' => 'Julio', '08' => 'Agosto', '09' => 'Septiembre',
+                '10' => 'Octubre', '11' => 'Noviembre', '12' => 'Diciembre',
+            ];
+            foreach ($all_results as &$row) {
+                if (isset($month_names[$row['x_value']])) {
+                    $row['x_value'] = $month_names[$row['x_value']];
+                }
+            }
+        }
+
+        return $all_results;
     }
 
     // ── Admin columns ──────────────────────────────────────────

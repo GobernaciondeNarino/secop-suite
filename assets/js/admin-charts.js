@@ -36,13 +36,18 @@
                 $('.ss-chart-type-option').removeClass('selected');
                 $(this).addClass('selected');
                 $(this).find('input').prop('checked', true);
-                self.updateChartGuide($(this).find('input').val());
+                var chartType = $(this).find('input').val();
+                self.updateChartGuide(chartType);
+                self.updateFieldRequirements(chartType);
+                self.updateMultiYVisibility(chartType);
             });
 
             // Initial guide render
             const initialType = $('input[name="ss_chart_type"]:checked').val();
             if (initialType) {
                 self.updateChartGuide(initialType);
+                self.updateFieldRequirements(initialType);
+                self.updateMultiYVisibility(initialType);
             }
 
             // Table selection
@@ -73,6 +78,17 @@
                 } else {
                     $('.ss-toolbar-options').hide();
                 }
+            });
+
+            // Add Y field
+            $('#ss-add-y-field').on('click', function() {
+                self.addYFieldRow();
+            });
+
+            // Remove Y field
+            $(document).on('click', '.ss-remove-y-field', function() {
+                $(this).closest('.ss-y-field-row').remove();
+                self.reindexYFields();
             });
 
             // Custom query toggle
@@ -284,9 +300,21 @@
                 date_from: $('#ss_date_from').val(),
                 date_to: $('#ss_date_to').val(),
                 limit: $('#ss_limit').val() || 100,
-                filters: []
+                filters: [],
+                y_fields: []
             };
-            
+
+            // Collect y_fields
+            $('#ss-y-fields-container .ss-y-field-row').each(function() {
+                var col = $(this).find('.ss-y-field-select').val();
+                if (col) {
+                    formData.y_fields.push({
+                        column: col,
+                        label: $(this).find('.ss-y-field-label').val() || ''
+                    });
+                }
+            });
+
             // Collect filters
             $('#ss-filters-container .ss-filter-row').each(function() {
                 const field = $(this).find('.ss-filter-field').val();
@@ -299,8 +327,9 @@
                 }
             });
             
-            if (!formData.table_name || !formData.x_field || !formData.y_field) {
-                $preview.html('<p class="ss-preview-placeholder">Por favor configure la tabla, eje X y eje Y</p>');
+            var hasYData = formData.y_field || (formData.y_fields && formData.y_fields.length > 0);
+            if (!formData.table_name || !formData.x_field || !hasYData) {
+                $preview.html('<p class="ss-preview-placeholder">Por favor configure la tabla, eje X y al menos un eje Y</p>');
                 return;
             }
             
@@ -458,6 +487,57 @@
                         .locale('es_ES');
                     break;
 
+                case 'stacked_bar':
+                    chart = new d3plus.BarChart()
+                        .data(chartData)
+                        .groupBy('group')
+                        .x('x')
+                        .y('y')
+                        .stacked(true)
+                        .select('#ss-chart-preview')
+                        .color(function(d) { return colorScale(d.group); })
+                        .legend(true)
+                        .locale('es_ES');
+                    break;
+
+                case 'grouped_bar':
+                    chart = new d3plus.BarChart()
+                        .data(chartData)
+                        .groupBy('group')
+                        .x('x')
+                        .y('y')
+                        .stacked(false)
+                        .select('#ss-chart-preview')
+                        .color(function(d) { return colorScale(d.group); })
+                        .barPadding(2)
+                        .groupPadding(10)
+                        .legend(true)
+                        .locale('es_ES');
+                    break;
+
+                case 'area':
+                    chart = new d3plus.AreaPlot()
+                        .data(chartData)
+                        .groupBy('group')
+                        .x('x')
+                        .y('y')
+                        .select('#ss-chart-preview')
+                        .color(function(d) { return colorScale(d.group); })
+                        .legend(false)
+                        .locale('es_ES');
+                    break;
+
+                case 'donut':
+                    chart = new d3plus.Donut()
+                        .data(chartData)
+                        .groupBy('x')
+                        .value('y')
+                        .select('#ss-chart-preview')
+                        .color(function(d) { return colorScale(d.x); })
+                        .legend(true)
+                        .locale('es_ES');
+                    break;
+
                 default:
                     chart = new d3plus.BarChart()
                         .data(chartData)
@@ -469,8 +549,123 @@
                         .legend(false)
                         .locale('es_ES');
             }
-            
+
             chart.render();
+        },
+
+        // ── Multi-Y field methods ──────────────────────────────────
+
+        addYFieldRow: function() {
+            var index = $('#ss-y-fields-container .ss-y-field-row').length;
+            var template = $('#ss-y-field-template').html().replace(/{{index}}/g, index);
+            var $row = $(template);
+            $('#ss-y-fields-container').append($row);
+            this.populateFilterSelect($row.find('.ss-y-field-select'));
+        },
+
+        reindexYFields: function() {
+            $('#ss-y-fields-container .ss-y-field-row').each(function(index) {
+                $(this).find('[name]').each(function() {
+                    var name = $(this).attr('name');
+                    var newName = name.replace(/\[\d+\]/, '[' + index + ']');
+                    $(this).attr('name', newName);
+                });
+            });
+        },
+
+        /**
+         * Show/hide the multi-Y section based on chart type.
+         * Bar-type charts support multi-Y, others don't.
+         */
+        updateMultiYVisibility: function(chartType) {
+            var multiYTypes = ['bar', 'stacked_bar', 'grouped_bar', 'line', 'area'];
+            if (multiYTypes.indexOf(chartType) !== -1) {
+                $('#ss-multi-y-row').show();
+            } else {
+                $('#ss-multi-y-row').hide();
+            }
+        },
+
+        /**
+         * Update field requirements based on chart type — highlights required
+         * and hides irrelevant fields with color-coded borders.
+         */
+        updateFieldRequirements: function(chartType) {
+            // Field requirement definitions per chart type
+            // 'required' = red border, 'recommended' = blue border, 'optional' = normal, 'hidden' = dimmed
+            var reqs = {
+                bar:         { x_field: 'required', y_field: 'required', group_by: 'optional', aggregate: 'required' },
+                line:        { x_field: 'required', y_field: 'required', group_by: 'recommended', aggregate: 'required' },
+                area:        { x_field: 'required', y_field: 'required', group_by: 'recommended', aggregate: 'required' },
+                pie:         { x_field: 'required', y_field: 'required', group_by: 'hidden', aggregate: 'required' },
+                donut:       { x_field: 'required', y_field: 'required', group_by: 'hidden', aggregate: 'required' },
+                treemap:     { x_field: 'required', y_field: 'required', group_by: 'optional', aggregate: 'required' },
+                tree:        { x_field: 'required', y_field: 'optional', group_by: 'required', aggregate: 'optional' },
+                pack:        { x_field: 'required', y_field: 'required', group_by: 'optional', aggregate: 'required' },
+                network:     { x_field: 'required', y_field: 'optional', group_by: 'required', aggregate: 'optional' },
+                stacked_bar: { x_field: 'required', y_field: 'required', group_by: 'required', aggregate: 'required' },
+                grouped_bar: { x_field: 'required', y_field: 'required', group_by: 'required', aggregate: 'required' }
+            };
+
+            var fieldMap = {
+                x_field: '#ss_x_field',
+                y_field: '#ss_y_field',
+                group_by: '#ss_group_by',
+                aggregate: '#ss_aggregate'
+            };
+
+            var colors = {
+                required:    { border: '2px solid #e74c3c', bg: '#fdf2f2' },
+                recommended: { border: '2px solid #2271b1', bg: '#f0f6fc' },
+                optional:    { border: '1px solid #dcdcde', bg: '' },
+                hidden:      { border: '1px solid #dcdcde', bg: '#f6f7f7' }
+            };
+
+            var labels = {
+                required:    ' <span class="ss-field-badge ss-field-required">REQUERIDO</span>',
+                recommended: ' <span class="ss-field-badge ss-field-recommended">RECOMENDADO</span>',
+                optional:    '',
+                hidden:      ' <span class="ss-field-badge ss-field-hidden">NO APLICA</span>'
+            };
+
+            var chartReqs = reqs[chartType] || reqs.bar;
+
+            Object.keys(fieldMap).forEach(function(key) {
+                var $select = $(fieldMap[key]);
+                var $row = $select.closest('tr');
+                var level = chartReqs[key] || 'optional';
+                var style = colors[level];
+
+                // Reset
+                $row.find('.ss-field-badge').remove();
+                $select.css({ border: style.border, background: style.bg || '#fff' });
+
+                // Add badge to label
+                if (labels[level]) {
+                    $row.find('th label').append(labels[level]);
+                }
+
+                // Dim hidden fields
+                if (level === 'hidden') {
+                    $row.css('opacity', '0.5');
+                } else {
+                    $row.css('opacity', '1');
+                }
+            });
+
+            // Show note for stacked/grouped requiring group_by
+            var $groupNote = $('#ss-group-by-note');
+            if (!$groupNote.length) {
+                $('#ss_group_by').after('<p class="description ss-group-note" id="ss-group-by-note" style="display:none;"></p>');
+                $groupNote = $('#ss-group-by-note');
+            }
+            if (chartType === 'stacked_bar' || chartType === 'grouped_bar') {
+                $groupNote.html('<strong style="color:#e74c3c;">⚠ Este tipo de gráfica requiere "Agrupar Por" para crear las series apiladas/agrupadas.</strong>').show();
+            } else if (chartType === 'tree' || chartType === 'network') {
+                $groupNote.html('<strong style="color:#e74c3c;">⚠ Este tipo de gráfica requiere "Agrupar Por" para definir las relaciones padre-hijo.</strong>').show();
+            } else {
+                $groupNote.hide();
+            }
         },
 
         /**
@@ -569,6 +764,16 @@
                         const $row = $('#ss-filters-container .ss-filter-row').eq(index);
                         if ($row.length) {
                             $row.find('.ss-filter-field').data('saved-value', filter.field);
+                        }
+                    });
+                }
+
+                // Restore y_fields saved values
+                if (ssSavedConfig.y_fields && ssSavedConfig.y_fields.length > 0) {
+                    ssSavedConfig.y_fields.forEach(function(yf, index) {
+                        var $row = $('#ss-y-fields-container .ss-y-field-row').eq(index);
+                        if ($row.length) {
+                            $row.find('.ss-y-field-select').data('saved-value', yf.column);
                         }
                     });
                 }

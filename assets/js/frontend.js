@@ -206,6 +206,7 @@
             const numberFormat = config.numberFormat || 'colombiano';
 
             // Preparar datos
+            const isMultiY = config.multiY || false;
             const chartData = this.data.map(function(d) {
                 return {
                     x: d.x_value,
@@ -213,6 +214,11 @@
                     group: d.group_value || d.x_value
                 };
             });
+
+            // Multi-Y: force legend on to distinguish series
+            if (isMultiY) {
+                config.showLegend = true;
+            }
 
             // Crear escala de colores
             const groups = [...new Set(chartData.map(d => d.group))];
@@ -446,11 +452,12 @@
                     break;
 
                 case 'stacked_bar':
-                    this.chart = new d3plus.StackedArea()
+                    this.chart = new d3plus.BarChart()
                         .data(chartData)
                         .groupBy('group')
                         .x('x')
                         .y('y')
+                        .stacked(true)
                         .select(renderTarget)
                         .color(function(d) { return colorScale(d.group); })
                         .tooltipConfig(baseConfig.tooltipConfig)
@@ -462,9 +469,10 @@
                 case 'grouped_bar':
                     this.chart = new d3plus.BarChart()
                         .data(chartData)
-                        .groupBy(['x', 'group'])
+                        .groupBy('group')
                         .x('x')
                         .y('y')
+                        .stacked(false)
                         .select(renderTarget)
                         .color(function(d) { return colorScale(d.group); })
                         .tooltipConfig(baseConfig.tooltipConfig)

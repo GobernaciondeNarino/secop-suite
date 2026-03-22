@@ -240,6 +240,7 @@ $chart_height = $config['chart_height'] ?? 400;
     'yAxisTitle' => $config['y_axis_title'] ?? '',
     'xAxisTitle' => $config['x_axis_title'] ?? '',
     'numberFormat' => $config['number_format'] ?? 'colombiano',
+    'multiY' => !empty($config['y_fields']),
     'title' => $chart_title,
     'chartNonce' => wp_create_nonce('secop_suite_chart_' . $chart_id),
 ]); ?>
