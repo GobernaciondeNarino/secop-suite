@@ -439,7 +439,12 @@ final class Visualizer
 
     public function ajax_get_table_columns(): void
     {
-        check_ajax_referer('secop_suite_chart_admin', 'nonce');
+        // Accept nonce from both chart admin and filter admin contexts
+        $nonce = sanitize_text_field($_POST['nonce'] ?? '');
+        if (!wp_verify_nonce($nonce, 'secop_suite_chart_admin') &&
+            !wp_verify_nonce($nonce, 'secop_suite_filter_admin')) {
+            wp_send_json_error(['message' => 'Nonce inválido']);
+        }
 
         if (!current_user_can('edit_posts')) {
             wp_send_json_error(['message' => 'Permisos insuficientes']);

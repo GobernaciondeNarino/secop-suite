@@ -1732,7 +1732,7 @@
  *
  * Classes:
  *   .ss-chart-guide           — Main container (appears below chart type selector)
- *   .ss-guide-title           — Section title
+ *   .ss-guide-toggle          — Accordion toggle (click to expand)
  *   .ss-guide-matrix          — Grid table
  *   .ss-guide-header          — Header cell
  *   .ss-guide-field           — Field label cell

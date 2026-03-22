@@ -363,12 +363,60 @@
     };
 
     /**
+     * Truncate Manager
+     */
+    const TruncateManager = {
+        init: function() {
+            $('#ss-truncate-table').on('click', function() {
+                $('#ss-truncate-confirm').slideDown(200);
+            });
+
+            $('#ss-truncate-cancel-btn').on('click', function() {
+                $('#ss-truncate-confirm').slideUp(200);
+            });
+
+            $('#ss-truncate-confirm-btn').on('click', function() {
+                var $btn = $(this);
+                $btn.prop('disabled', true).text('Eliminando...');
+
+                $.ajax({
+                    url: secopSuiteAdmin.ajaxUrl,
+                    type: 'POST',
+                    data: {
+                        action: 'secop_suite_truncate_table',
+                        nonce: secopSuiteAdmin.nonce
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $('#ss-truncate-confirm').hide();
+                            $('#ss-import-result')
+                                .removeClass('ss-notice-error ss-notice-warning')
+                                .addClass('ss-notice-success')
+                                .text(response.data.message)
+                                .show();
+                            setTimeout(function() { location.reload(); }, 1500);
+                        } else {
+                            $btn.prop('disabled', false).text('Sí, eliminar todos los datos');
+                            alert(response.data.message);
+                        }
+                    },
+                    error: function() {
+                        $btn.prop('disabled', false).text('Sí, eliminar todos los datos');
+                        alert('Error de conexión');
+                    }
+                });
+            });
+        }
+    };
+
+    /**
      * Initialize on document ready
      */
     $(document).ready(function() {
         if ($('#ss-start-import').length) {
             ImportManager.init();
             SettingsManager.init();
+            TruncateManager.init();
         }
 
         if ($('.ss-records-table').length) {

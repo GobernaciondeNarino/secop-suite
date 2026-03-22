@@ -195,7 +195,10 @@
                         .legend(legend).locale('es_ES');
                     if (type === 'stacked_bar') chart.stacked(true);
                     if (type === 'grouped_bar') chart.stacked(false).barPadding(2).groupPadding(10);
-                    if (config.showTimeline) chart.time('x').timeline(true);
+                    if (config.showTimeline && typeof chart.time === 'function') {
+                        chart.time('x');
+                        if (typeof chart.timeline === 'function') chart.timeline(true);
+                    }
                     return chart;
 
                 case 'line':
@@ -207,7 +210,10 @@
                         .color(function(d) { return colorScale(d.group); })
                         .tooltipConfig(tooltipConfig).yConfig(yConfig)
                         .legend(legend).locale('es_ES');
-                    if (config.showTimeline) lc.time('x').timeline(true);
+                    if (config.showTimeline && typeof lc.time === 'function') {
+                        lc.time('x');
+                        if (typeof lc.timeline === 'function') lc.timeline(true);
+                    }
                     return lc;
 
                 case 'area':

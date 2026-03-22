@@ -69,6 +69,20 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v4.2.0 (2026-03-22)
+
+**Nuevas funcionalidades:**
+- **Limpiar Tabla**: Botón "Limpiar Tabla" en el módulo de importación con confirmación de doble paso (muestra total de registros antes de eliminar), TRUNCATE seguro con verificación de importación no activa.
+
+**Correcciones:**
+- **Fix filtros sin columnas**: Corregido nonce mismatch — el módulo de filtros usaba `secop_suite_filter_admin` pero el handler AJAX esperaba `secop_suite_chart_admin`. Ahora acepta ambos nonces.
+- **Fix timeline interactiva**: Verificación segura de `.time()` y `.timeline()` con `typeof` antes de invocar, para evitar errores en tipos de gráfica que no soportan timeline.
+
+**Limpieza:**
+- `uninstall.php`: Ahora también elimina CPTs de filtros (`secop_filter`) y transients de cache de gráficas.
+- CSS: Corregida referencia `.ss-guide-title` → `.ss-guide-toggle` en documentación.
+- Verificación completa de transients, nonces, PHP syntax y DB cleanup.
+
 ### v4.1.2 (2026-03-22)
 
 **Correcciones críticas:**
