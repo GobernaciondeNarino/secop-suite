@@ -39,6 +39,7 @@
                 var chartType = $(this).find('input').val();
                 self.updateChartGuide(chartType);
                 self.updateFieldRequirements(chartType);
+                self.updateMultiYVisibility(chartType);
             });
 
             // Initial guide render
@@ -46,6 +47,7 @@
             if (initialType) {
                 self.updateChartGuide(initialType);
                 self.updateFieldRequirements(initialType);
+                self.updateMultiYVisibility(initialType);
             }
 
             // Table selection
@@ -76,6 +78,17 @@
                 } else {
                     $('.ss-toolbar-options').hide();
                 }
+            });
+
+            // Add Y field
+            $('#ss-add-y-field').on('click', function() {
+                self.addYFieldRow();
+            });
+
+            // Remove Y field
+            $(document).on('click', '.ss-remove-y-field', function() {
+                $(this).closest('.ss-y-field-row').remove();
+                self.reindexYFields();
             });
 
             // Custom query toggle
@@ -287,9 +300,21 @@
                 date_from: $('#ss_date_from').val(),
                 date_to: $('#ss_date_to').val(),
                 limit: $('#ss_limit').val() || 100,
-                filters: []
+                filters: [],
+                y_fields: []
             };
-            
+
+            // Collect y_fields
+            $('#ss-y-fields-container .ss-y-field-row').each(function() {
+                var col = $(this).find('.ss-y-field-select').val();
+                if (col) {
+                    formData.y_fields.push({
+                        column: col,
+                        label: $(this).find('.ss-y-field-label').val() || ''
+                    });
+                }
+            });
+
             // Collect filters
             $('#ss-filters-container .ss-filter-row').each(function() {
                 const field = $(this).find('.ss-filter-field').val();
@@ -302,8 +327,9 @@
                 }
             });
             
-            if (!formData.table_name || !formData.x_field || !formData.y_field) {
-                $preview.html('<p class="ss-preview-placeholder">Por favor configure la tabla, eje X y eje Y</p>');
+            var hasYData = formData.y_field || (formData.y_fields && formData.y_fields.length > 0);
+            if (!formData.table_name || !formData.x_field || !hasYData) {
+                $preview.html('<p class="ss-preview-placeholder">Por favor configure la tabla, eje X y al menos un eje Y</p>');
                 return;
             }
             
@@ -527,6 +553,39 @@
             chart.render();
         },
 
+        // ── Multi-Y field methods ──────────────────────────────────
+
+        addYFieldRow: function() {
+            var index = $('#ss-y-fields-container .ss-y-field-row').length;
+            var template = $('#ss-y-field-template').html().replace(/{{index}}/g, index);
+            var $row = $(template);
+            $('#ss-y-fields-container').append($row);
+            this.populateFilterSelect($row.find('.ss-y-field-select'));
+        },
+
+        reindexYFields: function() {
+            $('#ss-y-fields-container .ss-y-field-row').each(function(index) {
+                $(this).find('[name]').each(function() {
+                    var name = $(this).attr('name');
+                    var newName = name.replace(/\[\d+\]/, '[' + index + ']');
+                    $(this).attr('name', newName);
+                });
+            });
+        },
+
+        /**
+         * Show/hide the multi-Y section based on chart type.
+         * Bar-type charts support multi-Y, others don't.
+         */
+        updateMultiYVisibility: function(chartType) {
+            var multiYTypes = ['bar', 'stacked_bar', 'grouped_bar', 'line', 'area'];
+            if (multiYTypes.indexOf(chartType) !== -1) {
+                $('#ss-multi-y-row').show();
+            } else {
+                $('#ss-multi-y-row').hide();
+            }
+        },
+
         /**
          * Update field requirements based on chart type — highlights required
          * and hides irrelevant fields with color-coded borders.
@@ -705,6 +764,16 @@
                         const $row = $('#ss-filters-container .ss-filter-row').eq(index);
                         if ($row.length) {
                             $row.find('.ss-filter-field').data('saved-value', filter.field);
+                        }
+                    });
+                }
+
+                // Restore y_fields saved values
+                if (ssSavedConfig.y_fields && ssSavedConfig.y_fields.length > 0) {
+                    ssSavedConfig.y_fields.forEach(function(yf, index) {
+                        var $row = $('#ss-y-fields-container .ss-y-field-row').eq(index);
+                        if ($row.length) {
+                            $row.find('.ss-y-field-select').data('saved-value', yf.column);
                         }
                     });
                 }

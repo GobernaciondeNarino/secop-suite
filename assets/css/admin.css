@@ -1123,6 +1123,59 @@
 }
 
 /* ==========================================================================
+   Multi Y Fields
+   ========================================================================== */
+.ss-y-field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.ss-y-field-select {
+    min-width: 200px;
+}
+
+.ss-y-field-label {
+    min-width: 200px;
+    flex: 1;
+}
+
+.ss-remove-y-field {
+    padding: 4px 8px !important;
+    color: var(--ss-error) !important;
+}
+
+.ss-remove-y-field .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+#ss-add-y-field {
+    margin-top: 5px;
+}
+
+#ss-add-y-field .dashicons {
+    margin-right: 3px;
+}
+
+.ss-multi-y-row {
+    background: #f0f6fc;
+}
+
+.ss-multi-y-row th,
+.ss-multi-y-row td {
+    border-left: 3px solid var(--ss-primary);
+}
+
+.ss-multi-y-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+/* ==========================================================================
    Form Elements
    ========================================================================== */
 .ss-date-range {
