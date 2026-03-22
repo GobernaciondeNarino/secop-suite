@@ -32,6 +32,7 @@ final class Importer
         add_action('wp_ajax_secop_suite_start_import',  [$this, 'ajax_start_import']);
         add_action('wp_ajax_secop_suite_check_progress', [$this, 'ajax_check_progress']);
         add_action('wp_ajax_secop_suite_cancel_import', [$this, 'ajax_cancel_import']);
+        add_action('wp_ajax_secop_suite_truncate_table', [$this, 'ajax_truncate_table']);
     }
 
     // ── AJAX: Iniciar importación ──────────────────────────────
@@ -84,6 +85,38 @@ final class Importer
         $this->update_progress(0, 0, 'cancelled', __('Importación cancelada por el usuario', 'secop-suite'));
 
         wp_send_json_success(['message' => __('Importación cancelada', 'secop-suite')]);
+    }
+
+    // ── AJAX: Limpiar tabla ────────────────────────────────────
+    public function ajax_truncate_table(): void
+    {
+        check_ajax_referer('secop_suite_import', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => __('Permisos insuficientes', 'secop-suite')]);
+        }
+
+        if (get_transient(SECOP_SUITE_PREFIX . 'import_running')) {
+            wp_send_json_error(['message' => __('No se puede limpiar mientras hay una importación en curso', 'secop-suite')]);
+        }
+
+        global $wpdb;
+        $table = $this->db->get_table_name();
+        $count = $this->db->get_total_records();
+
+        $wpdb->query("TRUNCATE TABLE `{$table}`");
+
+        // Reset options
+        update_option(SECOP_SUITE_PREFIX . 'total_records', 0);
+
+        // Invalidate caches
+        $this->invalidate_chart_cache();
+
+        Logger::info("Tabla {$table} limpiada — {$count} registros eliminados");
+
+        wp_send_json_success([
+            'message' => sprintf(__('%s registros eliminados correctamente', 'secop-suite'), number_format($count)),
+        ]);
     }
 
     // ── Ejecución de importación ───────────────────────────────

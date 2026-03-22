@@ -19,6 +19,19 @@ if (!defined('ABSPATH')) exit;
                 <div class="ss-button-group">
                     <button type="button" id="ss-start-import" class="button button-primary button-large" <?php echo $is_importing ? 'disabled' : ''; ?>><span class="dashicons dashicons-download"></span> <?php esc_html_e('Iniciar Importación', 'secop-suite'); ?></button>
                     <button type="button" id="ss-cancel-import" class="button button-secondary button-large" style="display:none;"><span class="dashicons dashicons-no"></span> <?php esc_html_e('Cancelar', 'secop-suite'); ?></button>
+                    <button type="button" id="ss-truncate-table" class="button button-link-delete button-large" style="margin-left:auto;"><span class="dashicons dashicons-trash"></span> <?php esc_html_e('Limpiar Tabla', 'secop-suite'); ?></button>
+                </div>
+                <!-- Truncate confirmation -->
+                <div id="ss-truncate-confirm" class="ss-notice ss-notice-error" style="display:none; margin-top:15px;">
+                    <p><strong><?php esc_html_e('¿Está seguro de eliminar TODOS los datos importados?', 'secop-suite'); ?></strong></p>
+                    <p><?php esc_html_e('Esta acción eliminará todos los registros de la tabla de contratos. No se puede deshacer.', 'secop-suite'); ?></p>
+                    <p>
+                        <strong><?php esc_html_e('Total de registros:', 'secop-suite'); ?></strong> <?php echo esc_html(number_format($total_records)); ?>
+                    </p>
+                    <div class="ss-button-group" style="margin-top:10px;">
+                        <button type="button" id="ss-truncate-confirm-btn" class="button button-primary" style="background:#d63638; border-color:#d63638;"><span class="dashicons dashicons-warning"></span> <?php esc_html_e('Sí, eliminar todos los datos', 'secop-suite'); ?></button>
+                        <button type="button" id="ss-truncate-cancel-btn" class="button button-secondary"><?php esc_html_e('Cancelar', 'secop-suite'); ?></button>
+                    </div>
                 </div>
             </div>
         </div>
