@@ -61,21 +61,22 @@ $default_colors = '#844e80,#ff7300,#ffc53b,#3eba6a,#0080c3,#e74c3c,#9b59b6,#1abc
                 </label>
             <?php endforeach; ?>
         </div>
-        <!-- Heat Map Guide -->
+        <!-- Heat Map Guide (Accordion) -->
         <div class="ss-chart-guide" id="ss-chart-guide">
-            <p class="ss-guide-title">
+            <p class="ss-guide-toggle" id="ss-guide-toggle" style="cursor:pointer; user-select:none;">
                 <span class="dashicons dashicons-lightbulb"></span>
                 <?php _e('Guía de Variables Recomendadas', 'secop-suite'); ?>
                 <span id="ss-guide-chart-name" style="color: var(--ss-primary);"></span>
+                <span class="dashicons dashicons-arrow-down-alt2 ss-guide-arrow" style="float:right;"></span>
             </p>
-            <div class="ss-guide-matrix" id="ss-guide-matrix">
-                <!-- Populated by JS -->
-            </div>
-            <div class="ss-guide-legend">
-                <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #22c55e;"></span> <?php _e('Óptimo', 'secop-suite'); ?></span>
-                <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #facc15;"></span> <?php _e('Compatible', 'secop-suite'); ?></span>
-                <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #e5e7eb;"></span> <?php _e('Posible', 'secop-suite'); ?></span>
-                <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #fca5a5;"></span> <?php _e('No recomendado', 'secop-suite'); ?></span>
+            <div class="ss-guide-content" id="ss-guide-content" style="display:none;">
+                <div class="ss-guide-matrix" id="ss-guide-matrix"></div>
+                <div class="ss-guide-legend">
+                    <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #22c55e;"></span> <?php _e('Óptimo', 'secop-suite'); ?></span>
+                    <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #facc15;"></span> <?php _e('Compatible', 'secop-suite'); ?></span>
+                    <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #e5e7eb;"></span> <?php _e('Posible', 'secop-suite'); ?></span>
+                    <span class="ss-guide-legend-item"><span class="ss-guide-legend-swatch" style="background: #fca5a5;"></span> <?php _e('No recomendado', 'secop-suite'); ?></span>
+                </div>
             </div>
         </div>
     </div>
@@ -167,14 +168,19 @@ $default_colors = '#844e80,#ff7300,#ffc53b,#3eba6a,#0080c3,#e74c3c,#9b59b6,#1abc
                 </td>
             </tr>
 
-            <!-- Multi Y Fields (for bar, stacked_bar, grouped_bar) -->
+            <!-- Multi Y Fields (optional, for bar types) -->
             <tr class="ss-multi-y-row" id="ss-multi-y-row" style="display:none;">
                 <th>
                     <label><?php _e('Valores Y Múltiples', 'secop-suite'); ?></label>
                 </th>
                 <td>
+                    <label style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+                        <input type="checkbox" id="ss-enable-multi-y" <?php checked(!empty($config['y_fields'])); ?> />
+                        <strong><?php _e('Habilitar múltiples campos Y', 'secop-suite'); ?></strong>
+                    </label>
+                    <div id="ss-multi-y-content" style="<?php echo empty($config['y_fields']) ? 'display:none;' : ''; ?>">
                     <p class="description" style="margin-bottom:10px;">
-                        <?php _e('Añade múltiples campos Y para comparar valores lado a lado. Cada campo será una serie independiente en la gráfica.', 'secop-suite'); ?>
+                        <?php _e('Cada campo Y será una serie independiente en la gráfica (ej: Apropiación vigente vs Apropiación inicial).', 'secop-suite'); ?>
                     </p>
                     <div id="ss-y-fields-container">
                         <?php
@@ -200,10 +206,11 @@ $default_colors = '#844e80,#ff7300,#ffc53b,#3eba6a,#0080c3,#e74c3c,#9b59b6,#1abc
                         <span class="dashicons dashicons-plus-alt2"></span>
                         <?php _e('Añadir Campo Y', 'secop-suite'); ?>
                     </button>
-                    <p class="description ss-multi-y-note" style="margin-top:10px; color:#2271b1;">
+                    <p class="description" style="margin-top:10px; color:#2271b1;">
                         <span class="dashicons dashicons-info" style="font-size:14px; width:14px; height:14px;"></span>
-                        <?php _e('Cuando se usan campos Y múltiples, el campo "Eje Y / Valor" simple se ignora y "Agrupar Por" no es necesario (cada campo Y genera su propia serie).', 'secop-suite'); ?>
+                        <?php _e('Cuando se activa, el campo "Eje Y / Valor" simple se ignora y cada campo Y genera su propia serie.', 'secop-suite'); ?>
                     </p>
+                    </div><!-- ss-multi-y-content -->
                 </td>
             </tr>
 

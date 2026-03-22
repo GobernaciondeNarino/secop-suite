@@ -80,6 +80,25 @@
                 }
             });
 
+            // Guide accordion toggle
+            $('#ss-guide-toggle').on('click', function() {
+                var $content = $('#ss-guide-content');
+                var $arrow = $(this).find('.ss-guide-arrow');
+                $content.slideToggle(200);
+                $arrow.toggleClass('dashicons-arrow-down-alt2 dashicons-arrow-up-alt2');
+            });
+
+            // Multi-Y enable/disable toggle
+            $('#ss-enable-multi-y').on('change', function() {
+                if ($(this).is(':checked')) {
+                    $('#ss-multi-y-content').slideDown(200);
+                } else {
+                    $('#ss-multi-y-content').slideUp(200);
+                    // Clear y_fields when disabled
+                    $('#ss-y-fields-container').empty();
+                }
+            });
+
             // Add Y field
             $('#ss-add-y-field').on('click', function() {
                 self.addYFieldRow();
@@ -587,24 +606,22 @@
         },
 
         /**
-         * Update field requirements based on chart type — highlights required
-         * and hides irrelevant fields with color-coded borders.
+         * Show simple * marker on required fields per chart type.
+         * Replaces verbose badges with a clean asterisk.
          */
         updateFieldRequirements: function(chartType) {
-            // Field requirement definitions per chart type
-            // 'required' = red border, 'recommended' = blue border, 'optional' = normal, 'hidden' = dimmed
             var reqs = {
-                bar:         { x_field: 'required', y_field: 'required', group_by: 'optional', aggregate: 'required' },
-                line:        { x_field: 'required', y_field: 'required', group_by: 'recommended', aggregate: 'required' },
-                area:        { x_field: 'required', y_field: 'required', group_by: 'recommended', aggregate: 'required' },
-                pie:         { x_field: 'required', y_field: 'required', group_by: 'hidden', aggregate: 'required' },
-                donut:       { x_field: 'required', y_field: 'required', group_by: 'hidden', aggregate: 'required' },
-                treemap:     { x_field: 'required', y_field: 'required', group_by: 'optional', aggregate: 'required' },
-                tree:        { x_field: 'required', y_field: 'optional', group_by: 'required', aggregate: 'optional' },
-                pack:        { x_field: 'required', y_field: 'required', group_by: 'optional', aggregate: 'required' },
-                network:     { x_field: 'required', y_field: 'optional', group_by: 'required', aggregate: 'optional' },
-                stacked_bar: { x_field: 'required', y_field: 'required', group_by: 'required', aggregate: 'required' },
-                grouped_bar: { x_field: 'required', y_field: 'required', group_by: 'required', aggregate: 'required' }
+                bar:         { x_field: true, y_field: true, group_by: false, aggregate: true },
+                line:        { x_field: true, y_field: true, group_by: false, aggregate: true },
+                area:        { x_field: true, y_field: true, group_by: false, aggregate: true },
+                pie:         { x_field: true, y_field: true, group_by: false, aggregate: true },
+                donut:       { x_field: true, y_field: true, group_by: false, aggregate: true },
+                treemap:     { x_field: true, y_field: true, group_by: false, aggregate: true },
+                tree:        { x_field: true, y_field: false, group_by: true, aggregate: false },
+                pack:        { x_field: true, y_field: true, group_by: false, aggregate: true },
+                network:     { x_field: true, y_field: false, group_by: true, aggregate: false },
+                stacked_bar: { x_field: true, y_field: true, group_by: true, aggregate: true },
+                grouped_bar: { x_field: true, y_field: true, group_by: true, aggregate: true }
             };
 
             var fieldMap = {
@@ -614,55 +631,36 @@
                 aggregate: '#ss_aggregate'
             };
 
-            var colors = {
-                required:    { border: '2px solid #e74c3c', bg: '#fdf2f2' },
-                recommended: { border: '2px solid #2271b1', bg: '#f0f6fc' },
-                optional:    { border: '1px solid #dcdcde', bg: '' },
-                hidden:      { border: '1px solid #dcdcde', bg: '#f6f7f7' }
-            };
-
-            var labels = {
-                required:    ' <span class="ss-field-badge ss-field-required">REQUERIDO</span>',
-                recommended: ' <span class="ss-field-badge ss-field-recommended">RECOMENDADO</span>',
-                optional:    '',
-                hidden:      ' <span class="ss-field-badge ss-field-hidden">NO APLICA</span>'
-            };
-
             var chartReqs = reqs[chartType] || reqs.bar;
 
+            // Reset all field states
             Object.keys(fieldMap).forEach(function(key) {
                 var $select = $(fieldMap[key]);
                 var $row = $select.closest('tr');
-                var level = chartReqs[key] || 'optional';
-                var style = colors[level];
+                var $label = $row.find('th label');
+                var isRequired = chartReqs[key];
 
-                // Reset
-                $row.find('.ss-field-badge').remove();
-                $select.css({ border: style.border, background: style.bg || '#fff' });
+                // Remove old asterisks
+                $label.find('.ss-req-mark').remove();
+                // Reset select style
+                $select.css({ border: '', background: '' });
+                $row.css('opacity', '1');
 
-                // Add badge to label
-                if (labels[level]) {
-                    $row.find('th label').append(labels[level]);
-                }
-
-                // Dim hidden fields
-                if (level === 'hidden') {
-                    $row.css('opacity', '0.5');
-                } else {
-                    $row.css('opacity', '1');
+                if (isRequired) {
+                    $label.append(' <span class="ss-req-mark" style="color:#e74c3c;font-weight:700;">*</span>');
                 }
             });
 
-            // Show note for stacked/grouped requiring group_by
+            // Note for group_by when required
             var $groupNote = $('#ss-group-by-note');
             if (!$groupNote.length) {
-                $('#ss_group_by').after('<p class="description ss-group-note" id="ss-group-by-note" style="display:none;"></p>');
+                $('#ss_group_by').closest('td').append('<p class="description" id="ss-group-by-note" style="display:none;margin-top:8px;"></p>');
                 $groupNote = $('#ss-group-by-note');
             }
             if (chartType === 'stacked_bar' || chartType === 'grouped_bar') {
-                $groupNote.html('<strong style="color:#e74c3c;">⚠ Este tipo de gráfica requiere "Agrupar Por" para crear las series apiladas/agrupadas.</strong>').show();
+                $groupNote.html('<span style="color:#e74c3c;">* Requerido para crear las series apiladas/agrupadas.</span>').show();
             } else if (chartType === 'tree' || chartType === 'network') {
-                $groupNote.html('<strong style="color:#e74c3c;">⚠ Este tipo de gráfica requiere "Agrupar Por" para definir las relaciones padre-hijo.</strong>').show();
+                $groupNote.html('<span style="color:#e74c3c;">* Requerido para definir las relaciones padre-hijo.</span>').show();
             } else {
                 $groupNote.hide();
             }
