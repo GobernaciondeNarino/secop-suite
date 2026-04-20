@@ -71,6 +71,15 @@
                 self.updateColorPreview($(this).val());
             });
 
+            // Legend checkbox toggle
+            $('#ss_show_legend_check').on('change', function() {
+                if ($(this).is(':checked')) {
+                    $('.ss-legend-options').slideDown(200);
+                } else {
+                    $('.ss-legend-options').slideUp(200);
+                }
+            });
+
             // Toolbar toggle
             $('#ss_show_toolbar').on('change', function() {
                 if ($(this).is(':checked')) {
