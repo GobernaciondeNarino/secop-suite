@@ -37,7 +37,7 @@ Desarrollado para la **Gobernación de Nariño** — Secretaría de TIC, Innovac
 - Configuración de operadores por campo (=, LIKE, !=, >, <, >=, <=)
 - Selección de columnas visibles en resultados
 - Paginación de resultados configurable
-- **Enlace directo al proceso SECOP** (urlproceso) con icono en cada fila de resultado, abre en nueva ventana
+- **Enlace directo al proceso SECOP** (url_contrato) con icono en cada fila de resultado, abre en nueva ventana
 - Carga dinámica de opciones para select y checkbox desde la base de datos
 - Rate limiting por IP (60 req/min)
 - Validación de tablas y columnas contra whitelist
@@ -68,6 +68,66 @@ wp secop truncate --yes                            # Limpiar datos
 ---
 
 ## Changelog
+
+### v5.0.0 (2026-03-23) — ⚠ BREAKING: Nueva API SECOP
+
+**Migración a nueva API del SECOP (rpmr-utcd.json):**
+La API oficial del SECOP cambió de estructura. Esta versión migra completamente el plugin al nuevo endpoint y schema.
+
+**Nueva URL de API:**
+`https://www.datos.gov.co/resource/rpmr-utcd.json`
+
+**Mapeo de campos (antiguo → nuevo):**
+| Antiguo (jbjy-vk9h) | Nuevo (rpmr-utcd) |
+|---|---|
+| `nombre_entidad` | `nombre_de_la_entidad` |
+| `nit_entidad` | `nit_de_la_entidad` |
+| `departamento` | `departamento_entidad` |
+| `ciudad` | `municipio_entidad` |
+| `estado_contrato` | `estado_del_proceso` |
+| `modalidad_de_contratacion` | `modalidad_de_contratacion` (mismo) |
+| `descripcion_del_proceso` | `objeto_del_proceso` |
+| `fecha_de_firma` | `fecha_de_firma_del_contrato` |
+| `fecha_de_inicio_del_contrato` | `fecha_inicio_ejecucion` |
+| `fecha_de_fin_del_contrato` | `fecha_fin_ejecucion` |
+| `id_contrato` + `referencia_del_contrato` | `numero_del_contrato` (unique key) |
+| `proceso_de_compra` | `numero_de_proceso` |
+| `valor_del_contrato` | `valor_contrato` |
+| `proveedor_adjudicado` | `nom_raz_social_contratista` |
+| `urlproceso` | `url_contrato` |
+| `tipodocproveedor` | `tipo_documento_proveedor` |
+| `anno_bpin` | `YEAR(fecha_de_firma_del_contrato)` |
+
+**Nuevos campos:**
+- `nivel_entidad` (Nacional/Territorial)
+- `objeto_a_contratar`
+- `origen` (SECOPII / SECOPI)
+
+**Campos removidos** (no existen en la nueva API):
+- `valor_pagado`, `valor_facturado`, `valor_pendiente_de_pago`, etc.
+- `anno_bpin`, `codigo_bpin`, `estado_bpin`
+- Datos de representante legal
+- Datos de presupuesto (PGN, SGP, SGR, etc.)
+- `es_pyme`, `es_grupo`, `liquidacion`, `obligacion_ambiental`, etc.
+
+**Migración automática:**
+- Al actualizar desde v4.x, el plugin detecta la versión y ejecuta `migrate_to_new_schema()`:
+  - Drop de la tabla antigua
+  - Creación de la nueva tabla con el schema correcto
+  - Reset de contadores de importación
+  - Actualización automática de la URL de API
+- **Los datos antiguos se eliminan**. Después de actualizar, ejecutar una nueva importación desde el dashboard.
+
+**Módulos actualizados:**
+- **Database**: Nuevo schema con 22 campos + índices optimizados
+- **Importer**: Nueva URL + WHERE clause con campos actualizados
+- **Visualizer**: Todos los ejemplos y placeholders actualizados
+- **Filter**: Default URL field → `url_contrato`, default order → `fecha_de_firma_del_contrato`
+- **REST API**: Todos los endpoints con nuevos nombres de columna
+- **CLI**: Comando `stats` actualizado
+- **Dashboard**: Queries de año usan `YEAR(fecha_de_firma_del_contrato)`
+- **Records Page**: Filtros y columnas de tabla con nuevos campos
+- **Admin Import**: Modal de detalles con nueva estructura
 
 ### v4.2.0 (2026-03-22)
 
@@ -116,7 +176,7 @@ wp secop truncate --yes                            # Limpiar datos
 - **Módulo de Filtros**: Nuevo submenu "Filtros" con CPT dedicado para crear filtros de búsqueda insertables via shortcode `[secop_filter id="123"]`
   - Campos configurables: input, select, rango y checkbox
   - Resultados en lista con columnas personalizables
-  - Icono de enlace al proceso SECOP (urlproceso) al final de cada fila, abre en nueva ventana
+  - Icono de enlace al proceso SECOP (url_contrato) al final de cada fila, abre en nueva ventana
   - Paginación, ordenamiento y rate limiting
 - **3 nuevos tipos de gráficas**: Árbol (Tree), Burbujas (Pack), Red (Network) — basados en [d3plus-hierarchy](https://github.com/d3plus/d3plus-hierarchy)
 - Soporte para librería **d3plus-hierarchy** vía CDN con fallback local

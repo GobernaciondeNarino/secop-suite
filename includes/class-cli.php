@@ -84,11 +84,11 @@ final class Cli
         \WP_CLI::log("Última importación: {$last_import}");
 
         $by_year = $wpdb->get_results(
-            "SELECT anno_bpin, COUNT(*) AS count, SUM(valor_del_contrato) AS total
+            "SELECT YEAR(fecha_de_firma_del_contrato) AS anno, COUNT(*) AS count, SUM(valor_contrato) AS total
              FROM {$table}
-             WHERE anno_bpin IS NOT NULL
-             GROUP BY anno_bpin
-             ORDER BY anno_bpin DESC"
+             WHERE fecha_de_firma_del_contrato IS NOT NULL
+             GROUP BY YEAR(fecha_de_firma_del_contrato)
+             ORDER BY anno DESC"
         );
 
         if ($by_year) {
@@ -96,7 +96,7 @@ final class Cli
             foreach ($by_year as $row) {
                 \WP_CLI::log(sprintf(
                     '  %s: %s contratos ($%s)',
-                    $row->anno_bpin,
+                    $row->anno,
                     number_format((float) $row->count),
                     number_format((float) $row->total, 2)
                 ));

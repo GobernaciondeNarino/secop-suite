@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
 $filter_title = get_the_title($filter_id);
 $fields = $config['fields'] ?? [];
 $show_url_link = !empty($config['show_url_link']);
-$url_field = $config['url_field'] ?? 'urlproceso';
+$url_field = $config['url_field'] ?? 'url_contrato';
 $result_columns = $config['result_columns'] ?? [];
 ?>
 

@@ -127,7 +127,7 @@ if (!defined('ABSPATH')) {
                     $pct = $max_count > 0 ? ($row->count / $max_count) * 100 : 0;
                 ?>
                 <div class="ss-year-bar-row">
-                    <span class="ss-year-label"><?php echo esc_html($row->anno_bpin); ?></span>
+                    <span class="ss-year-label"><?php echo esc_html($row->anno); ?></span>
                     <div class="ss-year-bar-track">
                         <div class="ss-year-bar-fill" style="width: <?php echo esc_attr($pct); ?>%;"></div>
                     </div>

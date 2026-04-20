@@ -164,7 +164,7 @@ $default_colors = '#844e80,#ff7300,#ffc53b,#3eba6a,#0080c3,#e74c3c,#9b59b6,#1abc
                     <select name="ss_y_field" id="ss_y_field" class="regular-text ss-column-select">
                         <option value=""><?php _e('-- Seleccionar campo --', 'secop-suite'); ?></option>
                     </select>
-                    <p class="description"><?php _e('Campo numérico para el eje Y (ej: valor_del_contrato)', 'secop-suite'); ?></p>
+                    <p class="description"><?php _e('Campo numérico para el eje Y (ej: valor_contrato)', 'secop-suite'); ?></p>
                 </td>
             </tr>
 
@@ -565,7 +565,7 @@ $default_colors = '#844e80,#ff7300,#ffc53b,#3eba6a,#0080c3,#e74c3c,#9b59b6,#1abc
                                   id="ss_custom_query"
                                   class="large-text code"
                                   rows="8"
-                                  placeholder="SELECT YEAR(fecha_de_firma) AS x_value, modalidad_de_contratacion AS group_value, SUM(valor_del_contrato) AS y_value FROM wp_secop_contracts GROUP BY x_value, group_value"><?php echo esc_textarea($config['custom_query'] ?? ''); ?></textarea>
+                                  placeholder="SELECT YEAR(fecha_de_firma_del_contrato) AS x_value, modalidad_de_contratacion AS group_value, SUM(valor_contrato) AS y_value FROM wp_secop_contracts GROUP BY x_value, group_value"><?php echo esc_textarea($config['custom_query'] ?? ''); ?></textarea>
                     </td>
                 </tr>
             </table>
