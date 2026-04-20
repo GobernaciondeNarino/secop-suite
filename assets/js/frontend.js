@@ -142,9 +142,10 @@
             const numberFormat = config.numberFormat || 'colombiano';
             const isMultiY = config.multiY || false;
 
-            // Prepare data
+            // Prepare data — force x to string so d3plus won't parse years as dates
             const chartData = this.data.map(function(d) {
-                return { x: d.x_value, y: parseFloat(d.y_value) || 0, group: d.group_value || d.x_value };
+                var xVal = (d.x_value !== null && d.x_value !== undefined) ? String(d.x_value) : '';
+                return { x: xVal, y: parseFloat(d.y_value) || 0, group: d.group_value || xVal };
             });
 
             if (isMultiY) config.showLegend = true;
@@ -163,6 +164,8 @@
                 tickFormat: function(d) { return NumberFormatter.format(d, numberFormat); }
             };
             const showLegend = config.showLegend || false;
+            const legendPosition = config.legendPosition || 'bottom';
+            const legendMode = config.legendMode || 'text';
 
             try {
                 this.chart = this._createChart(this.chartType, chartData, renderTarget, colorScale, tooltipConfig, yConfig, showLegend, config);
@@ -173,6 +176,13 @@
             }
 
             if (this.chart) {
+                // Apply legend position and mode
+                if (showLegend && typeof this.chart.legendPosition === 'function') {
+                    this.chart.legendPosition(legendPosition);
+                }
+                if (showLegend && legendMode === 'icon' && typeof this.chart.legendConfig === 'function') {
+                    this.chart.legendConfig({ label: function() { return ''; } });
+                }
                 this.chart.render();
                 this._waitForRender(renderTarget);
             }

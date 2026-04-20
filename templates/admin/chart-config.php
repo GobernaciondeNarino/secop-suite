@@ -457,19 +457,46 @@ $default_colors = '#844e80,#ff7300,#ffc53b,#3eba6a,#0080c3,#e74c3c,#9b59b6,#1abc
             </tr>
 
             <tr>
-                <th><?php _e('Opciones de Visualización', 'secop-suite'); ?></th>
+                <th><?php _e('Leyenda', 'secop-suite'); ?></th>
                 <td>
                     <label>
-                        <input type="checkbox" 
-                               name="ss_show_legend" 
+                        <input type="checkbox"
+                               name="ss_show_legend"
+                               id="ss_show_legend_check"
                                value="1"
                                <?php checked(!empty($config['show_legend'])); ?> />
                         <?php _e('Mostrar leyenda', 'secop-suite'); ?>
                     </label>
-                    <br>
+
+                    <div class="ss-legend-options" style="<?php echo empty($config['show_legend']) ? 'display:none;' : ''; ?> margin-top:10px; padding:10px; background:#f6f7f7; border-radius:4px;">
+                        <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                            <div>
+                                <label style="font-weight:600; font-size:12px; display:block; margin-bottom:4px;"><?php _e('Modo', 'secop-suite'); ?></label>
+                                <select name="ss_legend_mode" id="ss_legend_mode" style="min-width:150px;">
+                                    <option value="text" <?php selected($config['legend_mode'] ?? 'text', 'text'); ?>><?php _e('Texto + Icono', 'secop-suite'); ?></option>
+                                    <option value="icon" <?php selected($config['legend_mode'] ?? 'text', 'icon'); ?>><?php _e('Solo Icono', 'secop-suite'); ?></option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-weight:600; font-size:12px; display:block; margin-bottom:4px;"><?php _e('Posición', 'secop-suite'); ?></label>
+                                <select name="ss_legend_position" id="ss_legend_position" style="min-width:150px;">
+                                    <option value="bottom" <?php selected($config['legend_position'] ?? 'bottom', 'bottom'); ?>><?php _e('Abajo', 'secop-suite'); ?></option>
+                                    <option value="left" <?php selected($config['legend_position'] ?? 'bottom', 'left'); ?>><?php _e('Izquierda', 'secop-suite'); ?></option>
+                                    <option value="right" <?php selected($config['legend_position'] ?? 'bottom', 'right'); ?>><?php _e('Derecha', 'secop-suite'); ?></option>
+                                    <option value="top" <?php selected($config['legend_position'] ?? 'bottom', 'top'); ?>><?php _e('Arriba', 'secop-suite'); ?></option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+
+            <tr>
+                <th><?php _e('Línea de Tiempo', 'secop-suite'); ?></th>
+                <td>
                     <label>
-                        <input type="checkbox" 
-                               name="ss_show_timeline" 
+                        <input type="checkbox"
+                               name="ss_show_timeline"
                                value="1"
                                <?php checked(!empty($config['show_timeline'])); ?> />
                         <?php _e('Mostrar línea de tiempo interactiva', 'secop-suite'); ?>

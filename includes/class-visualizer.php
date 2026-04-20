@@ -167,6 +167,8 @@ final class Visualizer
             'order_dir'        => sanitize_text_field($_POST['ss_order_dir'] ?? 'DESC'),
             'colors'           => $this->sanitize_colors($_POST['ss_colors'] ?? ''),
             'show_legend'      => isset($_POST['ss_show_legend']),
+            'legend_mode'      => sanitize_text_field($_POST['ss_legend_mode'] ?? 'text'),
+            'legend_position'  => sanitize_text_field($_POST['ss_legend_position'] ?? 'bottom'),
             'show_timeline'    => isset($_POST['ss_show_timeline']),
             'show_toolbar'     => isset($_POST['ss_show_toolbar']),
             'toolbar_options'  => array_map('sanitize_text_field', $_POST['ss_toolbar_options'] ?? ['share', 'data', 'image', 'download']),
