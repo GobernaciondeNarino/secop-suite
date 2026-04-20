@@ -22,11 +22,11 @@ if (!defined('ABSPATH')) {
             
             <div class="ss-filter-group">
                 <label for="search"><?php esc_html_e('Buscar', 'secop-suite'); ?></label>
-                <input type="text" 
-                       id="search" 
-                       name="search" 
-                       value="<?php echo esc_attr($_GET['search'] ?? ''); ?>" 
-                       placeholder="<?php esc_attr_e('Proveedor, descripción, referencia...', 'secop-suite'); ?>" />
+                <input type="text"
+                       id="search"
+                       name="search"
+                       value="<?php echo esc_attr($_GET['search'] ?? ''); ?>"
+                       placeholder="<?php esc_attr_e('Contratista, objeto, número...', 'secop-suite'); ?>" />
             </div>
 
             <div class="ss-filter-group">
@@ -97,15 +97,15 @@ if (!defined('ABSPATH')) {
                     <?php foreach ($records as $record): ?>
                         <tr>
                             <td class="column-referencia">
-                                <strong><?php echo esc_html($record->referencia_del_contrato); ?></strong>
+                                <strong><?php echo esc_html($record->numero_del_contrato); ?></strong>
                                 <div class="row-actions">
-                                    <span class="id"><?php echo esc_html($record->id_contrato); ?></span>
+                                    <span class="id"><?php echo esc_html($record->numero_de_proceso); ?></span>
                                 </div>
                             </td>
                             <td class="column-proveedor">
-                                <span class="ss-proveedor-name"><?php echo esc_html($record->proveedor_adjudicado); ?></span>
+                                <span class="ss-proveedor-name"><?php echo esc_html($record->nom_raz_social_contratista); ?></span>
                                 <div class="row-actions">
-                                    <span class="doc"><?php echo esc_html($record->tipodocproveedor); ?>: <?php echo esc_html($record->documento_proveedor); ?></span>
+                                    <span class="doc"><?php echo esc_html($record->tipo_documento_proveedor); ?>: <?php echo esc_html($record->documento_proveedor); ?></span>
                                 </div>
                             </td>
                             <td class="column-tipo">
@@ -115,36 +115,37 @@ if (!defined('ABSPATH')) {
                                 </div>
                             </td>
                             <td class="column-valor">
-                                <strong>$<?php echo esc_html(number_format($record->valor_del_contrato, 0, ',', '.')); ?></strong>
+                                <strong>$<?php echo esc_html(number_format((float)$record->valor_contrato, 0, ',', '.')); ?></strong>
                             </td>
                             <td class="column-fecha">
-                                <?php echo $record->fecha_de_firma ? esc_html(date_i18n('d/m/Y', strtotime($record->fecha_de_firma))) : '-'; ?>
+                                <?php echo $record->fecha_de_firma_del_contrato ? esc_html(date_i18n('d/m/Y', strtotime($record->fecha_de_firma_del_contrato))) : '-'; ?>
                             </td>
                             <td class="column-estado">
                                 <?php
                                 $estado_class = 'ss-estado-default';
-                                if (stripos($record->estado_contrato, 'aprobado') !== false) {
+                                $estado_value = $record->estado_del_proceso ?? '';
+                                if (stripos($estado_value, 'aprobado') !== false || stripos($estado_value, 'activo') !== false) {
                                     $estado_class = 'ss-estado-aprobado';
-                                } elseif (stripos($record->estado_contrato, 'liquidado') !== false) {
+                                } elseif (stripos($estado_value, 'liquidado') !== false) {
                                     $estado_class = 'ss-estado-liquidado';
-                                } elseif (stripos($record->estado_contrato, 'terminado') !== false) {
+                                } elseif (stripos($estado_value, 'terminado') !== false || stripos($estado_value, 'modificado') !== false) {
                                     $estado_class = 'ss-estado-terminado';
                                 }
                                 ?>
                                 <span class="ss-estado <?php echo esc_attr($estado_class); ?>">
-                                    <?php echo esc_html($record->estado_contrato); ?>
+                                    <?php echo esc_html($estado_value); ?>
                                 </span>
                             </td>
                             <td class="column-acciones">
-                                <button type="button" 
-                                        class="button button-small ss-view-details" 
+                                <button type="button"
+                                        class="button button-small ss-view-details"
                                         data-id="<?php echo esc_attr($record->id); ?>"
                                         title="<?php esc_attr_e('Ver detalles', 'secop-suite'); ?>">
                                     <span class="dashicons dashicons-visibility"></span>
                                 </button>
-                                <?php if (!empty($record->urlproceso)): ?>
-                                    <a href="<?php echo esc_url($record->urlproceso); ?>" 
-                                       target="_blank" 
+                                <?php if (!empty($record->url_contrato)): ?>
+                                    <a href="<?php echo esc_url($record->url_contrato); ?>"
+                                       target="_blank"
                                        class="button button-small"
                                        title="<?php esc_attr_e('Ver en SECOP', 'secop-suite'); ?>">
                                         <span class="dashicons dashicons-external"></span>

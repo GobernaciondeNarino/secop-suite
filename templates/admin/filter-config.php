@@ -152,7 +152,7 @@ if (!defined('ABSPATH')) {
                     <label for="ss_filter_order_by"><?php _e('Ordenar Por', 'secop-suite'); ?></label>
                 </th>
                 <td>
-                    <select name="ss_filter_order_by" id="ss_filter_order_by" class="ss-filter-column-select" data-saved-value="<?php echo esc_attr($config['order_by'] ?? 'fecha_de_firma'); ?>">
+                    <select name="ss_filter_order_by" id="ss_filter_order_by" class="ss-filter-column-select" data-saved-value="<?php echo esc_attr($config['order_by'] ?? 'fecha_de_firma_del_contrato'); ?>">
                         <option value=""><?php _e('-- Seleccionar --', 'secop-suite'); ?></option>
                     </select>
                     <select name="ss_filter_order_dir" id="ss_filter_order_dir">
@@ -168,12 +168,12 @@ if (!defined('ABSPATH')) {
                     <label>
                         <input type="checkbox" name="ss_show_url_link" value="1"
                                <?php checked(!empty($config['show_url_link'])); ?> />
-                        <?php _e('Mostrar icono de enlace al proceso (urlproceso) al final de cada fila', 'secop-suite'); ?>
+                        <?php _e('Mostrar icono de enlace al proceso (url_contrato) al final de cada fila', 'secop-suite'); ?>
                     </label>
                     <br><br>
                     <label>
                         <?php _e('Campo URL:', 'secop-suite'); ?>
-                        <select name="ss_url_field" class="ss-filter-column-select" data-saved-value="<?php echo esc_attr($config['url_field'] ?? 'urlproceso'); ?>">
+                        <select name="ss_url_field" class="ss-filter-column-select" data-saved-value="<?php echo esc_attr($config['url_field'] ?? 'url_contrato'); ?>">
                             <option value=""><?php _e('-- Seleccionar --', 'secop-suite'); ?></option>
                         </select>
                     </label>

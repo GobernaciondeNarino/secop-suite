@@ -3,7 +3,7 @@
  * Plugin Name: SECOP Suite
  * Plugin URI: https://github.com/GobernaciondeNarino/secop-suite
  * Description: Plugin integral para la importación, almacenamiento y visualización interactiva de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia. Combina importación automatizada desde datos.gov.co con gráficas D3plus configurables mediante shortcodes.
- * Version: 4.2.0
+ * Version: 5.0.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Jonnathan Bucheli Galindo - Gobernación de Nariño
@@ -25,8 +25,8 @@ if (!defined('ABSPATH')) {
 }
 
 // ─── Constantes ────────────────────────────────────────────────
-define('SECOP_SUITE_VERSION', '4.2.0');
-define('SECOP_SUITE_DB_VERSION', '4.2.0');
+define('SECOP_SUITE_VERSION', '5.0.0');
+define('SECOP_SUITE_DB_VERSION', '5.0.0');
 define('SECOP_SUITE_DIR', plugin_dir_path(__FILE__));
 define('SECOP_SUITE_URL', plugin_dir_url(__FILE__));
 define('SECOP_SUITE_BASENAME', plugin_basename(__FILE__));
@@ -135,10 +135,15 @@ final class Plugin
         $current_version = get_option(SECOP_SUITE_PREFIX . 'db_version', '0');
 
         if (version_compare($current_version, SECOP_SUITE_DB_VERSION, '<')) {
-            // Re-crear tabla (dbDelta es idempotente, agrega columnas faltantes)
-            $this->database->create_table();
+            // v5.0.0 cambio de API (rpmr-utcd): migración destructiva de schema
+            if (version_compare($current_version, '5.0.0', '<') && $current_version !== '0') {
+                $this->database->migrate_to_new_schema();
+                // Actualizar URL de API por defecto
+                update_option(SECOP_SUITE_PREFIX . 'api_url', 'https://www.datos.gov.co/resource/rpmr-utcd.json');
+            } else {
+                $this->database->create_table();
+            }
 
-            // Hook para extensiones
             do_action('secop_suite_after_upgrade', $current_version, SECOP_SUITE_DB_VERSION);
 
             update_option(SECOP_SUITE_PREFIX . 'db_version', SECOP_SUITE_DB_VERSION);
@@ -155,7 +160,7 @@ final class Plugin
     private function set_default_options(): void
     {
         $defaults = [
-            'api_url'               => 'https://www.datos.gov.co/resource/jbjy-vk9h.json',
+            'api_url'               => 'https://www.datos.gov.co/resource/rpmr-utcd.json',
             'nit_entidad'           => '800103923',
             'fecha_inicio'          => '2016-01-01',
             'fecha_fin'             => date('Y-12-31'),
@@ -300,8 +305,8 @@ final class Plugin
         $total_charts  = (int) wp_count_posts('secop_chart')->publish + (int) wp_count_posts('secop_chart')->draft;
         $total_filters = (int) wp_count_posts('secop_filter')->publish + (int) wp_count_posts('secop_filter')->draft;
 
-        $by_year = $wpdb->get_results("SELECT anno_bpin, COUNT(*) AS count, SUM(valor_del_contrato) AS total_value FROM {$table_name} WHERE anno_bpin IS NOT NULL GROUP BY anno_bpin ORDER BY anno_bpin DESC LIMIT 10");
-        $by_type = $wpdb->get_results("SELECT tipo_de_contrato, COUNT(*) AS count, SUM(valor_del_contrato) AS total_value FROM {$table_name} WHERE tipo_de_contrato IS NOT NULL GROUP BY tipo_de_contrato ORDER BY count DESC LIMIT 10");
+        $by_year = $wpdb->get_results("SELECT YEAR(fecha_de_firma_del_contrato) AS anno, COUNT(*) AS count, SUM(valor_contrato) AS total_value FROM {$table_name} WHERE fecha_de_firma_del_contrato IS NOT NULL GROUP BY YEAR(fecha_de_firma_del_contrato) ORDER BY anno DESC LIMIT 10");
+        $by_type = $wpdb->get_results("SELECT tipo_de_contrato, COUNT(*) AS count, SUM(valor_contrato) AS total_value FROM {$table_name} WHERE tipo_de_contrato IS NOT NULL GROUP BY tipo_de_contrato ORDER BY count DESC LIMIT 10");
 
         include SECOP_SUITE_DIR . 'templates/admin/dashboard-page.php';
     }
@@ -342,17 +347,17 @@ final class Plugin
 
         if (!empty($_GET['search'])) {
             $search          = '%' . $wpdb->esc_like(sanitize_text_field($_GET['search'])) . '%';
-            $where_clauses[] = '(proveedor_adjudicado LIKE %s OR descripcion_del_proceso LIKE %s OR referencia_del_contrato LIKE %s)';
+            $where_clauses[] = '(nom_raz_social_contratista LIKE %s OR objeto_del_proceso LIKE %s OR numero_del_contrato LIKE %s)';
             array_push($where_values, $search, $search, $search);
         }
 
         if (!empty($_GET['anno'])) {
-            $where_clauses[] = 'anno_bpin = %s';
+            $where_clauses[] = 'YEAR(fecha_de_firma_del_contrato) = %s';
             $where_values[]  = sanitize_text_field($_GET['anno']);
         }
 
         if (!empty($_GET['estado'])) {
-            $where_clauses[] = 'estado_contrato = %s';
+            $where_clauses[] = 'estado_del_proceso = %s';
             $where_values[]  = sanitize_text_field($_GET['estado']);
         }
 
@@ -361,12 +366,12 @@ final class Plugin
         $where_values[] = $offset;
 
         $records = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$table_name} WHERE {$where_sql} ORDER BY fecha_de_firma DESC LIMIT %d OFFSET %d",
+            "SELECT * FROM {$table_name} WHERE {$where_sql} ORDER BY fecha_de_firma_del_contrato DESC LIMIT %d OFFSET %d",
             $where_values
         ));
 
-        $years   = $wpdb->get_col("SELECT DISTINCT anno_bpin FROM {$table_name} WHERE anno_bpin IS NOT NULL ORDER BY anno_bpin DESC");
-        $estados = $wpdb->get_col("SELECT DISTINCT estado_contrato FROM {$table_name} WHERE estado_contrato IS NOT NULL ORDER BY estado_contrato");
+        $years   = $wpdb->get_col("SELECT DISTINCT YEAR(fecha_de_firma_del_contrato) AS y FROM {$table_name} WHERE fecha_de_firma_del_contrato IS NOT NULL ORDER BY y DESC");
+        $estados = $wpdb->get_col("SELECT DISTINCT estado_del_proceso FROM {$table_name} WHERE estado_del_proceso IS NOT NULL ORDER BY estado_del_proceso");
 
         include SECOP_SUITE_DIR . 'templates/admin/records-page.php';
     }

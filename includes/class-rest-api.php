@@ -98,28 +98,28 @@ final class Rest_Api
         $values = [];
 
         if ($anno = $request->get_param('anno')) {
-            $where[]  = 'anno_bpin = %s';
+            $where[]  = 'YEAR(fecha_de_firma_del_contrato) = %s';
             $values[] = $anno;
         }
         if ($estado = $request->get_param('estado')) {
-            $where[]  = 'estado_contrato = %s';
+            $where[]  = 'estado_del_proceso = %s';
             $values[] = $estado;
         }
         if ($search = $request->get_param('search')) {
             $like     = '%' . $wpdb->esc_like($search) . '%';
-            $where[]  = '(proveedor_adjudicado LIKE %s OR descripcion_del_proceso LIKE %s)';
+            $where[]  = '(nom_raz_social_contratista LIKE %s OR objeto_del_proceso LIKE %s)';
             $values[] = $like;
             $values[] = $like;
         }
         if ($fecha_desde = $request->get_param('fecha_desde')) {
             if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_desde)) {
-                $where[]  = 'fecha_de_firma >= %s';
+                $where[]  = 'fecha_de_firma_del_contrato >= %s';
                 $values[] = $fecha_desde . ' 00:00:00';
             }
         }
         if ($fecha_hasta = $request->get_param('fecha_hasta')) {
             if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_hasta)) {
-                $where[]  = 'fecha_de_firma <= %s';
+                $where[]  = 'fecha_de_firma_del_contrato <= %s';
                 $values[] = $fecha_hasta . ' 23:59:59';
             }
         }
@@ -129,7 +129,7 @@ final class Rest_Api
         $values[]  = $offset;
 
         $contracts = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY fecha_de_firma DESC LIMIT %d OFFSET %d",
+            "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY fecha_de_firma_del_contrato DESC LIMIT %d OFFSET %d",
             $values
         ));
 
@@ -179,9 +179,9 @@ final class Rest_Api
         return new \WP_REST_Response([
             'total_contracts' => $this->db->get_total_records(),
             'total_value'     => $this->db->get_total_value(),
-            'by_year'         => $wpdb->get_results("SELECT anno_bpin, COUNT(*) AS count, SUM(valor_del_contrato) AS total_value FROM {$table} WHERE anno_bpin IS NOT NULL GROUP BY anno_bpin ORDER BY anno_bpin DESC"),
-            'by_status'       => $wpdb->get_results("SELECT estado_contrato, COUNT(*) AS count FROM {$table} WHERE estado_contrato IS NOT NULL GROUP BY estado_contrato"),
-            'by_type'         => $wpdb->get_results("SELECT tipo_de_contrato, COUNT(*) AS count, SUM(valor_del_contrato) AS total_value FROM {$table} WHERE tipo_de_contrato IS NOT NULL GROUP BY tipo_de_contrato ORDER BY count DESC LIMIT 10"),
+            'by_year'         => $wpdb->get_results("SELECT YEAR(fecha_de_firma_del_contrato) AS anno, COUNT(*) AS count, SUM(valor_contrato) AS total_value FROM {$table} WHERE fecha_de_firma_del_contrato IS NOT NULL GROUP BY YEAR(fecha_de_firma_del_contrato) ORDER BY anno DESC"),
+            'by_status'       => $wpdb->get_results("SELECT estado_del_proceso AS estado, COUNT(*) AS count FROM {$table} WHERE estado_del_proceso IS NOT NULL GROUP BY estado_del_proceso"),
+            'by_type'         => $wpdb->get_results("SELECT tipo_de_contrato, COUNT(*) AS count, SUM(valor_contrato) AS total_value FROM {$table} WHERE tipo_de_contrato IS NOT NULL GROUP BY tipo_de_contrato ORDER BY count DESC LIMIT 10"),
             'last_import'     => get_option(SECOP_SUITE_PREFIX . 'last_import'),
         ]);
     }

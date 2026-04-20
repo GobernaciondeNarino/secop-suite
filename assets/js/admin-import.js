@@ -305,51 +305,49 @@
                 '<div class="ss-detail-section">' +
                     '<h3>Información General</h3>' +
                     '<table class="ss-detail-table">' +
-                        '<tr><th scope="row">ID Contrato</th><td>' + e(contract.id_contrato) + '</td></tr>' +
-                        '<tr><th scope="row">Referencia</th><td>' + e(contract.referencia_del_contrato) + '</td></tr>' +
-                        '<tr><th scope="row">Proceso de Compra</th><td>' + e(contract.proceso_de_compra) + '</td></tr>' +
-                        '<tr><th scope="row">Estado</th><td><span class="ss-estado">' + e(contract.estado_contrato) + '</span></td></tr>' +
+                        '<tr><th scope="row">Número Contrato</th><td>' + e(contract.numero_del_contrato) + '</td></tr>' +
+                        '<tr><th scope="row">Número Proceso</th><td>' + e(contract.numero_de_proceso) + '</td></tr>' +
+                        '<tr><th scope="row">Estado</th><td><span class="ss-estado">' + e(contract.estado_del_proceso) + '</span></td></tr>' +
                         '<tr><th scope="row">Tipo de Contrato</th><td>' + e(contract.tipo_de_contrato) + '</td></tr>' +
                         '<tr><th scope="row">Modalidad</th><td>' + e(contract.modalidad_de_contratacion) + '</td></tr>' +
-                        '<tr><th scope="row">Justificación</th><td>' + e(contract.justificacion_modalidad_de) + '</td></tr>' +
+                        '<tr><th scope="row">Origen</th><td>' + e(contract.origen) + '</td></tr>' +
                     '</table>' +
                 '</div>' +
                 '<div class="ss-detail-section">' +
-                    '<h3>Proveedor</h3>' +
+                    '<h3>Entidad</h3>' +
                     '<table class="ss-detail-table">' +
-                        '<tr><th scope="row">Nombre</th><td>' + e(contract.proveedor_adjudicado) + '</td></tr>' +
-                        '<tr><th scope="row">Documento</th><td>' + e(contract.tipodocproveedor) + ' ' + e(contract.documento_proveedor) + '</td></tr>' +
-                        '<tr><th scope="row">Es PYME</th><td>' + e(contract.es_pyme) + '</td></tr>' +
-                        '<tr><th scope="row">Es Grupo</th><td>' + e(contract.es_grupo) + '</td></tr>' +
+                        '<tr><th scope="row">Nombre</th><td>' + e(contract.nombre_de_la_entidad) + '</td></tr>' +
+                        '<tr><th scope="row">NIT</th><td>' + e(contract.nit_de_la_entidad) + '</td></tr>' +
+                        '<tr><th scope="row">Nivel</th><td>' + e(contract.nivel_entidad) + '</td></tr>' +
+                        '<tr><th scope="row">Departamento</th><td>' + e(contract.departamento_entidad) + '</td></tr>' +
+                        '<tr><th scope="row">Municipio</th><td>' + e(contract.municipio_entidad) + '</td></tr>' +
                     '</table>' +
                 '</div>' +
                 '<div class="ss-detail-section">' +
-                    '<h3>Fechas</h3>' +
+                    '<h3>Contratista</h3>' +
                     '<table class="ss-detail-table">' +
-                        '<tr><th scope="row">Fecha de Firma</th><td>' + formatDate(contract.fecha_de_firma) + '</td></tr>' +
-                        '<tr><th scope="row">Fecha Inicio</th><td>' + formatDate(contract.fecha_de_inicio_del_contrato) + '</td></tr>' +
-                        '<tr><th scope="row">Fecha Fin</th><td>' + formatDate(contract.fecha_de_fin_del_contrato) + '</td></tr>' +
-                        '<tr><th scope="row">Días Adicionados</th><td>' + e(contract.dias_adicionados || '0') + '</td></tr>' +
+                        '<tr><th scope="row">Nombre / Razón Social</th><td>' + e(contract.nom_raz_social_contratista) + '</td></tr>' +
+                        '<tr><th scope="row">Documento</th><td>' + e(contract.tipo_documento_proveedor) + ' ' + e(contract.documento_proveedor) + '</td></tr>' +
                     '</table>' +
                 '</div>' +
                 '<div class="ss-detail-section">' +
-                    '<h3>Valores</h3>' +
+                    '<h3>Fechas y Valor</h3>' +
                     '<table class="ss-detail-table">' +
-                        '<tr><th scope="row">Valor del Contrato</th><td><strong>' + formatCurrency(contract.valor_del_contrato) + '</strong></td></tr>' +
-                        '<tr><th scope="row">Valor Pagado</th><td>' + formatCurrency(contract.valor_pagado) + '</td></tr>' +
-                        '<tr><th scope="row">Valor Facturado</th><td>' + formatCurrency(contract.valor_facturado) + '</td></tr>' +
-                        '<tr><th scope="row">Valor Pendiente de Pago</th><td>' + formatCurrency(contract.valor_pendiente_de_pago) + '</td></tr>' +
-                        '<tr><th scope="row">Valor Pendiente Ejecución</th><td>' + formatCurrency(contract.valor_pendiente_de_ejecucion) + '</td></tr>' +
+                        '<tr><th scope="row">Fecha de Firma</th><td>' + formatDate(contract.fecha_de_firma_del_contrato) + '</td></tr>' +
+                        '<tr><th scope="row">Inicio Ejecución</th><td>' + formatDate(contract.fecha_inicio_ejecucion) + '</td></tr>' +
+                        '<tr><th scope="row">Fin Ejecución</th><td>' + formatDate(contract.fecha_fin_ejecucion) + '</td></tr>' +
+                        '<tr><th scope="row">Valor del Contrato</th><td><strong>' + formatCurrency(contract.valor_contrato) + '</strong></td></tr>' +
                     '</table>' +
                 '</div>' +
                 '<div class="ss-detail-section ss-detail-full">' +
-                    '<h3>Descripción</h3>' +
-                    '<p>' + e(contract.descripcion_del_proceso || 'Sin descripción') + '</p>' +
+                    '<h3>Objeto</h3>' +
+                    '<p><strong>Objeto a contratar:</strong> ' + e(contract.objeto_a_contratar || '-') + '</p>' +
+                    '<p><strong>Objeto del proceso:</strong> ' + e(contract.objeto_del_proceso || '-') + '</p>' +
                 '</div>' +
-                (contract.urlproceso ?
+                (contract.url_contrato ?
                     '<div class="ss-detail-section ss-detail-full">' +
                         '<h3>Enlace SECOP</h3>' +
-                        '<a href="' + e(contract.urlproceso) + '" target="_blank" rel="noopener noreferrer" class="button button-primary">' +
+                        '<a href="' + e(contract.url_contrato) + '" target="_blank" rel="noopener noreferrer" class="button button-primary">' +
                             'Ver en SECOP <span class="dashicons dashicons-external"></span>' +
                         '</a>' +
                     '</div>'

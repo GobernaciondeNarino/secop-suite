@@ -4,7 +4,7 @@
  *
  * Permite crear filtros configurables (input, select, rango, checkbox)
  * que se insertan via shortcode y muestran resultados en lista con
- * enlace al proceso (urlproceso).
+ * enlace al proceso (url_contrato).
  *
  * @package SecopSuite
  */
@@ -148,10 +148,10 @@ final class Filter
             'fields'          => $this->sanitize_filter_fields($_POST['ss_filter_fields'] ?? []),
             'result_columns'  => array_map('sanitize_text_field', $_POST['ss_result_columns'] ?? []),
             'results_per_page'=> intval($_POST['ss_results_per_page'] ?? 20),
-            'order_by'        => sanitize_text_field($_POST['ss_filter_order_by'] ?? 'fecha_de_firma'),
+            'order_by'        => sanitize_text_field($_POST['ss_filter_order_by'] ?? 'fecha_de_firma_del_contrato'),
             'order_dir'       => in_array($_POST['ss_filter_order_dir'] ?? 'DESC', ['ASC', 'DESC'], true) ? $_POST['ss_filter_order_dir'] : 'DESC',
             'show_url_link'   => isset($_POST['ss_show_url_link']),
-            'url_field'       => sanitize_text_field($_POST['ss_url_field'] ?? 'urlproceso'),
+            'url_field'       => sanitize_text_field($_POST['ss_url_field'] ?? 'url_contrato'),
         ];
 
         update_post_meta($post_id, '_secop_filter_config', $config);
@@ -382,7 +382,7 @@ final class Filter
         $select_sql = implode(', ', array_map(fn($c) => "`{$c}`", $select_columns));
 
         // Order
-        $order_by = $config['order_by'] ?? 'fecha_de_firma';
+        $order_by = $config['order_by'] ?? 'fecha_de_firma_del_contrato';
         if (!isset($valid_columns[$order_by])) {
             $order_by = 'id';
         }

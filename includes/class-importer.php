@@ -175,7 +175,7 @@ final class Importer
         do_action('secop_suite_before_import', $api_url, $nit);
 
         $where_clause = sprintf(
-            'nit_entidad="%s" AND fecha_de_firma >= "%sT00:00:00.000" AND fecha_de_firma <= "%sT23:59:59.999"',
+            'nit_de_la_entidad="%s" AND fecha_de_firma_del_contrato >= "%sT00:00:00.000" AND fecha_de_firma_del_contrato <= "%sT23:59:59.999"',
             $nit,
             $fecha_inicio,
             $fecha_fin
@@ -208,7 +208,7 @@ final class Importer
                 '$where'  => $where_clause,
                 '$limit'  => self::API_LIMIT,
                 '$offset' => $offset,
-                '$order'  => 'fecha_de_firma DESC',
+                '$order'  => 'fecha_de_firma_del_contrato DESC',
             ], $api_url);
 
             Logger::debug("Batch #{$batch_number}: offset {$offset}");
