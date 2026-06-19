@@ -82,6 +82,19 @@ final class Rest_Api
             'callback'            => [$this, 'get_chart_csv'],
             'permission_callback' => '__return_true',
         ]);
+
+        // ── Exportación de datos ───────────────────────────────
+        register_rest_route(self::NAMESPACE, '/export/csv', [
+            'methods'             => 'GET',
+            'callback'            => [$this, 'export_csv'],
+            'permission_callback' => '__return_true',
+        ]);
+
+        register_rest_route(self::NAMESPACE, '/export/txt', [
+            'methods'             => 'GET',
+            'callback'            => [$this, 'export_txt'],
+            'permission_callback' => '__return_true',
+        ]);
     }
 
     // ── Contratos ──────────────────────────────────────────────
@@ -237,6 +250,81 @@ final class Rest_Api
             fputcsv($output, $row);
         }
         fclose($output);
+        exit;
+    }
+
+    // ── Exportación completa de datos ──────────────────────────
+
+    public function export_csv(\WP_REST_Request $request): void
+    {
+        global $wpdb;
+        $table = $this->db->get_table_name();
+        $data = $wpdb->get_results("SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC", ARRAY_A);
+
+        if (empty($data)) {
+            status_header(404);
+            echo 'No hay datos para exportar';
+            exit;
+        }
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="secop-contratos-' . date('Y-m-d') . '.csv"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('X-Content-Type-Options', 'nosniff');
+
+        $output = fopen('php://output', 'w');
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+        fputcsv($output, array_keys($data[0]));
+        foreach ($data as $row) {
+            fputcsv($output, $row);
+        }
+        fclose($output);
+        exit;
+    }
+
+    public function export_txt(\WP_REST_Request $request): void
+    {
+        global $wpdb;
+        $table = $this->db->get_table_name();
+        $data = $wpdb->get_results("SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC", ARRAY_A);
+
+        if (empty($data)) {
+            status_header(404);
+            echo 'No hay datos para exportar';
+            exit;
+        }
+
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Content-Disposition: attachment; filename="secop-contratos-' . date('Y-m-d') . '.txt"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('X-Content-Type-Options', 'nosniff');
+
+        $columns = array_keys($data[0]);
+        $widths = [];
+        foreach ($columns as $col) {
+            $widths[$col] = max(mb_strlen($col), 15);
+        }
+
+        // Header
+        $line = '';
+        foreach ($columns as $col) {
+            $line .= str_pad($col, $widths[$col] + 2);
+        }
+        echo $line . "\n";
+        echo str_repeat('=', mb_strlen($line)) . "\n";
+
+        // Data rows
+        foreach ($data as $row) {
+            $line = '';
+            foreach ($columns as $col) {
+                $val = $row[$col] ?? '';
+                if (mb_strlen($val) > $widths[$col]) {
+                    $val = mb_substr($val, 0, $widths[$col] - 2) . '..';
+                }
+                $line .= str_pad($val, $widths[$col] + 2);
+            }
+            echo $line . "\n";
+        }
         exit;
     }
 }
