@@ -47,9 +47,10 @@ final class Visualizer
         add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_assets']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
 
-        // Shortcodes (mantener compatibilidad hacia atrás)
-        add_shortcode('sdv_chart',   [$this, 'render_chart_shortcode']);
-        add_shortcode('secop_chart', [$this, 'render_chart_shortcode']);
+        // Shortcodes
+        add_shortcode('sdv_chart',    [$this, 'render_chart_shortcode']);
+        add_shortcode('secop_chart',  [$this, 'render_chart_shortcode']);
+        add_shortcode('secop_export', [$this, 'render_export_shortcode']);
 
         // AJAX
         add_action('wp_ajax_secop_suite_get_chart_data',    [$this, 'ajax_get_chart_data']);
@@ -401,6 +402,23 @@ final class Visualizer
 
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/chart.php';
+        return ob_get_clean();
+    }
+
+    // ── Shortcode: Export ──────────────────────────────────────
+    public function render_export_shortcode(array $atts): string
+    {
+        $atts = shortcode_atts([
+            'title' => __('Datos Abiertos SECOP', 'secop-suite'),
+            'class' => '',
+        ], $atts, 'secop_export');
+
+        $total = $this->db->get_total_records();
+        $rest_url = rest_url('secop-suite/v1/');
+        $extra_class = !empty($atts['class']) ? ' ' . esc_attr($atts['class']) : '';
+
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/export.php';
         return ob_get_clean();
     }
 

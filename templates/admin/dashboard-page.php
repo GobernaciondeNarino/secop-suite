@@ -196,14 +196,47 @@ if (!defined('ABSPATH')) {
                     </div>
                 </div>
                 <div class="ss-module-card">
+                    <div class="ss-module-header" style="background: linear-gradient(135deg, #e74c3c, #f19c99);">
+                        <span class="dashicons dashicons-download"></span>
+                        <h3><?php esc_html_e('Exportar Datos', 'secop-suite'); ?></h3>
+                    </div>
+                    <div class="ss-module-body">
+                        <p><?php esc_html_e('Descarga datos en CSV, TXT o consume la API JSON en línea. Insertar en cualquier página con shortcode.', 'secop-suite'); ?></p>
+                        <div class="ss-module-shortcode"><code>[secop_export]</code></div>
+                    </div>
+                </div>
+                <div class="ss-module-card">
                     <div class="ss-module-header" style="background: linear-gradient(135deg, #dba617, #f0c040);">
                         <span class="dashicons dashicons-rest-api"></span>
                         <h3><?php esc_html_e('API REST', 'secop-suite'); ?></h3>
                     </div>
                     <div class="ss-module-body">
-                        <p><?php esc_html_e('5 endpoints REST para contratos, estadísticas y datos de gráficas con paginación y filtros.', 'secop-suite'); ?></p>
+                        <p><?php esc_html_e('7 endpoints REST para contratos, estadísticas, gráficas y exportación con paginación y filtros.', 'secop-suite'); ?></p>
                         <div class="ss-module-shortcode"><code>/wp-json/secop-suite/v1/</code></div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export Shortcode Card -->
+        <div class="ss-panel">
+            <h2><span class="dashicons dashicons-download"></span> <?php esc_html_e('Exportar Datos — Shortcode', 'secop-suite'); ?></h2>
+            <p class="description"><?php esc_html_e('Inserta este shortcode en cualquier página o entrada para mostrar botones de descarga (CSV, TXT) y enlace a la API JSON.', 'secop-suite'); ?></p>
+            <div class="ss-shortcode-box" style="margin-top:12px;">
+                <code id="ss-export-shortcode-display" style="display:block; padding:12px; background:#f6f7f7; border-radius:4px; font-size:14px;">[secop_export]</code>
+                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+                    <button type="button" class="button ss-copy-shortcode" onclick="navigator.clipboard.writeText('[secop_export]').then(function(){var b=event.target.closest('.button');b.textContent='✓ Copiado';setTimeout(function(){b.textContent='Copiar Shortcode';},1500);})">
+                        <?php esc_html_e('Copiar Shortcode', 'secop-suite'); ?>
+                    </button>
+                    <span class="description" style="display:flex; align-items:center;"><?php esc_html_e('También puedes personalizar el título:', 'secop-suite'); ?> <code style="margin-left:6px;">[secop_export title="Datos Contratos"]</code></span>
+                </div>
+            </div>
+            <div style="margin-top:16px;">
+                <h4 style="margin:0 0 8px;"><?php esc_html_e('Endpoints de descarga directa:', 'secop-suite'); ?></h4>
+                <div class="ss-api-docs">
+                    <div class="ss-api-endpoint"><code>GET /wp-json/secop-suite/v1/export/csv</code> <span class="description"><?php esc_html_e('Descargar todos los contratos en CSV', 'secop-suite'); ?></span></div>
+                    <div class="ss-api-endpoint"><code>GET /wp-json/secop-suite/v1/export/txt</code> <span class="description"><?php esc_html_e('Descargar todos los contratos en TXT', 'secop-suite'); ?></span></div>
+                    <div class="ss-api-endpoint"><code>GET /wp-json/secop-suite/v1/contracts</code> <span class="description"><?php esc_html_e('API JSON con paginación y filtros', 'secop-suite'); ?></span></div>
                 </div>
             </div>
         </div>
