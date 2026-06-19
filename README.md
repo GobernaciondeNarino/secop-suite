@@ -69,6 +69,12 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.1.0 — Módulo Seguimiento de Dependencias y Datos Abiertos
+- VIEW `dat_seguimiento_dependencias` (contratos × ejecución presupuestal por dependencia).
+- Gráficas prediseñadas + análisis autogenerados (regresión + R²), vigencia actual.
+- Shortcodes: `[secop_seguimiento]`, `[secop_dep_chart]`, `[secop_dep_analisis]`, `[secop_dep_contratos]`, `[secop_consulta]`.
+- Submenús admin: "Seguimiento Dependencias" y "Datos Abiertos".
+
 ### v5.0.0 (2026-03-23) — ⚠ BREAKING: Nueva API SECOP
 
 **Migración a nueva API del SECOP (rpmr-utcd.json):**
