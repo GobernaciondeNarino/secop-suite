@@ -3,7 +3,7 @@
  * Plugin Name: SECOP Suite
  * Plugin URI: https://github.com/GobernaciondeNarino/secop-suite
  * Description: Plugin integral para la importación, almacenamiento y visualización interactiva de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia. Combina importación automatizada desde datos.gov.co con gráficas D3plus configurables mediante shortcodes.
- * Version: 5.0.0
+ * Version: 5.1.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Jonnathan Bucheli Galindo - Gobernación de Nariño
@@ -25,8 +25,8 @@ if (!defined('ABSPATH')) {
 }
 
 // ─── Constantes ────────────────────────────────────────────────
-define('SECOP_SUITE_VERSION', '5.0.0');
-define('SECOP_SUITE_DB_VERSION', '5.0.0');
+define('SECOP_SUITE_VERSION', '5.1.0');
+define('SECOP_SUITE_DB_VERSION', '5.1.0');
 define('SECOP_SUITE_DIR', plugin_dir_path(__FILE__));
 define('SECOP_SUITE_URL', plugin_dir_url(__FILE__));
 define('SECOP_SUITE_BASENAME', plugin_basename(__FILE__));
@@ -105,6 +105,8 @@ final class Plugin
 
         // Plugin action links
         add_filter('plugin_action_links_' . SECOP_SUITE_BASENAME, [$this, 'add_action_links']);
+
+        add_action('admin_notices', [$this, 'maybe_sysman_notice']);
     }
 
     // ── Internacionalización ─────────────────────────────────────
@@ -119,6 +121,9 @@ final class Plugin
         $this->database->create_table();
         $this->set_default_options();
         $this->maybe_upgrade();
+
+        // v5.1.0: crear VIEW del módulo de seguimiento (si hay tablas Sysman).
+        $this->database->create_view();
 
         if (get_option(SECOP_SUITE_PREFIX . 'auto_update_enabled', false)) {
             $this->schedule_import();
@@ -143,6 +148,9 @@ final class Plugin
             } else {
                 $this->database->create_table();
             }
+
+            // v5.1.0: crear VIEW del módulo de seguimiento (si hay tablas Sysman).
+            $this->database->create_view();
 
             do_action('secop_suite_after_upgrade', $current_version, SECOP_SUITE_DB_VERSION);
 
@@ -421,6 +429,18 @@ final class Plugin
         $settings_link = '<a href="' . admin_url('admin.php?page=secop-suite') . '">' . __('Configuración', 'secop-suite') . '</a>';
         array_unshift($links, $settings_link);
         return $links;
+    }
+
+    // ── Aviso Sysman ───────────────────────────────────────────
+    public function maybe_sysman_notice(): void
+    {
+        if (!current_user_can('manage_options')) return;
+        $screen = get_current_screen();
+        if (!$screen || !str_contains($screen->id, 'secop-suite')) return;
+        if ($this->database->sysman_tables_exist()) return;
+        echo '<div class="notice notice-warning"><p>'
+           . esc_html__('SECOP Suite: el módulo de Seguimiento de Dependencias requiere las tablas Sysman (sysman_auxiliar_cuentas y sysman_plan_presupuestal) en la base de datos. El VIEW no se ha creado.', 'secop-suite')
+           . '</p></div>';
     }
 
     // ── Prevenir clonación ─────────────────────────────────────

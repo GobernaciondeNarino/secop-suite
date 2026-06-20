@@ -303,4 +303,67 @@ final class Database
         wp_cache_set('secop_available_tables', $tables, 'secop_suite', 300);
         return $tables;
     }
+
+    /** Nombre del VIEW del módulo de seguimiento. */
+    public function get_view_name(): string
+    {
+        global $wpdb;
+        return $wpdb->prefix . 'dat_seguimiento_dependencias';
+    }
+
+    /** ¿Existen las tablas Sysman requeridas por el VIEW? */
+    public function sysman_tables_exist(): bool
+    {
+        global $wpdb;
+        foreach (['sysman_auxiliar_cuentas', 'sysman_plan_presupuestal'] as $t) {
+            $full = $wpdb->prefix . $t;
+            if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $full)) !== $full) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Crear/reemplazar el VIEW que cruza ejecución presupuestal y contratos.
+     * Devuelve true si se creó; false si faltan tablas Sysman.
+     */
+    public function create_view(): bool
+    {
+        global $wpdb;
+        if (!$this->sysman_tables_exist()) {
+            Logger::log('VIEW no creado: faltan tablas Sysman (sysman_auxiliar_cuentas / sysman_plan_presupuestal)');
+            return false;
+        }
+        $view = $this->get_view_name();
+        $ac   = $wpdb->prefix . 'sysman_auxiliar_cuentas';
+        $pp   = $wpdb->prefix . 'sysman_plan_presupuestal';
+        $c    = $this->table_name; // {prefix}secop_contracts
+
+        // Identificadores desde whitelist/$wpdb->prefix → seguro interpolar.
+        $sql = "CREATE OR REPLACE VIEW `{$view}` AS
+            SELECT
+              pp.dependencia, pp.nombredependencia,
+              ac.tercero, ac.nombretercero,
+              ac.numero AS numero_de_proceso,
+              ac.valordebito, ac.valorcredito, ac.saldoporejecutaresp,
+              ac.cmpteafectado, ac.fecha, ac.anio, ac.mes,
+              c.numero_del_contrato, c.nom_raz_social_contratista,
+              c.fecha_inicio_ejecucion, c.fecha_fin_ejecucion,
+              c.valor_contrato, c.objeto_del_proceso, c.url_contrato,
+              c.tipo_de_contrato, c.modalidad_de_contratacion, c.origen
+            FROM `{$ac}` ac
+            INNER JOIN `{$pp}` pp ON ac.rubro = pp.codigo
+            INNER JOIN `{$c}` c  ON ac.nrodocumento = c.numero_de_proceso
+            WHERE ac.tipocpte = 'REs'";
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $result = $wpdb->query($sql);
+        if ($result === false) {
+            Logger::log('Error al crear VIEW: ' . $wpdb->last_error);
+            return false;
+        }
+        Logger::info("VIEW {$view} creado/actualizado");
+        return true;
+    }
 }
