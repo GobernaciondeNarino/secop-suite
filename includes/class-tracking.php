@@ -69,10 +69,29 @@ final class Tracking
     private function register_hooks(): void
     {
         add_action('init', [$this, 'register_post_type']);
-        // Shortcodes, AJAX, metaboxes y assets se añaden en tareas posteriores.
+        add_action('add_meta_boxes', [$this, 'add_meta_boxes']);
+        add_action('save_post_' . self::POST_TYPE, [$this, 'save_card_meta'], 10, 2);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
     }
 
-    public function register_post_type(): void { /* Task 9 */ }
+    public function register_post_type(): void
+    {
+        register_post_type(self::POST_TYPE, [
+            'labels' => [
+                'name'          => __('Cards de Dependencias', 'secop-suite'),
+                'singular_name' => __('Card', 'secop-suite'),
+                'menu_name'     => __('Seguimiento Dependencias', 'secop-suite'),
+                'add_new_item'  => __('Nueva Card', 'secop-suite'),
+                'edit_item'     => __('Editar Card', 'secop-suite'),
+            ],
+            'public'             => false,
+            'show_ui'            => true,
+            'show_in_menu'       => 'secop-suite',
+            'capability_type'    => 'post',
+            'supports'           => ['title'],
+            'menu_icon'          => 'dashicons-analytics',
+        ]);
+    }
 
     // ── Queries del VIEW (vigencia actual) ────────────────────────
 
@@ -171,5 +190,79 @@ final class Tracking
             'ejecutado'     => (float) ($tot['ejec'] ?? 0),
             'saldo'         => (float) ($tot['saldo'] ?? 0),
         ];
+    }
+
+    // ── CPT metaboxes y guardado ──────────────────────────────────
+
+    public function add_meta_boxes(): void
+    {
+        add_meta_box('secop_dep_card_config', __('Configuración de la Card', 'secop-suite'),
+            [$this, 'render_config_metabox'], self::POST_TYPE, 'normal', 'high');
+        add_meta_box('secop_dep_card_shortcodes', __('Shortcodes', 'secop-suite'),
+            [$this, 'render_shortcodes_metabox'], self::POST_TYPE, 'side', 'high');
+        add_meta_box('secop_dep_card_preview', __('Análisis y Vista Previa', 'secop-suite'),
+            [$this, 'render_preview_metabox'], self::POST_TYPE, 'normal', 'default');
+    }
+
+    public function render_config_metabox(\WP_Post $post): void
+    {
+        wp_nonce_field('secop_dep_card_config', 'secop_dep_card_nonce');
+        $config = get_post_meta($post->ID, '_secop_dep_card_config', true) ?: [];
+        $dimensions = self::COMPAT;
+        include SECOP_SUITE_DIR . 'templates/admin/dep-card-config.php';
+    }
+
+    public function render_shortcodes_metabox(\WP_Post $post): void
+    {
+        $id = (int) $post->ID;
+        echo '<p>' . esc_html__('Gráfica:', 'secop-suite') . '</p>';
+        echo '<code>[secop_dep_chart card="' . $id . '"]</code>';
+        foreach (['descripcion', 'cualitativo', 'cuantitativo', 'prediccion'] as $tipo) {
+            echo '<p><code>[secop_dep_analisis card="' . $id . '" tipo="' . $tipo . '"]</code></p>';
+        }
+    }
+
+    public function render_preview_metabox(\WP_Post $post): void
+    {
+        $config = get_post_meta($post->ID, '_secop_dep_card_config', true) ?: [];
+        if (empty($config['dimension'])) {
+            echo '<p>' . esc_html__('Guarde la card para ver el análisis.', 'secop-suite') . '</p>';
+            return;
+        }
+        $ds = \SecopSuite\Plugin::get_instance()->tracking()->build_dataset(
+            $config['dimension'], $config['dependencia'] ?? null
+        );
+        foreach (['descripcion', 'cualitativo', 'cuantitativo', 'prediccion'] as $tipo) {
+            $m = 'analisis_' . $tipo;
+            echo '<h4>' . esc_html(ucfirst($tipo)) . '</h4><p>' . esc_html(Stats::$m($ds)) . '</p>';
+        }
+    }
+
+    public function save_card_meta(int $post_id, \WP_Post $post): void
+    {
+        if (!isset($_POST['secop_dep_card_nonce']) ||
+            !wp_verify_nonce($_POST['secop_dep_card_nonce'], 'secop_dep_card_config')) return;
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+        if (!current_user_can('edit_post', $post_id)) return;
+
+        $dimension = sanitize_text_field($_POST['dep_dimension'] ?? 'dependencia');
+        if (!isset(self::COMPAT[$dimension])) $dimension = 'dependencia';
+        $type = sanitize_text_field($_POST['dep_chart_type'] ?? '');
+        if (!self::is_compatible($dimension, $type)) $type = self::default_type($dimension);
+
+        update_post_meta($post_id, '_secop_dep_card_config', [
+            'dimension'   => $dimension,
+            'chart_type'  => $type,
+            'dependencia' => sanitize_text_field($_POST['dep_dependencia'] ?? ''),
+            'metric'      => sanitize_text_field($_POST['dep_metric'] ?? 'valordebito'),
+        ]);
+    }
+
+    public function enqueue_admin_assets(string $hook): void
+    {
+        global $post_type;
+        if ($post_type !== self::POST_TYPE) return;
+        // Reutiliza las librerías de gráfica del Visualizer vía el handle compartido.
+        wp_enqueue_style('secop-suite-admin', SECOP_SUITE_URL . 'assets/css/admin.css', [], SECOP_SUITE_VERSION);
     }
 }
