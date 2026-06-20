@@ -53,7 +53,7 @@ final class Stats
         $slope     = (($n * $sxy) - ($sx * $sy)) / $denom;
         $intercept = ($sy - ($slope * $sx)) / $n;
 
-        // R² = (cov^2) / (var_x * var_y)
+        // R² = 1 - SS_res/SS_tot (coefficient of determination)
         $ss_tot = $syy - ($sy * $sy) / $n;
         $ss_res = 0.0;
         foreach ($points as [$x, $y]) {
@@ -158,7 +158,12 @@ final class Stats
         if (mb_strlen($text) <= 564) return $text;
         $cut = mb_substr($text, 0, 564);
         $sp  = mb_strrpos($cut, ' ');
-        if ($sp !== false && $sp > 0) $cut = mb_substr($cut, 0, $sp);
+        if ($sp !== false && $sp > 0) {
+            $cut = mb_substr($cut, 0, $sp);
+        } else {
+            // Sin espacio en los 564 primeros chars: truncar a 563 para dejar sitio para '…'
+            $cut = mb_substr($cut, 0, 563);
+        }
         return rtrim($cut, " ,.;:") . '…';
     }
 

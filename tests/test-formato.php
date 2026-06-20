@@ -19,3 +19,8 @@ it('clamp recorta a 564 sin cortar palabras', function () {
 it('clamp deja intacto texto corto', function () {
     assert_eq('Hola mundo', Stats::clamp564('Hola mundo'));
 });
+it('clamp recorta a 564 incluso sin espacios (caso patológico)', function () {
+    $s = str_repeat('A', 700); // 700 chars, ningún espacio
+    $out = SecopSuite\Stats::clamp564($s);
+    assert_true(mb_strlen($out) <= 564, 'longitud <= 564 sin espacios, obtenida ' . mb_strlen($out));
+});
