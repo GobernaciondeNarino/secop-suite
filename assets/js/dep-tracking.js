@@ -34,4 +34,29 @@
   }
   $(function () { $('.ss-dep-chart-wrapper').each(function () { render(this); }); });
   window.secopDepRender = render;
+
+  // ── Task 12: interactividad del selector de dependencia ─────────
+  $(function () {
+    $('.ss-seguimiento').on('change', '.ss-dep-selector', function () {
+      var dep = $(this).val(), $root = $(this).closest('.ss-seguimiento');
+      $root.find('.ss-dep-chart-wrapper').attr('data-dependencia', dep).each(function () {
+        window.secopDepRender(this);
+      });
+      $.post(secopDep.ajaxUrl, { action: 'secop_dep_contratos', nonce: secopDep.nonce, dependencia: dep })
+        .done(function (res) {
+          if (!res.success) return;
+          var html = res.data.rows.map(function (r) {
+            var num = r.url_contrato
+              ? '<a href="' + r.url_contrato + '" target="_blank" rel="noopener">' + r.numero_del_contrato + '</a>'
+              : r.numero_del_contrato;
+            return '<tr><td>' + num + '</td><td>' + (r.nom_raz_social_contratista || '') + '</td><td>' +
+              String(r.fecha_inicio_ejecucion || '').slice(0, 10) + '</td><td>' +
+              String(r.fecha_fin_ejecucion || '').slice(0, 10) + '</td><td>$' +
+              Math.round(r.valor_contrato || 0).toLocaleString('es-CO') + '</td><td>' +
+              String(r.objeto_del_proceso || '').slice(0, 120) + '</td></tr>';
+          }).join('');
+          $root.find('.ss-seguimiento-contratos table tbody').html(html || '<tr><td colspan="6">Sin contratos.</td></tr>');
+        });
+    });
+  });
 })(jQuery);

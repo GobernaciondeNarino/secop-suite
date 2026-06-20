@@ -77,6 +77,10 @@ final class Tracking
         add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_assets']);
         add_action('wp_ajax_secop_dep_chart_data',        [$this, 'ajax_chart_data']);
         add_action('wp_ajax_nopriv_secop_dep_chart_data', [$this, 'ajax_chart_data']);
+        add_shortcode('secop_seguimiento',               [$this, 'sc_seguimiento']);
+        add_shortcode('secop_dep_contratos',             [$this, 'sc_contratos']);
+        add_action('wp_ajax_secop_dep_contratos',        [$this, 'ajax_contratos']);
+        add_action('wp_ajax_nopriv_secop_dep_contratos', [$this, 'ajax_contratos']);
     }
 
     public function register_post_type(): void
@@ -350,5 +354,64 @@ final class Tracking
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce'   => wp_create_nonce('secop_dep_frontend'),
         ]);
+    }
+
+    // ── Task 12: contratos por dependencia ────────────────────────
+
+    /** Lista de contratos de una dependencia (vigencia actual), deduplicados por contrato. */
+    public function contracts_by_dependency(string $dependencia, int $limit = 100): array
+    {
+        global $wpdb;
+        $view = $this->db->get_view_name();
+        $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
+                       fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_del_proceso
+                FROM `{$view}` WHERE anio = %d AND nombredependencia = %s
+                GROUP BY numero_del_contrato
+                ORDER BY valor_contrato DESC LIMIT %d";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare($sql, $this->current_vigencia(), $dependencia, $limit), ARRAY_A);
+        return $rows ?: [];
+    }
+
+    public function ajax_contratos(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        $dep = sanitize_text_field($_POST['dependencia'] ?? '');
+        if ($dep === '') wp_send_json_error(['message' => 'Dependencia requerida']);
+        wp_send_json_success(['rows' => $this->contracts_by_dependency($dep)]);
+    }
+
+    /** Dependencias disponibles en la vigencia actual (para el selector). */
+    public function list_dependencies(): array
+    {
+        global $wpdb;
+        $view = $this->db->get_view_name();
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        return $wpdb->get_col($wpdb->prepare(
+            "SELECT DISTINCT nombredependencia FROM `{$view}` WHERE anio = %d AND nombredependencia <> '' ORDER BY nombredependencia",
+            $this->current_vigencia()
+        )) ?: [];
+    }
+
+    public function sc_contratos(array $atts): string
+    {
+        $atts = shortcode_atts(['dependencia' => '', 'per_page' => 50], $atts, 'secop_dep_contratos');
+        $dep  = sanitize_text_field($atts['dependencia']);
+        $rows = $dep ? $this->contracts_by_dependency($dep, (int) $atts['per_page']) : [];
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/dep-contratos.php';
+        return ob_get_clean();
+    }
+
+    public function sc_seguimiento(array $atts): string
+    {
+        $atts = shortcode_atts(['dependencia' => '', 'dimensiones' => 'dependencia,modalidad,fuente'], $atts, 'secop_seguimiento');
+        $deps = $this->list_dependencies();
+        $dimensiones = array_filter(array_map('trim', explode(',', $atts['dimensiones'])),
+            fn($d) => isset(self::COMPAT[$d]));
+        $sel = sanitize_text_field($atts['dependencia']);
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/dep-seguimiento.php';
+        return ob_get_clean();
     }
 }
