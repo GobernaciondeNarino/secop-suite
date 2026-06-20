@@ -74,4 +74,59 @@ final class Stats
         if ($reg['insufficient'] || $reg['slope'] === null) return null;
         return $reg['slope'] * $x + $reg['intercept'];
     }
+
+    public static function median(array $values): float
+    {
+        $values = array_values(array_map('floatval', $values));
+        sort($values);
+        $n = count($values);
+        if ($n === 0) return 0.0;
+        $mid = intdiv($n, 2);
+        return $n % 2 ? $values[$mid] : ($values[$mid - 1] + $values[$mid]) / 2;
+    }
+
+    public static function mean(array $values): float
+    {
+        $n = count($values);
+        return $n ? array_sum(array_map('floatval', $values)) / $n : 0.0;
+    }
+
+    /** Coeficiente de variación (desv. estándar poblacional / media). */
+    public static function cv(array $values): float
+    {
+        $n = count($values);
+        if ($n === 0) return 0.0;
+        $mean = self::mean($values);
+        if ($mean == 0.0) return 0.0;
+        $var = 0.0;
+        foreach ($values as $v) { $var += ((float) $v - $mean) ** 2; }
+        $var /= $n;
+        return sqrt($var) / abs($mean);
+    }
+
+    /**
+     * Índice Herfindahl-Hirschman NORMALIZADO de concentración [0..1].
+     * 1 = monopolio (una sola categoría); 0 = reparto perfectamente equitativo.
+     */
+    public static function hhi(array $values): float
+    {
+        $values = array_map('floatval', array_filter($values, fn($v) => (float) $v > 0));
+        $n = count($values);
+        if ($n <= 1) return $n === 1 ? 1.0 : 0.0;
+        $total = array_sum($values);
+        if ($total == 0.0) return 0.0;
+        $h = 0.0;
+        foreach ($values as $v) { $h += ($v / $total) ** 2; }
+        return max(0.0, ($h - 1 / $n) / (1 - 1 / $n)); // normalización
+    }
+
+    /** Participación acumulada de las `k` categorías mayores [0..1]. */
+    public static function top_share(array $values, int $k = 1): float
+    {
+        $values = array_map('floatval', $values);
+        $total  = array_sum($values);
+        if ($total == 0.0) return 0.0;
+        rsort($values);
+        return array_sum(array_slice($values, 0, max(1, $k))) / $total;
+    }
 }
