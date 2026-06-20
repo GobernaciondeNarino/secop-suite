@@ -61,6 +61,9 @@ final class Visualizer
         // Admin columns
         add_filter('manage_' . self::POST_TYPE . '_posts_columns', [$this, 'add_admin_columns']);
         add_action('manage_' . self::POST_TYPE . '_posts_custom_column', [$this, 'render_admin_columns'], 10, 2);
+
+        // Compartir librerías d3/d3plus con otros módulos.
+        add_action('secop_suite_enqueue_chart_libs', [$this, 'enqueue_chart_libraries']);
     }
 
     // ── CPT ────────────────────────────────────────────────────
@@ -352,7 +355,7 @@ final class Visualizer
         ]);
     }
 
-    private function enqueue_chart_libraries(): void
+    public function enqueue_chart_libraries(): void
     {
         $vendor_url = SECOP_SUITE_URL . 'assets/js/vendor/';
 

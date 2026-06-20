@@ -246,6 +246,99 @@ La API oficial del SECOP cambió de estructura. Esta versión migra completament
 [secop_filter id="456" class="mi-filtro"]
 ```
 
+### Seguimiento de Dependencias (v5.1.0)
+
+#### Landing Interactiva
+```
+[secop_seguimiento dependencia="" dimensiones="dependencia,modalidad,fuente"]
+```
+Selector interactivo de dependencia que re-renderiza las gráficas y carga la tabla de contratos de esa dependencia.
+
+#### Gráficas Prediseñadas
+```
+[secop_dep_chart card="ID" dimension="" tipo="" dependencia="" height="400"]
+```
+Gráfica prediseñada D3plus para análisis por dependencia.
+
+**Parámetros:**
+- `card` (string): ID de la gráfica prediseñada (hereda configuración)
+- `dimension` (string): `dependencia` | `tipo_contrato` | `modalidad` | `fuente` | `mensual` | `ejecucion`
+- `tipo` (string): 
+  - Dimensiones categóricas: `bar` | `stacked_bar` | `treemap` | `pie` | `donut`
+  - Dimensión mensual: `line` | `area`
+  - Dimensión ejecución: `donut` | `bar`
+- `dependencia` (string): Filtrar por dependencia específica
+- `height` (int): Alto del contenedor en píxeles (default: 400)
+
+#### Análisis Autogenerado
+```
+[secop_dep_analisis card="ID" tipo="descripcion"]
+```
+Párrafo de análisis autogenerado (≤564 caracteres) con regresión lineal y estadísticas.
+
+**Parámetros:**
+- `card` (string): ID de la gráfica (requerido para contexto)
+- `tipo` (string): 
+  - `descripcion` — Resumen de datos
+  - `cualitativo` — Análisis descriptivo
+  - `cuantitativo` — Estadísticas y métricas
+  - `prediccion` — Regresión lineal con R² e intervalo de incertidumbre (serie mensual)
+
+#### Tabla de Contratos
+```
+[secop_dep_contratos dependencia="" per_page="50"]
+```
+Tabla interactiva de contratos de una dependencia (Nº de contrato con enlace, proveedor, fechas, valor, descripción). Vigencia actual.
+
+**Parámetros:**
+- `dependencia` (string): Nombre o ID de dependencia (requerido)
+- `per_page` (int): Registros por página (default: 50)
+
+#### Consulta de Datos Abiertos
+```
+[secop_consulta formato="tabla"]
+```
+Datos abiertos de seguimiento por dependencia (vigencia actual).
+
+**Parámetros:**
+- `formato` (string): `tabla` | `csv` | `txt` | `json` (default: tabla)
+
+**Nota:** El módulo funciona únicamente con la vigencia actual (`anio = YEAR(CURDATE())`) y se auto-actualiza automáticamente cuando cambia el año. Requiere tablas Sysman (`sysman_auxiliar_cuentas`, `sysman_plan_presupuestal`) en la misma base de datos. Se crea automáticamente una vista SQL `{prefix}dat_seguimiento_dependencias`.
+
+## API REST — Módulo Seguimiento de Dependencias (v5.1.0)
+
+Endpoints públicos de consulta de datos de seguimiento (vigencia actual). **Rate limit:** 30 req/min por IP.
+
+```
+GET /wp-json/secop-suite/v1/consulta?page=1&per_page=100
+```
+JSON paginado de la consulta de seguimiento.
+
+**Parámetros:**
+- `page` (int): Página (default: 1)
+- `per_page` (int): Registros por página (default: 100, máximo: 500)
+
+**Respuesta:**
+```json
+{
+  "data": [...],
+  "total": 1250,
+  "page": 1,
+  "per_page": 100,
+  "pages": 13
+}
+```
+
+```
+GET /wp-json/secop-suite/v1/consulta/csv
+```
+Descarga CSV de la vigencia actual.
+
+```
+GET /wp-json/secop-suite/v1/consulta/txt
+```
+Descarga TXT delimitada por tabulación de la vigencia actual.
+
 ## Estructura del Plugin
 
 ```

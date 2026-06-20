@@ -95,6 +95,29 @@ final class Rest_Api
             'callback'            => [$this, 'export_txt'],
             'permission_callback' => '__return_true',
         ]);
+
+        // ── Consulta (Datos Abiertos — vigencia actual) ────────
+        register_rest_route(self::NAMESPACE, '/consulta', [
+            'methods'             => 'GET',
+            'callback'            => [$this, 'get_consulta'],
+            'permission_callback' => '__return_true',
+            'args'                => [
+                'page'     => ['default' => 1,   'sanitize_callback' => 'absint'],
+                'per_page' => ['default' => 100, 'sanitize_callback' => 'absint'],
+            ],
+        ]);
+
+        register_rest_route(self::NAMESPACE, '/consulta/csv', [
+            'methods'             => 'GET',
+            'callback'            => [$this, 'get_consulta_csv'],
+            'permission_callback' => '__return_true',
+        ]);
+
+        register_rest_route(self::NAMESPACE, '/consulta/txt', [
+            'methods'             => 'GET',
+            'callback'            => [$this, 'get_consulta_txt'],
+            'permission_callback' => '__return_true',
+        ]);
     }
 
     // ── Contratos ──────────────────────────────────────────────
@@ -318,6 +341,168 @@ final class Rest_Api
             $line = '';
             foreach ($columns as $col) {
                 $val = $row[$col] ?? '';
+                if (mb_strlen($val) > $widths[$col]) {
+                    $val = mb_substr($val, 0, $widths[$col] - 2) . '..';
+                }
+                $line .= str_pad($val, $widths[$col] + 2);
+            }
+            echo $line . "\n";
+        }
+        exit;
+    }
+
+    // ── Consulta (Datos Abiertos — vigencia actual) ────────────
+
+    /**
+     * FIX 4: rate limit compartido para los tres endpoints /consulta*.
+     * Permite hasta 30 solicitudes/minuto por IP.
+     */
+    private function consulta_rate_limited(): bool
+    {
+        $ip_key = 'secop_consulta_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        $count  = (int) get_transient($ip_key);
+        if ($count > 30) {
+            return true;
+        }
+        set_transient($ip_key, $count + 1, MINUTE_IN_SECONDS);
+        return false;
+    }
+
+    /**
+     * FIX 5: protección contra inyección de fórmulas CSV (Excel/LibreOffice).
+     * Si el valor empieza con = + - @ o tabulador/retorno, se prefija con comilla simple.
+     */
+    private static function csv_safe(mixed $v): string
+    {
+        $str = (string) $v;
+        if ($str !== '' && in_array($str[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'" . $str;
+        }
+        return $str;
+    }
+
+    public function get_consulta(\WP_REST_Request $request): \WP_REST_Response
+    {
+        // FIX 4: rate limit por IP
+        if ($this->consulta_rate_limited()) {
+            return new \WP_REST_Response(['message' => 'Demasiadas solicitudes'], 429);
+        }
+        global $wpdb;
+        $view     = $this->db->get_view_name();
+        $vigencia = (int) current_time('Y');
+        $per_page = max(1, min((int) $request->get_param('per_page'), 1000));
+        $page     = max(1, (int) $request->get_param('page'));
+        $offset   = ($page - 1) * $per_page;
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT nombredependencia, numero_de_proceso, numero_del_contrato,
+                    nombretercero, valordebito, valorcredito, saldoporejecutaresp,
+                    valor_contrato, anio, mes
+             FROM `{$view}` WHERE anio = %d
+             ORDER BY valordebito DESC LIMIT %d OFFSET %d",
+            $vigencia, $per_page, $offset
+        ), ARRAY_A);
+
+        return new \WP_REST_Response([
+            'vigencia' => $vigencia,
+            'page'     => $page,
+            'data'     => $rows ?: [],
+        ]);
+    }
+
+    public function get_consulta_csv(\WP_REST_Request $request): void
+    {
+        // FIX 4: rate limit por IP
+        if ($this->consulta_rate_limited()) {
+            status_header(429);
+            echo 'Demasiadas solicitudes';
+            exit;
+        }
+        global $wpdb;
+        $view     = $this->db->get_view_name();
+        $vigencia = (int) current_time('Y');
+
+        $data = $wpdb->get_results($wpdb->prepare(
+            "SELECT nombredependencia, numero_de_proceso, numero_del_contrato,
+                    nombretercero, valordebito, valorcredito, saldoporejecutaresp,
+                    valor_contrato, anio, mes
+             FROM `{$view}` WHERE anio = %d ORDER BY valordebito DESC",
+            $vigencia
+        ), ARRAY_A);
+
+        if (empty($data)) {
+            status_header(404);
+            echo 'No hay datos para exportar';
+            exit;
+        }
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="secop-consulta-' . $vigencia . '.csv"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('X-Content-Type-Options: nosniff');
+
+        $output = fopen('php://output', 'w');
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+        // FIX 5: cabecera de columnas (nombres de columna son internos, seguros; se sanitizan por si acaso)
+        fputcsv($output, array_map([self::class, 'csv_safe'], array_keys($data[0])));
+        foreach ($data as $row) {
+            // FIX 5: protección contra inyección de fórmulas CSV en valores de la BD
+            fputcsv($output, array_map([self::class, 'csv_safe'], $row));
+        }
+        fclose($output);
+        exit;
+    }
+
+    public function get_consulta_txt(\WP_REST_Request $request): void
+    {
+        // FIX 4: rate limit por IP
+        if ($this->consulta_rate_limited()) {
+            status_header(429);
+            echo 'Demasiadas solicitudes';
+            exit;
+        }
+        global $wpdb;
+        $view     = $this->db->get_view_name();
+        $vigencia = (int) current_time('Y');
+
+        $data = $wpdb->get_results($wpdb->prepare(
+            "SELECT nombredependencia, numero_de_proceso, numero_del_contrato,
+                    nombretercero, valordebito, valorcredito, saldoporejecutaresp,
+                    valor_contrato, anio, mes
+             FROM `{$view}` WHERE anio = %d ORDER BY valordebito DESC",
+            $vigencia
+        ), ARRAY_A);
+
+        if (empty($data)) {
+            status_header(404);
+            echo 'No hay datos para exportar';
+            exit;
+        }
+
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Content-Disposition: attachment; filename="secop-consulta-' . $vigencia . '.txt"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('X-Content-Type-Options: nosniff');
+
+        $columns = array_keys($data[0]);
+        $widths  = [];
+        foreach ($columns as $col) {
+            $widths[$col] = max(mb_strlen($col), 15);
+        }
+
+        // Header row
+        $line = '';
+        foreach ($columns as $col) {
+            $line .= str_pad($col, $widths[$col] + 2);
+        }
+        echo $line . "\n";
+        echo str_repeat('=', mb_strlen($line)) . "\n";
+
+        // Data rows
+        foreach ($data as $row) {
+            $line = '';
+            foreach ($columns as $col) {
+                $val = (string) ($row[$col] ?? '');
                 if (mb_strlen($val) > $widths[$col]) {
                     $val = mb_substr($val, 0, $widths[$col] - 2) . '..';
                 }

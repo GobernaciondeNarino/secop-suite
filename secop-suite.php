@@ -57,6 +57,7 @@ final class Plugin
     private Filter $filter;
     private Rest_Api $rest_api;
     private Updater $updater;
+    private Tracking $tracking;
 
     private function __construct()
     {
@@ -66,6 +67,7 @@ final class Plugin
         $this->filter     = new Filter($this->database);
         $this->rest_api   = new Rest_Api($this->database);
         $this->updater    = new Updater();
+        $this->tracking   = new Tracking($this->database);
 
         $this->register_hooks();
     }
@@ -80,6 +82,7 @@ final class Plugin
     public function importer(): Importer     { return $this->importer; }
     public function visualizer(): Visualizer { return $this->visualizer; }
     public function filter(): Filter         { return $this->filter; }
+    public function tracking(): Tracking     { return $this->tracking; }
 
     // ── Hooks ──────────────────────────────────────────────────
     private function register_hooks(): void
@@ -233,6 +236,15 @@ final class Plugin
             'manage_options',
             'secop-suite-logs',
             [$this, 'render_logs_page']
+        );
+
+        add_submenu_page(
+            'secop-suite',
+            __('Datos Abiertos', 'secop-suite'),
+            __('Datos Abiertos', 'secop-suite'),
+            'manage_options',
+            'secop-suite-datos-abiertos',
+            [$this, 'render_datos_abiertos_page']
         );
     }
 
@@ -405,6 +417,14 @@ final class Plugin
         $logs = Logger::read();
 
         include SECOP_SUITE_DIR . 'templates/admin/logs-page.php';
+    }
+
+    public function render_datos_abiertos_page(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
+        }
+        include SECOP_SUITE_DIR . 'templates/admin/datos-abiertos-page.php';
     }
 
     // ── Cron ───────────────────────────────────────────────────

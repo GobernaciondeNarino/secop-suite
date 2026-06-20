@@ -1216,3 +1216,11 @@
         border: 1px solid #ddd;
     }
 }
+
+/* ==========================================================================
+   Módulo Seguimiento de Dependencias
+   ========================================================================== */
+.ss-dep-chart-wrapper { margin: 1.5rem 0; }
+.ss-dep-help { font-size: .8rem; color: #666; margin-top: .5rem; }
+.ss-dep-analisis { line-height: 1.6; margin: .75rem 0; }
+.ss-dep-prediccion { font-style: italic; }
