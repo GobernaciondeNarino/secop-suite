@@ -72,6 +72,11 @@ final class Tracking
         add_action('add_meta_boxes', [$this, 'add_meta_boxes']);
         add_action('save_post_' . self::POST_TYPE, [$this, 'save_card_meta'], 10, 2);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
+        add_shortcode('secop_dep_chart',    [$this, 'sc_chart']);
+        add_shortcode('secop_dep_analisis', [$this, 'sc_analisis']);
+        add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_assets']);
+        add_action('wp_ajax_secop_dep_chart_data',        [$this, 'ajax_chart_data']);
+        add_action('wp_ajax_nopriv_secop_dep_chart_data', [$this, 'ajax_chart_data']);
     }
 
     public function register_post_type(): void
@@ -264,5 +269,86 @@ final class Tracking
         if ($post_type !== self::POST_TYPE) return;
         // Reutiliza las librerías de gráfica del Visualizer vía el handle compartido.
         wp_enqueue_style('secop-suite-admin', SECOP_SUITE_URL . 'assets/css/admin.css', [], SECOP_SUITE_VERSION);
+    }
+
+    // ── Shortcodes frontend ───────────────────────────────────────
+
+    private function resolve_config(array $atts): array
+    {
+        if (!empty($atts['card'])) {
+            $cfg = get_post_meta((int) $atts['card'], '_secop_dep_card_config', true) ?: [];
+        } else {
+            $cfg = [];
+        }
+        $dimension = sanitize_text_field($atts['dimension'] ?? ($cfg['dimension'] ?? 'dependencia'));
+        if (!isset(self::COMPAT[$dimension])) $dimension = 'dependencia';
+        $type = sanitize_text_field($atts['tipo'] ?? ($cfg['chart_type'] ?? ''));
+        if (!self::is_compatible($dimension, $type)) $type = self::default_type($dimension);
+        $dep = sanitize_text_field($atts['dependencia'] ?? ($cfg['dependencia'] ?? ''));
+        return ['dimension' => $dimension, 'chart_type' => $type, 'dependencia' => $dep];
+    }
+
+    public function sc_chart(array $atts): string
+    {
+        $atts = shortcode_atts(
+            ['card' => 0, 'dimension' => '', 'tipo' => '', 'dependencia' => '', 'height' => 400],
+            $atts, 'secop_dep_chart'
+        );
+        $cfg = $this->resolve_config($atts);
+        $uid = 'ss-dep-' . wp_unique_id();
+        $help = self::compat_help($cfg['dimension']);
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/dep-chart.php';
+        return ob_get_clean();
+    }
+
+    public function sc_analisis(array $atts): string
+    {
+        $atts = shortcode_atts(['card' => 0, 'tipo' => 'descripcion'], $atts, 'secop_dep_analisis');
+        $cfg = get_post_meta((int) $atts['card'], '_secop_dep_card_config', true) ?: [];
+        if (empty($cfg['dimension'])) return '';
+        $tipo = in_array($atts['tipo'], ['descripcion','cualitativo','cuantitativo','prediccion'], true)
+            ? $atts['tipo'] : 'descripcion';
+        $ds = $this->build_dataset($cfg['dimension'], $cfg['dependencia'] ?? null);
+        $m = 'analisis_' . $tipo;
+        return '<p class="ss-dep-analisis ss-dep-' . esc_attr($tipo) . '">'
+             . esc_html(Stats::$m($ds)) . '</p>';
+    }
+
+    public function ajax_chart_data(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
+
+        $dimension = sanitize_text_field($_POST['dimension'] ?? 'dependencia');
+        if (!isset(self::COMPAT[$dimension])) wp_send_json_error(['message' => 'Dimensión inválida']);
+        $dep  = sanitize_text_field($_POST['dependencia'] ?? '');
+        $rows = $this->group_by_dimension($dimension, $dep ?: null);
+        wp_send_json_success(['data' => $rows]);
+    }
+
+    public function enqueue_frontend_assets(): void
+    {
+        global $post;
+        if (!is_a($post, 'WP_Post')) return;
+        $has = false;
+        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta'] as $sc) {
+            if (has_shortcode($post->post_content, $sc)) { $has = true; break; }
+        }
+        if (!$has) return;
+
+        // Reutilizar las librerías d3/d3plus del Visualizer.
+        Plugin::get_instance()->visualizer(); // asegura registro
+        do_action('secop_suite_enqueue_chart_libs');
+
+        wp_enqueue_style('secop-suite-frontend', SECOP_SUITE_URL . 'assets/css/frontend.css', [], SECOP_SUITE_VERSION);
+        wp_enqueue_script('secop-dep-tracking', SECOP_SUITE_URL . 'assets/js/dep-tracking.js',
+            ['jquery', 'd3plus'], SECOP_SUITE_VERSION, true);
+        wp_localize_script('secop-dep-tracking', 'secopDep', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce'   => wp_create_nonce('secop_dep_frontend'),
+        ]);
     }
 }
