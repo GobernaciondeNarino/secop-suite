@@ -29,4 +29,49 @@ final class Stats
         if ($ref_year > $vigencia) return 12;
         return max(0, min(12, $ref_month));
     }
+
+    /**
+     * Regresión lineal por mínimos cuadrados.
+     * @param array $points lista de [x, y] (numéricos).
+     * @return array{slope:?float,intercept:?float,r2:?float,se:?float,n:int,insufficient:bool}
+     */
+    public static function linear_regression(array $points): array
+    {
+        $n = count($points);
+        if ($n < 2) {
+            return ['slope' => null, 'intercept' => null, 'r2' => null, 'se' => null, 'n' => $n, 'insufficient' => true];
+        }
+        $sx = $sy = $sxx = $sxy = $syy = 0.0;
+        foreach ($points as [$x, $y]) {
+            $x = (float) $x; $y = (float) $y;
+            $sx += $x; $sy += $y; $sxx += $x * $x; $sxy += $x * $y; $syy += $y * $y;
+        }
+        $denom = ($n * $sxx) - ($sx * $sx);
+        if ($denom == 0.0) {
+            return ['slope' => null, 'intercept' => null, 'r2' => null, 'se' => null, 'n' => $n, 'insufficient' => true];
+        }
+        $slope     = (($n * $sxy) - ($sx * $sy)) / $denom;
+        $intercept = ($sy - ($slope * $sx)) / $n;
+
+        // R² = (cov^2) / (var_x * var_y)
+        $ss_tot = $syy - ($sy * $sy) / $n;
+        $ss_res = 0.0;
+        foreach ($points as [$x, $y]) {
+            $pred = $slope * (float) $x + $intercept;
+            $ss_res += (((float) $y) - $pred) ** 2;
+        }
+        $r2 = $ss_tot > 0 ? max(0.0, 1.0 - ($ss_res / $ss_tot)) : 1.0;
+
+        // Error estándar de la estimación (incertidumbre).
+        $se = $n > 2 ? sqrt($ss_res / ($n - 2)) : 0.0;
+
+        return ['slope' => $slope, 'intercept' => $intercept, 'r2' => $r2, 'se' => $se, 'n' => $n, 'insufficient' => false];
+    }
+
+    /** Proyectar y para un x dado a partir de un resultado de regresión. */
+    public static function project(array $reg, float $x): ?float
+    {
+        if ($reg['insufficient'] || $reg['slope'] === null) return null;
+        return $reg['slope'] * $x + $reg['intercept'];
+    }
 }
