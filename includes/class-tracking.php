@@ -81,6 +81,7 @@ final class Tracking
         add_shortcode('secop_dep_contratos',             [$this, 'sc_contratos']);
         add_action('wp_ajax_secop_dep_contratos',        [$this, 'ajax_contratos']);
         add_action('wp_ajax_nopriv_secop_dep_contratos', [$this, 'ajax_contratos']);
+        add_shortcode('secop_consulta',                  [$this, 'sc_consulta']);
     }
 
     public function register_post_type(): void
@@ -412,6 +413,21 @@ final class Tracking
         $sel = sanitize_text_field($atts['dependencia']);
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/dep-seguimiento.php';
+        return ob_get_clean();
+    }
+
+    // ── Task 13: Datos Abiertos — consulta vigencia ───────────────
+
+    public function sc_consulta(array $atts): string
+    {
+        $atts    = shortcode_atts(['formato' => 'tabla'], $atts, 'secop_consulta');
+        $formato = in_array($atts['formato'], ['tabla', 'csv', 'txt', 'json'], true)
+            ? $atts['formato'] : 'tabla';
+        $rest    = rest_url('secop-suite/v1/consulta');
+        $rows    = $this->group_by_dimension('dependencia');
+        $vig     = $this->current_vigencia();
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/consulta.php';
         return ob_get_clean();
     }
 }

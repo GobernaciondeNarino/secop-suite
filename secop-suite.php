@@ -237,6 +237,15 @@ final class Plugin
             'secop-suite-logs',
             [$this, 'render_logs_page']
         );
+
+        add_submenu_page(
+            'secop-suite',
+            __('Datos Abiertos', 'secop-suite'),
+            __('Datos Abiertos', 'secop-suite'),
+            'manage_options',
+            'secop-suite-datos-abiertos',
+            [$this, 'render_datos_abiertos_page']
+        );
     }
 
     // ── Registro de configuraciones ────────────────────────────
@@ -408,6 +417,14 @@ final class Plugin
         $logs = Logger::read();
 
         include SECOP_SUITE_DIR . 'templates/admin/logs-page.php';
+    }
+
+    public function render_datos_abiertos_page(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
+        }
+        include SECOP_SUITE_DIR . 'templates/admin/datos-abiertos-page.php';
     }
 
     // ── Cron ───────────────────────────────────────────────────
