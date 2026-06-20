@@ -250,8 +250,10 @@ final class Tracking
 
     public function save_card_meta(int $post_id, \WP_Post $post): void
     {
-        if (!isset($_POST['secop_dep_card_nonce']) ||
-            !wp_verify_nonce($_POST['secop_dep_card_nonce'], 'secop_dep_card_config')) return;
+        // FIX 7: sanitize + unslash antes de verificar el nonce
+        if (!isset($_POST['secop_dep_card_nonce'])) return;
+        $nonce = sanitize_text_field(wp_unslash($_POST['secop_dep_card_nonce']));
+        if (!wp_verify_nonce($nonce, 'secop_dep_card_config')) return;
         if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
         if (!current_user_can('edit_post', $post_id)) return;
 
@@ -351,9 +353,16 @@ final class Tracking
         wp_enqueue_style('secop-suite-frontend', SECOP_SUITE_URL . 'assets/css/frontend.css', [], SECOP_SUITE_VERSION);
         wp_enqueue_script('secop-dep-tracking', SECOP_SUITE_URL . 'assets/js/dep-tracking.js',
             ['jquery', 'd3plus'], SECOP_SUITE_VERSION, true);
+        // FIX 6: cadenas i18n expuestas al JS para evitar literales hardcoded en el bundle
         wp_localize_script('secop-dep-tracking', 'secopDep', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce'   => wp_create_nonce('secop_dep_frontend'),
+            'strings' => [
+                'noData'      => __('No hay datos.', 'secop-suite'),
+                'noContracts' => __('Sin contratos.', 'secop-suite'),
+                'valueLabel'  => __('Valor ejecutado', 'secop-suite'),
+                'countLabel'  => __('Contratos', 'secop-suite'),
+            ],
         ]);
     }
 
@@ -377,6 +386,13 @@ final class Tracking
     public function ajax_contratos(): void
     {
         check_ajax_referer('secop_dep_frontend', 'nonce');
+        // FIX 4: mismo rate-limit por IP que ajax_chart_data() (60 req/min)
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) {
+            wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        }
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
+
         $dep = sanitize_text_field($_POST['dependencia'] ?? '');
         if ($dep === '') wp_send_json_error(['message' => 'Dependencia requerida']);
         wp_send_json_success(['rows' => $this->contracts_by_dependency($dep)]);

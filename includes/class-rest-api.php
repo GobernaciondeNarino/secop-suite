@@ -353,8 +353,40 @@ final class Rest_Api
 
     // ── Consulta (Datos Abiertos — vigencia actual) ────────────
 
+    /**
+     * FIX 4: rate limit compartido para los tres endpoints /consulta*.
+     * Permite hasta 30 solicitudes/minuto por IP.
+     */
+    private function consulta_rate_limited(): bool
+    {
+        $ip_key = 'secop_consulta_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        $count  = (int) get_transient($ip_key);
+        if ($count > 30) {
+            return true;
+        }
+        set_transient($ip_key, $count + 1, MINUTE_IN_SECONDS);
+        return false;
+    }
+
+    /**
+     * FIX 5: protección contra inyección de fórmulas CSV (Excel/LibreOffice).
+     * Si el valor empieza con = + - @ o tabulador/retorno, se prefija con comilla simple.
+     */
+    private static function csv_safe(mixed $v): string
+    {
+        $str = (string) $v;
+        if ($str !== '' && in_array($str[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'" . $str;
+        }
+        return $str;
+    }
+
     public function get_consulta(\WP_REST_Request $request): \WP_REST_Response
     {
+        // FIX 4: rate limit por IP
+        if ($this->consulta_rate_limited()) {
+            return new \WP_REST_Response(['message' => 'Demasiadas solicitudes'], 429);
+        }
         global $wpdb;
         $view     = $this->db->get_view_name();
         $vigencia = (int) current_time('Y');
@@ -380,6 +412,12 @@ final class Rest_Api
 
     public function get_consulta_csv(\WP_REST_Request $request): void
     {
+        // FIX 4: rate limit por IP
+        if ($this->consulta_rate_limited()) {
+            status_header(429);
+            echo 'Demasiadas solicitudes';
+            exit;
+        }
         global $wpdb;
         $view     = $this->db->get_view_name();
         $vigencia = (int) current_time('Y');
@@ -405,9 +443,11 @@ final class Rest_Api
 
         $output = fopen('php://output', 'w');
         fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
-        fputcsv($output, array_keys($data[0]));
+        // FIX 5: cabecera de columnas (nombres de columna son internos, seguros; se sanitizan por si acaso)
+        fputcsv($output, array_map([self::class, 'csv_safe'], array_keys($data[0])));
         foreach ($data as $row) {
-            fputcsv($output, $row);
+            // FIX 5: protección contra inyección de fórmulas CSV en valores de la BD
+            fputcsv($output, array_map([self::class, 'csv_safe'], $row));
         }
         fclose($output);
         exit;
@@ -415,6 +455,12 @@ final class Rest_Api
 
     public function get_consulta_txt(\WP_REST_Request $request): void
     {
+        // FIX 4: rate limit por IP
+        if ($this->consulta_rate_limited()) {
+            status_header(429);
+            echo 'Demasiadas solicitudes';
+            exit;
+        }
         global $wpdb;
         $view     = $this->db->get_view_name();
         $vigencia = (int) current_time('Y');
