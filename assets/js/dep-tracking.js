@@ -11,9 +11,10 @@
       dimension: $el.data('dimension'),
       dependencia: $el.data('dependencia') || ''
     }).done(function (res) {
-      if (!res.success || !res.data.length) { $(target).html('<p>No hay datos.</p>'); return; }
+      var rows = res.success && res.data ? res.data.data : null;
+      if (!rows || !rows.length) { $(target).html('<p>No hay datos.</p>'); return; }
       var type = $el.data('type');
-      var data = res.data.map(function (d) {
+      var data = rows.map(function (d) {
         return { id: d.label, valor: +d.valor, conteo: +d.conteo };
       });
       var viz = (type === 'treemap') ? new d3plus.Treemap()
