@@ -161,4 +161,98 @@ final class Stats
         if ($sp !== false && $sp > 0) $cut = mb_substr($cut, 0, $sp);
         return rtrim($cut, " ,.;:") . '…';
     }
+
+    private static function dim_label(string $dim): string
+    {
+        return [
+            'dependencia'  => 'dependencia',
+            'tipo_contrato'=> 'tipo de contrato',
+            'modalidad'    => 'modalidad de contratación',
+            'fuente'       => 'fuente de financiación',
+            'mensual'      => 'mes',
+            'ejecucion'    => 'ejecución presupuestal',
+        ][$dim] ?? $dim;
+    }
+
+    public static function analisis_descripcion(array $d): string
+    {
+        $dim = self::dim_label($d['dimension']);
+        $ncat = count($d['categorias']);
+        $t = sprintf(
+            'Esta gráfica resume la contratación de la entidad para la vigencia %d, organizada por %s. '
+          . 'Se incluyen %s contratos por un valor total de %s, distribuidos en %d %s. '
+          . 'Los datos provienen del cruce entre la ejecución presupuestal (Sysman) y los contratos publicados en el SECOP, '
+          . 'y se actualizan automáticamente con la vigencia en curso.',
+            $d['vigencia'], $dim, self::num($d['total_conteo']), self::money($d['total_valor']),
+            $ncat, $ncat === 1 ? 'categoría' : 'categorías'
+        );
+        return self::clamp564($t);
+    }
+
+    public static function analisis_cualitativo(array $d): string
+    {
+        $cats = $d['categorias'];
+        usort($cats, fn($a, $b) => $b['valor'] <=> $a['valor']);
+        $valores = array_map(fn($c) => $c['valor'], $cats);
+        $hhi = self::hhi($valores);
+        $top1 = $cats[0] ?? ['label' => 'N/D', 'valor' => 0];
+        $share1 = self::top_share($valores, 1);
+        $nivel = $hhi > 0.5 ? 'alta concentración' : ($hhi > 0.2 ? 'concentración moderada' : 'distribución equilibrada');
+        $t = sprintf(
+            'La contratación muestra una %s entre las %s. "%s" concentra la mayor participación con %s del valor total. '
+          . 'Un índice de concentración (HHI normalizado) de %s indica %s: %s. '
+          . 'Conviene revisar si esta distribución responde a la planeación o a una dependencia excesiva de pocos rubros.',
+            $nivel, self::dim_label($d['dimension']) . 's', $top1['label'], self::percent($share1),
+            self::percent($hhi),
+            $hhi > 0.5 ? 'pocas categorías dominan el gasto' : 'el gasto está repartido',
+            $nivel
+        );
+        return self::clamp564($t);
+    }
+
+    public static function analisis_cuantitativo(array $d): string
+    {
+        $valores = array_map(fn($c) => $c['valor'], $d['categorias']);
+        $media = self::mean($valores);
+        $mediana = self::median($valores);
+        $cv = self::cv($valores);
+        $totalPpto = $d['ejecutado'] + $d['saldo'];
+        $pctEjec = $totalPpto > 0 ? $d['ejecutado'] / $totalPpto : 0.0;
+        $t = sprintf(
+            'Valor total contratado: %s en %s contratos. Por categoría, el promedio es %s y la mediana %s '
+          . '(coeficiente de variación %s, que mide la dispersión). La ejecución presupuestal alcanza %s '
+          . '(%s ejecutado de %s), con un saldo por ejecutar de %s. '
+          . 'La diferencia entre media y mediana señala la presencia de valores atípicos.',
+            self::money($d['total_valor']), self::num($d['total_conteo']),
+            self::money($media), self::money($mediana), number_format($cv, 2, ',', '.'),
+            self::percent($pctEjec), self::money($d['ejecutado']), self::money($totalPpto), self::money($d['saldo'])
+        );
+        return self::clamp564($t);
+    }
+
+    public static function analisis_prediccion(array $d): string
+    {
+        $reg = self::linear_regression($d['serie_mensual']);
+        if ($reg['insufficient']) {
+            return self::clamp564(sprintf(
+                'No es posible proyectar el cierre de la vigencia %d: los datos disponibles son insuficientes '
+              . '(se requieren al menos dos meses con ejecución registrada). La predicción se habilitará a medida '
+              . 'que avance la vigencia y se acumulen más comprobantes de registro presupuestal.',
+                $d['vigencia']
+            ));
+        }
+        $cierre = self::project($reg, 12.0);
+        $actual = end($d['serie_mensual'])[1] ?? 0.0;
+        $crecimiento = $actual > 0 ? ($cierre - $actual) / $actual : 0.0;
+        $confianza = $reg['r2'] >= 0.8 ? 'alta' : ($reg['r2'] >= 0.5 ? 'media' : 'baja');
+        $t = sprintf(
+            'Mediante regresión lineal sobre la ejecución mensual acumulada (%d meses), se proyecta un cierre de vigencia %d '
+          . 'cercano a %s, frente a %s acumulados a la fecha (variación estimada %s). '
+          . 'El ajuste del modelo es R²=%s (confiabilidad %s, ±%s de error estándar). '
+          . 'La estimación asume continuidad de la tendencia y no contempla estacionalidad de cierre.',
+            $reg['n'], $d['vigencia'], self::money((float) $cierre), self::money($actual),
+            self::percent($crecimiento), number_format($reg['r2'], 2, ',', '.'), $confianza, self::money($reg['se'])
+        );
+        return self::clamp564($t);
+    }
 }
