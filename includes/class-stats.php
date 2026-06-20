@@ -129,4 +129,36 @@ final class Stats
         rsort($values);
         return array_sum(array_slice($values, 0, max(1, $k))) / $total;
     }
+
+    /** Moneda colombiana: separador de miles '.', sin decimales. */
+    public static function money(float $value): string
+    {
+        return '$' . number_format(round($value), 0, ',', '.');
+    }
+
+    /** Porcentaje es-CO; admite [0..1]. Quita decimal '0'. */
+    public static function percent(float $ratio): string
+    {
+        $p = $ratio * 100;
+        $s = number_format($p, 1, ',', '.');
+        $s = preg_replace('/,0$/', '', $s);
+        return $s . '%';
+    }
+
+    /** Número entero formateado es-CO. */
+    public static function num(float $value): string
+    {
+        return number_format(round($value), 0, ',', '.');
+    }
+
+    /** Recorta a <=564 caracteres respetando límites de palabra. */
+    public static function clamp564(string $text): string
+    {
+        $text = trim(preg_replace('/\s+/', ' ', $text));
+        if (mb_strlen($text) <= 564) return $text;
+        $cut = mb_substr($text, 0, 564);
+        $sp  = mb_strrpos($cut, ' ');
+        if ($sp !== false && $sp > 0) $cut = mb_substr($cut, 0, $sp);
+        return rtrim($cut, " ,.;:") . '…';
+    }
 }
