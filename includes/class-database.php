@@ -366,4 +366,81 @@ final class Database
         Logger::info("VIEW {$view} creado/actualizado");
         return true;
     }
+
+    // ── Diagnóstico del VIEW ───────────────────────────────────
+
+    /** ¿Existe el VIEW en la base de datos? (SHOW TABLES lo devuelve igual que tablas normales.) */
+    public function view_exists(): bool
+    {
+        global $wpdb;
+        $view = $this->get_view_name();
+        return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $view)) === $view;
+    }
+
+    /**
+     * Cuenta filas del VIEW, opcionalmente filtradas por año.
+     * Devuelve -1 si el VIEW no existe (para distinguir de "0 filas").
+     */
+    public function count_view_rows(?int $anio = null): int
+    {
+        if (!$this->view_exists()) {
+            return -1;
+        }
+        global $wpdb;
+        $view = $this->get_view_name();
+        if ($anio !== null) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            return (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$view}` WHERE anio = %d", $anio));
+        }
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        return (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$view}`");
+    }
+
+    /**
+     * Devuelve un mapa [ anio => count ] para todas las filas del VIEW.
+     * Si el VIEW no existe devuelve [].
+     *
+     * @return array<int,int>
+     */
+    public function rows_by_year(): array
+    {
+        if (!$this->view_exists()) {
+            return [];
+        }
+        global $wpdb;
+        $view = $this->get_view_name();
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $rows = $wpdb->get_results("SELECT anio, COUNT(*) c FROM `{$view}` GROUP BY anio ORDER BY anio DESC", ARRAY_A);
+        $result = [];
+        foreach ($rows as $row) {
+            $result[(int) $row['anio']] = (int) $row['c'];
+        }
+        return $result;
+    }
+
+    /**
+     * Cuenta el cruce de las 3 tablas subyacentes SIN filtro de vigencia,
+     * para diagnosticar si el JOIN produce filas independientemente del VIEW.
+     * Devuelve -1 si faltan las tablas Sysman.
+     */
+    public function count_raw_join(): int
+    {
+        if (!$this->sysman_tables_exist()) {
+            return -1;
+        }
+        global $wpdb;
+        $ac = $wpdb->prefix . 'sysman_auxiliar_cuentas';
+        $pp = $wpdb->prefix . 'sysman_plan_presupuestal';
+        $c  = $this->table_name;
+
+        $sql = "SELECT COUNT(*) FROM (
+            SELECT 1
+            FROM `{$ac}` ac
+            INNER JOIN `{$pp}` pp ON ac.rubro = pp.codigo
+            INNER JOIN `{$c}` c  ON ac.nrodocumento = c.numero_de_proceso
+            WHERE ac.tipocpte = 'REs'
+        ) t";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        return (int) $wpdb->get_var($sql);
+    }
 }

@@ -110,6 +110,7 @@ final class Plugin
         add_filter('plugin_action_links_' . SECOP_SUITE_BASENAME, [$this, 'add_action_links']);
 
         add_action('admin_notices', [$this, 'maybe_sysman_notice']);
+        add_action('admin_init', [$this, 'maybe_upgrade_on_load']);
     }
 
     // ── Internacionalización ─────────────────────────────────────
@@ -451,16 +452,91 @@ final class Plugin
         return $links;
     }
 
-    // ── Aviso Sysman ───────────────────────────────────────────
+    // ── Auto-upgrade al cargar (sin necesidad de reactivar) ────
+    public function maybe_upgrade_on_load(): void
+    {
+        if (!is_admin() || !current_user_can('manage_options')) return;
+
+        // 1) Si la versión instalada quedó atrás (update por archivos sin reactivar), correr migraciones.
+        $installed = get_option(SECOP_SUITE_PREFIX . 'db_version', '0');
+        if (version_compare($installed, SECOP_SUITE_DB_VERSION, '<')) {
+            $this->maybe_upgrade();
+        }
+
+        // 2) Garantía adicional: si el VIEW no existe y hay tablas Sysman, crearlo
+        //    (gateado por transient para no consultar la BD en cada carga de página).
+        if (get_transient(SECOP_SUITE_PREFIX . 'view_checked')) return;
+        set_transient(SECOP_SUITE_PREFIX . 'view_checked', 1, HOUR_IN_SECONDS);
+        if (!$this->database->view_exists() && $this->database->sysman_tables_exist()) {
+            $this->database->create_view();
+        }
+    }
+
+    // ── Aviso Sysman / diagnóstico ──────────────────────────────
     public function maybe_sysman_notice(): void
     {
         if (!current_user_can('manage_options')) return;
         $screen = get_current_screen();
         if (!$screen || !str_contains($screen->id, 'secop-suite')) return;
-        if ($this->database->sysman_tables_exist()) return;
-        echo '<div class="notice notice-warning"><p>'
-           . esc_html__('SECOP Suite: el módulo de Seguimiento de Dependencias requiere las tablas Sysman (sysman_auxiliar_cuentas y sysman_plan_presupuestal) en la base de datos. El VIEW no se ha creado.', 'secop-suite')
-           . '</p></div>';
+
+        if (!$this->database->sysman_tables_exist()) {
+            echo '<div class="notice notice-warning"><p>'
+               . esc_html__('SECOP Suite: el módulo de Seguimiento de Dependencias requiere las tablas Sysman (sysman_auxiliar_cuentas y sysman_plan_presupuestal) en la base de datos. El VIEW no se puede crear hasta que existan esas tablas.', 'secop-suite')
+               . '</p></div>';
+            return;
+        }
+
+        $view_name = $this->database->get_view_name();
+
+        if (!$this->database->view_exists()) {
+            echo '<div class="notice notice-error"><p>'
+               . sprintf(
+                   /* translators: %s: nombre del VIEW */
+                   esc_html__('SECOP Suite: el VIEW %s no existe. Se intentará crear automáticamente en la próxima carga. Si el problema persiste, desactiva y reactiva el plugin.', 'secop-suite'),
+                   '<code>' . esc_html($view_name) . '</code>'
+                 )
+               . '</p></div>';
+            return;
+        }
+
+        $total = $this->database->count_view_rows();
+        $vig   = (int) current_time('Y');
+        $cur   = $this->database->count_view_rows($vig);
+        $raw   = $this->database->count_raw_join();
+        $years = $this->database->rows_by_year();
+
+        if ($total === 0) {
+            $raw_msg = $raw >= 0
+                ? sprintf(esc_html__('Conteo del cruce de las 3 tablas (sin filtro de año) = %d.', 'secop-suite'), $raw)
+                : esc_html__('No se pudo calcular el cruce de tablas.', 'secop-suite');
+            $hint = ($raw > 0)
+                ? ' ' . esc_html__('El JOIN produce filas: revisa que tipocpte = \'REs\' corresponda a registros reales.', 'secop-suite')
+                : '';
+            echo '<div class="notice notice-warning"><p>'
+               . esc_html__('SECOP Suite: el VIEW existe pero está vacío. ', 'secop-suite')
+               . $raw_msg . $hint
+               . '</p></div>';
+            return;
+        }
+
+        if ($cur === 0) {
+            $year_list = [];
+            foreach ($years as $y => $cnt) {
+                $year_list[] = esc_html((string) $y) . ' (' . (int) $cnt . ')';
+            }
+            echo '<div class="notice notice-warning"><p>'
+               . sprintf(
+                   /* translators: 1: total filas, 2: vigencia actual, 3: lista de años con datos */
+                   esc_html__('SECOP Suite: el VIEW tiene %1$d filas en total, pero ninguna para la vigencia %2$d. Los gráficos de Contratación no tendrán datos. Años con registros: %3$s.', 'secop-suite'),
+                   $total,
+                   $vig,
+                   implode(', ', $year_list)
+                 )
+               . '</p></div>';
+            return;
+        }
+
+        // Todo OK — no se muestra aviso (evitar ruido innecesario).
     }
 
     // ── Prevenir clonación ─────────────────────────────────────
