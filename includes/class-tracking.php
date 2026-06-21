@@ -90,9 +90,9 @@ final class Tracking
     {
         register_post_type(self::POST_TYPE, [
             'labels' => [
-                'name'          => __('Contratación', 'secop-suite'),
+                'name'          => __('Contratación · a medida', 'secop-suite'),
                 'singular_name' => __('Card', 'secop-suite'),
-                'menu_name'     => __('Contratación', 'secop-suite'),
+                'menu_name'     => __('Contratación · a medida', 'secop-suite'),
                 'add_new_item'  => __('Nueva Card', 'secop-suite'),
                 'edit_item'     => __('Editar Card', 'secop-suite'),
             ],

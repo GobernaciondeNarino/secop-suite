@@ -378,6 +378,37 @@ final class Visualizer
         }
     }
 
+    /**
+     * Enqueue the full frontend chart stack (libraries + frontend.js + CSS)
+     * outside of the normal `wp_enqueue_scripts` flow — used by admin screens
+     * (e.g. the Contratación catalog) that render chart previews via shortcode.
+     */
+    public function enqueue_frontend_chart_stack(): void
+    {
+        $this->enqueue_chart_libraries();
+        wp_enqueue_style('secop-suite-frontend', SECOP_SUITE_URL . 'assets/css/frontend.css', [], SECOP_SUITE_VERSION);
+        wp_enqueue_script('secop-suite-frontend', SECOP_SUITE_URL . 'assets/js/frontend.js', ['jquery', 'd3plus'], SECOP_SUITE_VERSION, true);
+        if (!wp_script_is('secop-suite-frontend', 'done')) {
+            wp_localize_script('secop-suite-frontend', 'secopSuiteChart', [
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'restUrl' => rest_url('secop-suite/v1/'),
+                'nonce'   => wp_create_nonce('secop_suite_frontend'),
+                'strings' => [
+                    'loading'  => __('Cargando datos...', 'secop-suite'),
+                    'error'    => __('Error al cargar los datos', 'secop-suite'),
+                    'noData'   => __('No hay datos disponibles', 'secop-suite'),
+                    'share'    => __('Compartir', 'secop-suite'),
+                    'data'     => __('Datos', 'secop-suite'),
+                    'image'    => __('Imagen', 'secop-suite'),
+                    'download' => __('Descarga', 'secop-suite'),
+                    'detail'   => __('Detalle', 'secop-suite'),
+                    'close'    => __('Cerrar', 'secop-suite'),
+                    'copied'   => __('¡Enlace copiado!', 'secop-suite'),
+                ],
+            ]);
+        }
+    }
+
     // ── Shortcode ──────────────────────────────────────────────
     public function render_chart_shortcode(array $atts): string
     {
