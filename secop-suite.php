@@ -92,6 +92,7 @@ final class Plugin
 
         add_action('init', [$this, 'load_textdomain']);
         add_action('admin_menu', [$this, 'register_admin_menu']);
+        add_action('admin_menu', [$this, 'sort_submenus'], 9999);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
 
@@ -200,16 +201,7 @@ final class Plugin
             'secop-suite',
             [$this, 'render_dashboard_page'],
             'dashicons-chart-area',
-            80
-        );
-
-        add_submenu_page(
-            'secop-suite',
-            __('Panel de Control', 'secop-suite'),
-            __('Panel de Control', 'secop-suite'),
-            'manage_options',
-            'secop-suite',
-            [$this, 'render_dashboard_page']
+            21
         );
 
         add_submenu_page(
@@ -223,8 +215,8 @@ final class Plugin
 
         add_submenu_page(
             'secop-suite',
-            __('Ver Registros', 'secop-suite'),
-            __('Ver Registros', 'secop-suite'),
+            __('Registros', 'secop-suite'),
+            __('Registros', 'secop-suite'),
             'manage_options',
             'secop-suite-records',
             [$this, 'render_records_page']
@@ -247,6 +239,20 @@ final class Plugin
             'secop-suite-datos-abiertos',
             [$this, 'render_datos_abiertos_page']
         );
+    }
+
+    // ── Ordenar submenús alfabéticamente ──────────────────────
+    public function sort_submenus(): void
+    {
+        global $submenu;
+        if (empty($submenu['secop-suite'])) return;
+        $items = $submenu['secop-suite'];
+        usort($items, static function ($a, $b) {
+            $ta = html_entity_decode(wp_strip_all_tags($a[0]));
+            $tb = html_entity_decode(wp_strip_all_tags($b[0]));
+            return strcasecmp($ta, $tb);
+        });
+        $submenu['secop-suite'] = array_values($items);
     }
 
     // ── Registro de configuraciones ────────────────────────────
@@ -355,6 +361,10 @@ final class Plugin
         global $wpdb;
         $table_name = $this->database->get_table_name();
 
+        // ── Tab activa ──────────────────────────────────────────
+        $raw_tab = $_GET['tab'] ?? 'actual';
+        $tab     = in_array($raw_tab, ['actual', 'consulta'], true) ? $raw_tab : 'actual';
+
         $per_page     = 50;
         $current_page = max(1, intval($_GET['paged'] ?? 1));
         $offset       = ($current_page - 1) * $per_page;
@@ -362,7 +372,7 @@ final class Plugin
         $total_records = $this->database->get_total_records();
         $total_pages   = (int) ceil($total_records / $per_page);
 
-        // Filtros
+        // Filtros (tab "actual")
         $where_clauses = ['1=1'];
         $where_values  = [];
 
@@ -393,6 +403,18 @@ final class Plugin
 
         $years   = $wpdb->get_col("SELECT DISTINCT YEAR(fecha_de_firma_del_contrato) AS y FROM {$table_name} WHERE fecha_de_firma_del_contrato IS NOT NULL ORDER BY y DESC");
         $estados = $wpdb->get_col("SELECT DISTINCT estado_del_proceso FROM {$table_name} WHERE estado_del_proceso IS NOT NULL ORDER BY estado_del_proceso");
+
+        // ── Tab "consulta": datos del VIEW para la vigencia actual ──
+        $consulta_rows = [];
+        if ($tab === 'consulta') {
+            if ($this->database->view_exists()) {
+                $view = $this->database->get_view_name();
+                $consulta_rows = $wpdb->get_results($wpdb->prepare(
+                    "SELECT nombredependencia, numero_de_proceso, numero_del_contrato, nombretercero, valordebito, valorcredito, saldoporejecutaresp, valor_contrato, anio, mes FROM `{$view}` WHERE anio = %d ORDER BY valordebito DESC LIMIT 200",
+                    (int) current_time('Y')
+                ), ARRAY_A) ?: [];
+            }
+        }
 
         include SECOP_SUITE_DIR . 'templates/admin/records-page.php';
     }

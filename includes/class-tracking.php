@@ -88,9 +88,9 @@ final class Tracking
     {
         register_post_type(self::POST_TYPE, [
             'labels' => [
-                'name'          => __('Cards de Dependencias', 'secop-suite'),
+                'name'          => __('Contratación', 'secop-suite'),
                 'singular_name' => __('Card', 'secop-suite'),
-                'menu_name'     => __('Seguimiento Dependencias', 'secop-suite'),
+                'menu_name'     => __('Contratación', 'secop-suite'),
                 'add_new_item'  => __('Nueva Card', 'secop-suite'),
                 'edit_item'     => __('Editar Card', 'secop-suite'),
             ],
