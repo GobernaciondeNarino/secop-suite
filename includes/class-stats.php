@@ -176,6 +176,7 @@ final class Stats
             'fuente'       => 'fuente de financiación',
             'mensual'      => 'mes',
             'ejecucion'    => 'ejecución presupuestal',
+            'tercero'      => 'contratista',
         ][$dim] ?? $dim;
     }
 
