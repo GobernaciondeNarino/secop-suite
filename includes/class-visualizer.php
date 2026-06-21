@@ -305,7 +305,9 @@ final class Visualizer
         global $post;
         if (!is_a($post, 'WP_Post') ||
             (!has_shortcode($post->post_content, 'sdv_chart') &&
-             !has_shortcode($post->post_content, 'secop_chart'))) {
+             !has_shortcode($post->post_content, 'secop_chart') &&
+             !has_shortcode($post->post_content, 'secop_dep_chart') &&
+             !has_shortcode($post->post_content, 'secop_seguimiento'))) {
             return;
         }
 
@@ -452,6 +454,17 @@ final class Visualizer
         $config = get_post_meta($chart_id, '_secop_chart_config', true);
         if (!$config) {
             wp_send_json_error(['message' => 'Configuración no encontrada']);
+        }
+
+        // Optional dependencia filter — only applies when the chart targets the VIEW.
+        // Reemplaza cualquier filtro previo de nombredependencia (evita acumular dos y dar 0 filas).
+        $dependencia = sanitize_text_field($_POST['dependencia'] ?? '');
+        if ($dependencia !== '' && ($config['table_name'] ?? '') === $this->db->get_view_name()) {
+            $config['filters'] = array_values(array_filter(
+                $config['filters'] ?? [],
+                static fn($f) => ($f['field'] ?? '') !== 'nombredependencia'
+            ));
+            $config['filters'][] = ['field' => 'nombredependencia', 'operator' => '=', 'value' => $dependencia];
         }
 
         wp_send_json_success([

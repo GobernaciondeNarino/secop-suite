@@ -15,6 +15,20 @@ if (!defined('ABSPATH')) {
         <?php esc_html_e('Registros de Contratos', 'secop-suite'); ?>
     </h1>
 
+    <!-- Pestañas de navegación -->
+    <nav class="nav-tab-wrapper">
+        <a href="<?php echo esc_url(admin_url('admin.php?page=secop-suite-records&tab=actual')); ?>"
+           class="nav-tab<?php echo ($tab === 'actual') ? ' nav-tab-active' : ''; ?>">
+            <?php esc_html_e('Actual', 'secop-suite'); ?>
+        </a>
+        <a href="<?php echo esc_url(admin_url('admin.php?page=secop-suite-records&tab=consulta')); ?>"
+           class="nav-tab<?php echo ($tab === 'consulta') ? ' nav-tab-active' : ''; ?>">
+            <?php esc_html_e('Consulta', 'secop-suite'); ?>
+        </a>
+    </nav>
+
+<?php if ($tab === 'actual'): ?>
+
     <!-- Filtros -->
     <div class="ss-filters-panel">
         <form method="get" class="ss-filters-form">
@@ -191,6 +205,67 @@ if (!defined('ABSPATH')) {
             <p><?php esc_html_e('No se encontraron registros con los filtros seleccionados.', 'secop-suite'); ?></p>
         </div>
     <?php endif; ?>
+
+<?php elseif ($tab === 'consulta'): ?>
+
+    <!-- Tab Consulta: datos del VIEW dat_seguimiento_dependencias, vigencia actual -->
+    <div class="ss-records-summary" style="margin-top:12px;">
+        <p>
+            <?php
+            printf(
+                esc_html__('Ejecución de contratos — vigencia %d (máx. 200 filas, ordenado por valor ejecutado desc.)', 'secop-suite'),
+                (int) current_time('Y')
+            );
+            ?>
+        </p>
+    </div>
+
+    <?php if (!empty($consulta_rows)): ?>
+        <div class="ss-table-responsive">
+            <table class="wp-list-table widefat fixed striped ss-records-table">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Dependencia', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('N° Proceso', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('N° Contrato', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Tercero', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Débito', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Crédito', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Saldo x Ejecutar', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Valor Contrato', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Año', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Mes', 'secop-suite'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($consulta_rows as $row): ?>
+                        <tr>
+                            <td><?php echo esc_html($row['nombredependencia'] ?? ''); ?></td>
+                            <td><?php echo esc_html($row['numero_de_proceso'] ?? ''); ?></td>
+                            <td><?php echo esc_html($row['numero_del_contrato'] ?? ''); ?></td>
+                            <td><?php echo esc_html($row['nombretercero'] ?? ''); ?></td>
+                            <td>$<?php echo esc_html(number_format((float)($row['valordebito'] ?? 0), 0, ',', '.')); ?></td>
+                            <td>$<?php echo esc_html(number_format((float)($row['valorcredito'] ?? 0), 0, ',', '.')); ?></td>
+                            <td>$<?php echo esc_html(number_format((float)($row['saldoporejecutaresp'] ?? 0), 0, ',', '.')); ?></td>
+                            <td>$<?php echo esc_html(number_format((float)($row['valor_contrato'] ?? 0), 0, ',', '.')); ?></td>
+                            <td><?php echo esc_html($row['anio'] ?? ''); ?></td>
+                            <td><?php echo esc_html($row['mes'] ?? ''); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php else: ?>
+        <div class="ss-no-records">
+            <span class="dashicons dashicons-info"></span>
+            <p>
+                <?php esc_html_e('No hay datos de consulta para la vigencia actual.', 'secop-suite'); ?>
+                <?php esc_html_e('Verifique el diagnóstico en el módulo Contratación o reactive el plugin para crear el VIEW.', 'secop-suite'); ?>
+            </p>
+        </div>
+    <?php endif; ?>
+
+<?php endif; // fin de pestañas ?>
 </div>
 
 <!-- Modal de detalles -->
