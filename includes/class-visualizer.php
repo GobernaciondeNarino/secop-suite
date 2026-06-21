@@ -456,9 +456,14 @@ final class Visualizer
             wp_send_json_error(['message' => 'Configuración no encontrada']);
         }
 
-        // Optional dependencia filter — additive, only applies when the chart targets the VIEW.
+        // Optional dependencia filter — only applies when the chart targets the VIEW.
+        // Reemplaza cualquier filtro previo de nombredependencia (evita acumular dos y dar 0 filas).
         $dependencia = sanitize_text_field($_POST['dependencia'] ?? '');
         if ($dependencia !== '' && ($config['table_name'] ?? '') === $this->db->get_view_name()) {
+            $config['filters'] = array_values(array_filter(
+                $config['filters'] ?? [],
+                static fn($f) => ($f['field'] ?? '') !== 'nombredependencia'
+            ));
             $config['filters'][] = ['field' => 'nombredependencia', 'operator' => '=', 'value' => $dependencia];
         }
 
