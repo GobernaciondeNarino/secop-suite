@@ -368,6 +368,11 @@ final class Tracking
             return '<p class="ss-error">' . esc_html__('Especifique un ID de card válido: [secop_dep_chart card="N"]', 'secop-suite') . '</p>';
         }
 
+        // Runtime dependency override from the shortcode attribute (used by sc_seguimiento).
+        // Applied via data-dependencia on the container → AJAX filter.
+        // NOT persisted into _secop_chart_config so the stored config stays general.
+        $dependencia_filter = sanitize_text_field($atts['dependencia']);
+
         // Try existing Visualizer-compatible config (written by save_card_meta or a previous render).
         $config = get_post_meta($card_id, '_secop_chart_config', true);
 
@@ -377,11 +382,13 @@ final class Tracking
             if (empty($dep_cfg)) {
                 return '<p class="ss-error">' . esc_html__('Card no encontrada o sin configuración.', 'secop-suite') . '</p>';
             }
-            // Apply shortcode attribute overrides via resolve_config().
-            $resolved               = $this->resolve_config($atts);
-            $dep_cfg['dimension']   = $resolved['dimension'];
-            $dep_cfg['chart_type']  = $resolved['chart_type'];
-            $dep_cfg['dependencia'] = $resolved['dependencia'];
+            // Apply dimension/type overrides but keep the card's own dependencia for the stored
+            // config — the runtime $dependencia_filter is applied via data-dependencia at render time.
+            $resolved             = $this->resolve_config($atts);
+            $dep_cfg['dimension'] = $resolved['dimension'];
+            $dep_cfg['chart_type'] = $resolved['chart_type'];
+            // Persist a general config (card's configured dependencia only, not the shortcode override).
+            $dep_cfg['dependencia'] = sanitize_text_field($dep_cfg['dependencia'] ?? '');
             $config = $this->card_to_chart_config($dep_cfg);
             // Persist so the Visualizer AJAX can serve data using this card's post ID.
             update_post_meta($card_id, '_secop_chart_config', $config);
@@ -393,6 +400,7 @@ final class Tracking
         }
 
         // Variables required by templates/frontend/chart.php.
+        // $dependencia_filter is consumed by the template to set data-dependencia.
         $chart_id    = $card_id;
         $unique_id   = 'ss-dep-' . wp_unique_id();
         $extra_class = ' ss-dep-chart';
@@ -444,8 +452,10 @@ final class Tracking
         do_action('secop_suite_enqueue_chart_libs');
 
         wp_enqueue_style('secop-suite-frontend', SECOP_SUITE_URL . 'assets/css/frontend.css', [], SECOP_SUITE_VERSION);
+        // dep-tracking.js no longer renders charts directly; Visualizer/frontend.js handles them.
+        // Depends only on jquery (contracts table) + secop-suite-frontend (for SSChartManager).
         wp_enqueue_script('secop-dep-tracking', SECOP_SUITE_URL . 'assets/js/dep-tracking.js',
-            ['jquery', 'd3plus'], SECOP_SUITE_VERSION, true);
+            ['jquery', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
         // FIX 6: cadenas i18n expuestas al JS para evitar literales hardcoded en el bundle
         wp_localize_script('secop-dep-tracking', 'secopDep', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
@@ -515,11 +525,25 @@ final class Tracking
 
     public function sc_seguimiento(array $atts): string
     {
-        $atts = shortcode_atts(['dependencia' => '', 'dimensiones' => 'dependencia,modalidad,fuente'], $atts, 'secop_seguimiento');
+        $atts = shortcode_atts(['dependencia' => '', 'cards' => ''], $atts, 'secop_seguimiento');
+
+        // Resolve the list of card post IDs to display.
+        if (!empty($atts['cards'])) {
+            $cards = array_values(array_filter(array_map('intval', explode(',', $atts['cards']))));
+        } else {
+            $posts = get_posts([
+                'post_type'   => self::POST_TYPE,
+                'post_status' => 'publish',
+                'numberposts' => 20,
+                'orderby'     => 'menu_order',
+                'order'       => 'ASC',
+            ]);
+            $cards = wp_list_pluck($posts, 'ID');
+        }
+
         $deps = $this->list_dependencies();
-        $dimensiones = array_filter(array_map('trim', explode(',', $atts['dimensiones'])),
-            fn($d) => isset(self::COMPAT[$d]));
-        $sel = sanitize_text_field($atts['dependencia']);
+        $sel  = sanitize_text_field($atts['dependencia']);
+
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/dep-seguimiento.php';
         return ob_get_clean();

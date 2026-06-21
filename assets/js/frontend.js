@@ -120,7 +120,8 @@
                 data: {
                     action: 'secop_suite_get_chart_data',
                     nonce: this.config.chartNonce || secopSuiteChart.nonce,
-                    chart_id: this.chartId
+                    chart_id: this.chartId,
+                    dependencia: this.$container.attr('data-dependencia') || ''
                 },
                 success: function(response) {
                     if (response.success) { self.data = response.data.data; self.renderChart(); }

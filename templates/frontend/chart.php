@@ -15,16 +15,21 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Allow callers (e.g. sc_chart with a dependencia att) to set an initial filter.
+// Normal [secop_chart] renders leave this unset → no attribute → no filter override.
+$dependencia_filter = $dependencia_filter ?? '';
+
 $chart_title = get_the_title($chart_id);
 $show_toolbar = $config['show_toolbar'] ?? true;
 $toolbar_options = $config['toolbar_options'] ?? ['detail', 'share', 'data', 'image', 'download'];
 $chart_height = $config['chart_height'] ?? 400;
 ?>
 
-<div id="<?php echo esc_attr($unique_id); ?>" 
+<div id="<?php echo esc_attr($unique_id); ?>"
      class="ss-chart-container<?php echo esc_attr($extra_class); ?>"
      data-chart-id="<?php echo esc_attr($chart_id); ?>"
-     data-chart-type="<?php echo esc_attr($config['chart_type']); ?>">
+     data-chart-type="<?php echo esc_attr($config['chart_type']); ?>"
+     <?php if ($dependencia_filter !== '') : ?>data-dependencia="<?php echo esc_attr($dependencia_filter); ?>"<?php endif; ?>>
     
     <?php if ($show_toolbar): ?>
     <!-- Barra de herramientas -->

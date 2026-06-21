@@ -456,6 +456,12 @@ final class Visualizer
             wp_send_json_error(['message' => 'Configuración no encontrada']);
         }
 
+        // Optional dependencia filter — additive, only applies when the chart targets the VIEW.
+        $dependencia = sanitize_text_field($_POST['dependencia'] ?? '');
+        if ($dependencia !== '' && ($config['table_name'] ?? '') === $this->db->get_view_name()) {
+            $config['filters'][] = ['field' => 'nombredependencia', 'operator' => '=', 'value' => $dependencia];
+        }
+
         wp_send_json_success([
             'data'   => $this->get_chart_data($config),
             'config' => $config,
