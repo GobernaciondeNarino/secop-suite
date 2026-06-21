@@ -45,6 +45,9 @@ $result_columns = $config['result_columns'] ?? [];
                         <?php elseif ($field['type'] === 'select'): ?>
                             <select name="<?php echo esc_attr($field['column']); ?>" class="ss-filter-select" data-column="<?php echo esc_attr($field['column']); ?>">
                                 <option value=""><?php echo esc_html($field['placeholder'] ?: __('-- Todos --', 'secop-suite')); ?></option>
+                                <?php foreach ($field['options'] ?? [] as $opt): ?>
+                                    <option value="<?php echo esc_attr($opt); ?>"><?php echo esc_html($opt); ?></option>
+                                <?php endforeach; ?>
                             </select>
 
                         <?php elseif ($field['type'] === 'range'): ?>
@@ -62,7 +65,16 @@ $result_columns = $config['result_columns'] ?? [];
 
                         <?php elseif ($field['type'] === 'checkbox'): ?>
                             <div class="ss-filter-checkboxes" data-column="<?php echo esc_attr($field['column']); ?>">
-                                <span class="ss-filter-loading-options"><?php esc_html_e('Cargando opciones...', 'secop-suite'); ?></span>
+                                <?php if (!empty($field['options'])): ?>
+                                    <?php foreach ($field['options'] as $opt): ?>
+                                        <label class="ss-filter-checkbox-label">
+                                            <input type="checkbox" name="<?php echo esc_attr($field['column']); ?>[]" value="<?php echo esc_attr($opt); ?>" />
+                                            <span><?php echo esc_html($opt); ?></span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <span class="ss-filter-loading-options"><?php esc_html_e('Cargando opciones...', 'secop-suite'); ?></span>
+                                <?php endif; ?>
                             </div>
 
                         <?php endif; ?>

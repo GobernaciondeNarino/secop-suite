@@ -78,6 +78,7 @@ if (!defined('ABSPATH')) {
                                 </select>
                             </div>
                         </div>
+                        <div class="ss-field-values-preview" style="margin-top:8px;font-size:12px;color:#555;display:none;"></div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end;">
                             <div>
                                 <label><strong><?php _e('Placeholder', 'secop-suite'); ?></strong></label>
@@ -207,6 +208,7 @@ if (!defined('ABSPATH')) {
                 </select>
             </div>
         </div>
+        <div class="ss-field-values-preview" style="margin-top:8px;font-size:12px;color:#555;display:none;"></div>
         <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end;">
             <div>
                 <label><strong><?php _e('Placeholder', 'secop-suite'); ?></strong></label>

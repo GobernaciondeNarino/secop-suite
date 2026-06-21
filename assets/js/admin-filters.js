@@ -45,6 +45,18 @@
                 self.reindexFilterFields();
             });
 
+            // Preview DISTINCT values when type or column changes in a field row
+            $('#ss-filter-fields-container').on(
+                'change',
+                '.ss-filter-column-select, select[name$="[type]"]',
+                function() {
+                    var $row = $(this).closest('.ss-filter-field-row');
+                    if ($row.length) {
+                        self.loadFieldPreview($row);
+                    }
+                }
+            );
+
             // Copy shortcode
             $('.ss-copy-shortcode').on('click', function() {
                 const text = $('#ss-filter-shortcode-display').text();
@@ -75,6 +87,10 @@
                         self.columns = response.data.columns;
                         self.populateColumnSelects();
                         self.renderResultColumnsCheckboxes();
+                        // Auto-show preview for rows that already have a column+type saved
+                        $('#ss-filter-fields-container .ss-filter-field-row').each(function() {
+                            self.loadFieldPreview($(this));
+                        });
                     }
                 }
             });
@@ -163,6 +179,77 @@
                     const newName = name.replace(/\[\d+\]/, '[' + index + ']');
                     $(this).attr('name', newName);
                 });
+            });
+        },
+
+        /**
+         * Fetch and display DISTINCT column values as a preview inside a field row.
+         * Uses jQuery .text() exclusively — never .html() of DB values — to avoid XSS.
+         */
+        loadFieldPreview: function($row) {
+            const self = this;
+            const table = $('#ss_filter_table_name').val();
+            const $colSelect = $row.find('.ss-filter-column-select');
+            const $typeSelect = $row.find('select[name$="[type]"]');
+            const column = $colSelect.val();
+            const type = $typeSelect.val();
+            const $preview = $row.find('.ss-field-values-preview');
+
+            const previewTypes = ['select', 'range', 'checkbox'];
+            if (!table || !column || previewTypes.indexOf(type) === -1) {
+                $preview.empty().hide();
+                return;
+            }
+
+            $preview.show().empty().append(
+                $('<em>').text('Cargando valores...')
+            );
+
+            $.ajax({
+                url: secopSuiteFilterAdmin.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'secop_suite_filter_options',
+                    nonce: secopSuiteFilterAdmin.nonce,
+                    table: table,
+                    column: column
+                },
+                success: function(response) {
+                    $preview.empty();
+                    if (response.success && response.data.options && response.data.options.length) {
+                        const opts = response.data.options;
+                        const $heading = $('<strong>').text(
+                            'Valores en la BD (sin repetir): ' + opts.length
+                        );
+                        const $chips = $('<div>').css({
+                            marginTop: '4px',
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '4px'
+                        });
+                        const limit = Math.min(opts.length, 30);
+                        for (var i = 0; i < limit; i++) {
+                            $chips.append(
+                                $('<span>').css({
+                                    background: '#e0e0e0',
+                                    borderRadius: '3px',
+                                    padding: '2px 6px'
+                                }).text(opts[i])   // .text() is XSS-safe
+                            );
+                        }
+                        if (opts.length > 30) {
+                            $chips.append(
+                                $('<span>').text('… y ' + (opts.length - 30) + ' más')
+                            );
+                        }
+                        $preview.append($heading, $chips).show();
+                    } else {
+                        $preview.hide();
+                    }
+                },
+                error: function() {
+                    $preview.text('Error al cargar valores.').show();
+                }
             });
         }
     };

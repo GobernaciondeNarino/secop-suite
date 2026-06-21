@@ -267,6 +267,31 @@ final class Filter
         $unique_id   = 'ss-filter-' . $filter_id . '-' . wp_unique_id();
         $extra_class = !empty($atts['class']) ? ' ' . esc_attr($atts['class']) : '';
 
+        // Populate DISTINCT options for select/checkbox fields server-side so public
+        // visitors get working selects/checkboxes without needing privileged AJAX.
+        $table            = $config['table_name'];
+        $available_tables = $this->db->get_available_tables();
+        if (isset($available_tables[$table])) {
+            $valid_columns  = $this->db->get_table_columns($table);
+            global $wpdb;
+            $enriched_fields = [];
+            foreach ($config['fields'] as $field) {
+                $field['options'] = [];
+                if (in_array($field['type'], ['select', 'checkbox'], true) && !empty($field['column'])) {
+                    $col = $field['column'];
+                    if (isset($valid_columns[$col])) {
+                        // Column and table are validated above; backtick-quoted identifiers.
+                        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                        $field['options'] = (array) $wpdb->get_col(
+                            "SELECT DISTINCT `{$col}` FROM `{$table}` WHERE `{$col}` IS NOT NULL AND `{$col}` <> '' ORDER BY `{$col}` LIMIT 200"
+                        );
+                    }
+                }
+                $enriched_fields[] = $field;
+            }
+            $config['fields'] = $enriched_fields;
+        }
+
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/filter.php';
         return ob_get_clean();

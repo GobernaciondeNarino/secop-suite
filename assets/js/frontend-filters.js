@@ -74,6 +74,9 @@
                 const $select = $(this);
                 const column = $select.data('column');
 
+                // Skip if options were already rendered server-side
+                if ($select.find('option').length > 1) return;
+
                 $.ajax({
                     url: secopSuiteFilter.ajaxUrl,
                     type: 'POST',
@@ -99,6 +102,9 @@
             this.$container.find('.ss-filter-checkboxes').each(function() {
                 const $container = $(this);
                 const column = $container.data('column');
+
+                // Skip if options were already rendered server-side (no loading spinner present)
+                if ($container.find('.ss-filter-loading-options').length === 0) return;
 
                 $.ajax({
                     url: secopSuiteFilter.ajaxUrl,
