@@ -355,7 +355,7 @@ final class Database
             FROM `{$ac}` ac
             INNER JOIN `{$pp}` pp ON ac.rubro = pp.codigo
             INNER JOIN `{$c}` c  ON ac.nrodocumento = c.numero_de_proceso
-            WHERE ac.tipocpte = 'REs'";
+            WHERE ac.tipocpte = 'RES'";
 
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $result = $wpdb->query($sql);
@@ -438,7 +438,7 @@ final class Database
             FROM `{$ac}` ac
             INNER JOIN `{$pp}` pp ON ac.rubro = pp.codigo
             INNER JOIN `{$c}` c  ON ac.nrodocumento = c.numero_de_proceso
-            WHERE ac.tipocpte = 'REs'
+            WHERE ac.tipocpte = 'RES'
         ) t";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         return (int) $wpdb->get_var($sql);
