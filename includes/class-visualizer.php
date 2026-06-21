@@ -305,7 +305,9 @@ final class Visualizer
         global $post;
         if (!is_a($post, 'WP_Post') ||
             (!has_shortcode($post->post_content, 'sdv_chart') &&
-             !has_shortcode($post->post_content, 'secop_chart'))) {
+             !has_shortcode($post->post_content, 'secop_chart') &&
+             !has_shortcode($post->post_content, 'secop_dep_chart') &&
+             !has_shortcode($post->post_content, 'secop_seguimiento'))) {
             return;
         }
 

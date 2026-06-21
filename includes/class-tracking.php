@@ -262,12 +262,14 @@ final class Tracking
         $type = sanitize_text_field($_POST['dep_chart_type'] ?? '');
         if (!self::is_compatible($dimension, $type)) $type = self::default_type($dimension);
 
-        update_post_meta($post_id, '_secop_dep_card_config', [
+        $config = [
             'dimension'   => $dimension,
             'chart_type'  => $type,
             'dependencia' => sanitize_text_field($_POST['dep_dependencia'] ?? ''),
             'metric'      => sanitize_text_field($_POST['dep_metric'] ?? 'valordebito'),
-        ]);
+        ];
+        update_post_meta($post_id, '_secop_dep_card_config', $config);
+        update_post_meta($post_id, '_secop_chart_config', $this->card_to_chart_config($config));
     }
 
     public function enqueue_admin_assets(string $hook): void
@@ -295,17 +297,108 @@ final class Tracking
         return ['dimension' => $dimension, 'chart_type' => $type, 'dependencia' => $dep];
     }
 
+    /**
+     * Maps a dep card config array to a Visualizer-compatible _secop_chart_config.
+     * The returned config can be stored on the dep card post so the Visualizer AJAX
+     * (secop_suite_get_chart_data) serves data using the dep card's post ID.
+     *
+     * @param array       $cfg        The _secop_dep_card_config array.
+     * @param string|null $dependencia Override dependencia filter (null = use $cfg value).
+     */
+    public function card_to_chart_config(array $cfg, ?string $dependencia = null): array
+    {
+        $view      = $this->db->get_view_name();
+        $dimension = $cfg['dimension'] ?? 'dependencia';
+        $type      = self::is_compatible($dimension, $cfg['chart_type'] ?? '')
+            ? $cfg['chart_type']
+            : self::default_type($dimension);
+        $raw_metric = $cfg['metric'] ?? 'valordebito';
+        $metric     = in_array($raw_metric, ['valordebito', 'valorcredito', 'saldoporejecutaresp', 'valor_contrato'], true)
+            ? $raw_metric
+            : 'valordebito';
+        $x_field = self::DIM_COLUMN[$dimension] ?? 'nombredependencia';
+
+        $filters = [['field' => 'anio', 'operator' => '=', 'value' => (string) $this->current_vigencia()]];
+        $dep = ($dependencia !== null && $dependencia !== '') ? $dependencia : ($cfg['dependencia'] ?? '');
+        if ($dep !== '') {
+            $filters[] = ['field' => 'nombredependencia', 'operator' => '=', 'value' => $dep];
+        }
+
+        return [
+            'chart_type'      => $type,
+            'table_name'      => $view,
+            'x_field'         => $x_field,
+            'x_date_grouping' => '',
+            'y_field'         => $metric,
+            'y_fields'        => [],
+            'group_by'        => '',
+            'aggregate'       => 'SUM',
+            'color_field'     => '',
+            'filters'         => $filters,
+            'date_field'      => '',
+            'date_from'       => '',
+            'date_to'         => '',
+            'limit'           => ($dimension === 'mensual') ? 0 : 50,
+            'order_by'        => ($dimension === 'mensual') ? $x_field : $metric,
+            'order_dir'       => ($dimension === 'mensual') ? 'ASC' : 'DESC',
+            'colors'          => [],
+            'show_legend'     => true,
+            'legend_mode'     => 'text',
+            'legend_position' => 'bottom',
+            'show_timeline'   => false,
+            'show_toolbar'    => true,
+            'toolbar_options' => ['share', 'data', 'image', 'download'],
+            'chart_height'    => 400,
+            'y_axis_title'    => '',
+            'x_axis_title'    => '',
+            'number_format'   => 'colombiano',
+            'custom_query'    => '',
+        ];
+    }
+
     public function sc_chart(array $atts): string
     {
         $atts = shortcode_atts(
             ['card' => 0, 'dimension' => '', 'tipo' => '', 'dependencia' => '', 'height' => 400],
             $atts, 'secop_dep_chart'
         );
-        $cfg = $this->resolve_config($atts);
-        $uid = 'ss-dep-' . wp_unique_id();
-        $help = self::compat_help($cfg['dimension']);
+
+        $card_id = (int) $atts['card'];
+        if (!$card_id) {
+            return '<p class="ss-error">' . esc_html__('Especifique un ID de card válido: [secop_dep_chart card="N"]', 'secop-suite') . '</p>';
+        }
+
+        // Try existing Visualizer-compatible config (written by save_card_meta or a previous render).
+        $config = get_post_meta($card_id, '_secop_chart_config', true);
+
+        // On-the-fly build for legacy cards that lack _secop_chart_config.
+        if (empty($config) || !is_array($config)) {
+            $dep_cfg = get_post_meta($card_id, '_secop_dep_card_config', true) ?: [];
+            if (empty($dep_cfg)) {
+                return '<p class="ss-error">' . esc_html__('Card no encontrada o sin configuración.', 'secop-suite') . '</p>';
+            }
+            // Apply shortcode attribute overrides via resolve_config().
+            $resolved               = $this->resolve_config($atts);
+            $dep_cfg['dimension']   = $resolved['dimension'];
+            $dep_cfg['chart_type']  = $resolved['chart_type'];
+            $dep_cfg['dependencia'] = $resolved['dependencia'];
+            $config = $this->card_to_chart_config($dep_cfg);
+            // Persist so the Visualizer AJAX can serve data using this card's post ID.
+            update_post_meta($card_id, '_secop_chart_config', $config);
+        }
+
+        // Honor height shortcode attribute.
+        if (!empty($atts['height'])) {
+            $config['chart_height'] = (int) $atts['height'];
+        }
+
+        // Variables required by templates/frontend/chart.php.
+        $chart_id    = $card_id;
+        $unique_id   = 'ss-dep-' . wp_unique_id();
+        $extra_class = ' ss-dep-chart';
+
         ob_start();
-        include SECOP_SUITE_DIR . 'templates/frontend/dep-chart.php';
+        include SECOP_SUITE_DIR . 'templates/frontend/chart.php';
         return ob_get_clean();
     }
 
