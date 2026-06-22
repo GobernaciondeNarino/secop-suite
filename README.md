@@ -69,6 +69,10 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.4.1 — Red completa + nuevo gráfico Rings `[secop_dep_rings]`
+- La red de contratación (`[secop_dep_red]`) ahora muestra **todos los contratistas** cuando se ven «todas las dependencias» (sin filtro), para apreciar la magnitud completa. `limit="0"` (por defecto) = todos; un `limit` positivo conserva el Top-N. El endpoint `secop_dep_network` admite `limit=0` (cap de seguridad 5000). Para grafos grandes (>400 nodos) la simulación de fuerza se ejecuta un número acotado de ticks y se detiene (sin animación abierta), manteniendo responsivos incluso ~1700 nodos; se añade un indicador de carga y una leyenda con el nº de contratistas y dependencias.
+- Nuevo gráfico **Rings** (`[secop_dep_rings]`): red ego concéntrica con `d3plus.Rings` centrada en una dependencia (la elegida o, si no, la de mayor valor); sus contratistas, tipos y modalidades se disponen en anillos automáticamente. Reutiliza `network_data` y el endpoint `secop_dep_network`. Tooltips con datos por tipo de nodo (cadenas de BD escapadas) y coloreado por tipo (dependencia/contratista/tipo/modalidad). Atributos: `dependencia`, `height`, `selector`.
+
 ### v5.4.0 — Red de contratación `[secop_dep_red]`
 - Nuevo gráfico de red de contratación (`[secop_dep_red]`): las dependencias son los nodos centrales, conectadas a sus contratistas, tipos de contrato y modalidades de contratación. Layout de fuerza con d3 v5 (`forceSimulation`/`forceLink`/`forceManyBody`/`forceCollide`), nodos arrastrables y tooltip con nº de contratos, valor y dependencia del contratista. Datos deduplicados por contrato (`GROUP BY numero_del_contrato`) y servidos por AJAX (`secop_dep_network`) con nonce `secop_dep_frontend` + rate-limit por IP. La densidad se acota con Top-N de contratistas (`limit`) y el filtro por dependencia. Atributos: `dependencia`, `limit`, `height`, `selector`.
 
