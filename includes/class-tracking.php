@@ -98,7 +98,10 @@ final class Tracking
             ],
             'public'             => false,
             'show_ui'            => true,
-            'show_in_menu'       => 'secop-suite',
+            // No se muestra como submenú propio para evitar duplicar "Contratación":
+            // la página catálogo es el acceso principal; las cards a medida se gestionan
+            // desde el enlace del catálogo (edit.php?post_type=secop_dep_card).
+            'show_in_menu'       => false,
             'capability_type'    => 'post',
             'supports'           => ['title'],
             'menu_icon'          => 'dashicons-analytics',
