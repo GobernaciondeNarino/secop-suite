@@ -69,6 +69,11 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.7.0 — Serie mensual por mes del contrato + predicción `[secop_dep_prediccion]`
+- La **serie mensual** ahora usa el **mes del contrato** (campo `fecha`, formato `DD/MM/YYYY`, parseado con `STR_TO_DATE(fecha, '%d/%m/%Y')`) en vez del **mes de actualización** (`mes` de Sysman, que era ~constante → serie degenerada). Las filas cuya `fecha` no parsea se excluyen. Esto corrige `monthly_series`/`build_dataset` y, con ello, el **análisis predictivo** automático.
+- Nuevo gráfico de predicción **`[secop_dep_prediccion]`** (d3plus.LinePlot): evolución mensual del valor contratado acumulado con **línea de proyección punteada** (`strokeDasharray`) a fin de vigencia, calculada por **regresión lineal**. Datos por **AJAX** (`secop_dep_prediccion`, nonce `secop_dep_frontend` + rate-limit por IP). Atributos: `dependencia`, `height`, `selector`. La metainformación (cierre proyectado, R²) se inserta con `.text()`.
+- Se **eliminaron** los presets degenerados `evolucion_mensual` y `evolucion_area` (usaban el mes de actualización vía el motor Visualizer); el nuevo shortcode los reemplaza como visualización temporal.
+
 ### v5.6.0 — Explorador interactivo `[secop_dep_explora]`
 - Nuevo **explorador interactivo** (`[secop_dep_explora]`): treemap de dependencias (vigencia actual) con un **panel inferior** que se despliega al hacer clic en una celda — a la izquierda la **lista de modalidades** (clicable) y a la derecha un **acordeón de contratistas** cuyos elementos se expanden para mostrar los contratos del contratista. Todo dinámico por **AJAX** (`secop_dep_explora_tree`/`_modalidades`/`_contratistas`, nonce `secop_dep_frontend` + rate-limit por IP). Al hacer clic en una modalidad se recarga sólo la lista de contratistas por AJAX. Cada contrato muestra dos filas: una con los **campos de fila configurables** (atributo `campos`) y otra a ancho completo con el `objeto_a_contratar`. Incluye un botón de **descarga de TODA la vista** (vigencia actual) reutilizando la ruta REST `consulta/csv`. Atributos: `campos`, `height`. Todas las cadenas de BD se renderizan con nodos de texto (sin innerHTML).
 

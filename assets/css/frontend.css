@@ -1423,3 +1423,13 @@
     .ss-explora-contratistas { max-height: none; flex-basis: auto; }
 }
 .ss-rings-chart svg { width: 100%; height: auto; display: block; }
+
+/* v5.7.0: Predicción de contratación (LinePlot + proyección punteada) */
+.ss-pred-module { margin: 1rem 0; }
+.ss-pred-controls { margin-bottom: .6rem; }
+.ss-pred-controls label { font-weight: 600; }
+.ss-pred-controls select { margin-left: .4rem; max-width: 100%; }
+.ss-pred-wrapper { position: relative; }
+.ss-pred-chart svg { width: 100%; height: auto; display: block; }
+.ss-pred-loading { color: #50575e; text-align: center; padding: 1.5rem 0; }
+.ss-pred-meta { margin-top: .6rem; color: #50575e; font-size: 13px; line-height: 1.5; }

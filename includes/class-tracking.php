@@ -156,6 +156,10 @@ final class Tracking
         add_action('wp_ajax_nopriv_secop_dep_network',   [$this, 'ajax_network']);
         // v5.4.1: red ego (Rings) centrada en una dependencia (d3plus.Rings).
         add_shortcode('secop_dep_rings',                 [$this, 'sc_rings']);
+        // v5.7.0: predicción — serie mensual (mes del contrato) + proyección punteada.
+        add_shortcode('secop_dep_prediccion',            [$this, 'sc_prediccion']);
+        add_action('wp_ajax_secop_dep_prediccion',        [$this, 'ajax_prediccion']);
+        add_action('wp_ajax_nopriv_secop_dep_prediccion', [$this, 'ajax_prediccion']);
         // v5.6.0: explorador interactivo (treemap de dependencias + panel modalidades/contratistas).
         add_shortcode('secop_dep_explora',                       [$this, 'sc_explora']);
         add_action('wp_ajax_secop_dep_explora_tree',             [$this, 'ajax_explora_tree']);
@@ -260,19 +264,85 @@ final class Tracking
             $params[] = $dependencia;
         }
         $where_sql = implode(' AND ', $where);
-        $sql = "SELECT mes, SUM(valordebito) AS valor FROM `{$view}`
-                WHERE {$where_sql} GROUP BY mes ORDER BY mes ASC";
+
+        // v5.7.0: el mes proviene del MES DEL CONTRATO (columna varchar `fecha`,
+        // formato DD/MM/YYYY), NO de `mes` (mes de actualización de Sysman, que es
+        // ~constante → serie degenerada). El literal de formato '%d/%m/%Y' se escribe
+        // con porcentajes DOBLES ('%%d/%%m/%%Y') para que $wpdb->prepare lo emita como
+        // '%d/%m/%Y' (un solo %) en lugar de tratarlo como placeholders: sólo
+        // anio (%d) y la dependencia (%s) son placeholders preparados. Las filas cuya
+        // `fecha` no parsea devuelven NULL y se excluyen del agregado.
+        $expr = "MONTH(STR_TO_DATE(`fecha`, '%%d/%%m/%%Y'))";
+        $sql = "SELECT {$expr} AS mes, SUM(valor_contrato) AS valor
+                FROM `{$view}`
+                WHERE {$where_sql} AND STR_TO_DATE(`fecha`, '%%d/%%m/%%Y') IS NOT NULL
+                GROUP BY {$expr} ORDER BY mes ASC";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
 
         $acc = 0.0; $serie = [];
         foreach ($rows ?: [] as $r) {
+            if ($r['mes'] === null) continue; // defensa extra: meses no parseables.
             $acc += (float) $r['valor'];
             $serie[] = [(int) $r['mes'], $acc];
         }
 
         set_transient($cache_key, $serie, 30 * MINUTE_IN_SECONDS);
         return $serie;
+    }
+
+    /**
+     * v5.7.0: Dataset del gráfico de predicción. Serie observada (valor contratado
+     * acumulado por mes del contrato) + proyección de cierre de vigencia mediante
+     * regresión lineal. El primer punto «Proyectado» es el punto de UNIÓN (último
+     * mes observado con su valor observado) para que la línea punteada conecte con
+     * la sólida sin salto.
+     *
+     * @param string|null $dependencia Filtra por una dependencia (null = todas).
+     * @return array{points:array<int,array{mes:int,valor:float,serie:string}>,meta:array<string,mixed>}
+     */
+    public function prediccion_data(?string $dependencia = null): array
+    {
+        $cache_key = 'secop_trk_' . md5('prediccion_data|' . ($dependencia ?? '') . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
+        $serie = $this->monthly_series($dependencia);
+        $reg   = \SecopSuite\Stats::linear_regression($serie);
+
+        $points = [];
+        foreach ($serie as [$m, $acc]) {
+            $points[] = ['mes' => (int) $m, 'valor' => (float) $acc, 'serie' => 'Observado'];
+        }
+
+        if (!$reg['insufficient'] && !empty($serie)) {
+            $last = end($serie);
+            $L = (int) $last[0];
+            // Punto de unión: arranca en el último mes observado con su valor real.
+            $points[] = ['mes' => $L, 'valor' => (float) $last[1], 'serie' => 'Proyectado'];
+            for ($m = $L + 1; $m <= 12; $m++) {
+                $points[] = [
+                    'mes'   => $m,
+                    'valor' => max(0.0, (float) \SecopSuite\Stats::project($reg, (float) $m)),
+                    'serie' => 'Proyectado',
+                ];
+            }
+        }
+
+        $result = [
+            'points' => $points,
+            'meta'   => [
+                'slope'        => $reg['slope'],
+                'r2'           => $reg['r2'],
+                'n'            => $reg['n'],
+                'cierre'       => $reg['insufficient'] ? null : \SecopSuite\Stats::project($reg, 12.0),
+                'insufficient' => (bool) $reg['insufficient'],
+                'vigencia'     => $this->current_vigencia(),
+            ],
+        ];
+
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
+        return $result;
     }
 
     /** Construir el dataset de análisis completo para una card. */
@@ -749,22 +819,12 @@ final class Tracking
                 'limit'       => 40,
                 'descripcion' => __('Los contratistas con mayor valor, representados como burbujas proporcionales.', 'secop-suite'),
             ],
-            'evolucion_mensual' => [
-                'titulo'      => __('Evolución mensual (línea + predicción)', 'secop-suite'),
-                'dimension'   => 'mensual',
-                'chart_type'  => 'line',
-                'metric'      => 'valor_contrato',
-                'limit'       => 0,
-                'descripcion' => __('Valor contratado acumulado mes a mes, con proyección de cierre de vigencia.', 'secop-suite'),
-            ],
-            'evolucion_area' => [
-                'titulo'      => __('Evolución mensual (área)', 'secop-suite'),
-                'dimension'   => 'mensual',
-                'chart_type'  => 'area',
-                'metric'      => 'valor_contrato',
-                'limit'       => 0,
-                'descripcion' => __('Valor contratado acumulado mes a mes, en área.', 'secop-suite'),
-            ],
+            // v5.7.0: los presets 'evolucion_mensual'/'evolucion_area' se eliminaron.
+            // Usaban DIM_COLUMN['mensual']='mes' (mes de actualización de Sysman ≈
+            // constante → serie degenerada) y el motor Visualizer no puede parsear el
+            // varchar `fecha` (DD/MM/YYYY). El nuevo shortcode [secop_dep_prediccion]
+            // los reemplaza como visualización temporal (serie por mes del contrato +
+            // proyección punteada).
         ];
     }
 
@@ -1192,7 +1252,7 @@ final class Tracking
         global $post;
         if (!is_a($post, 'WP_Post')) return;
         $has = false;
-        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings','secop_dep_explora'] as $sc) {
+        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings','secop_dep_explora','secop_dep_prediccion'] as $sc) {
             if (has_shortcode($post->post_content, $sc)) { $has = true; break; }
         }
         if (!$has) return;
@@ -1541,6 +1601,37 @@ final class Tracking
         $uid  = 'ss-rings-' . wp_unique_id();
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/rings.php';
+        return ob_get_clean();
+    }
+
+    // ── v5.7.0: Predicción (serie mensual del contrato + proyección) ──
+
+    /** AJAX — datos del gráfico de predicción (mismo nonce + rate-limit que ajax_drill). */
+    public function ajax_prediccion(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
+
+        $dep = sanitize_text_field(wp_unslash($_POST['dependencia'] ?? ''));
+        wp_send_json_success($this->prediccion_data($dep !== '' ? $dep : null));
+    }
+
+    /**
+     * Shortcode [secop_dep_prediccion] — evolución mensual del valor contratado
+     * (por mes del contrato) con línea de proyección punteada a fin de vigencia.
+     */
+    public function sc_prediccion(array $atts): string
+    {
+        $atts = shortcode_atts(['dependencia' => '', 'height' => 420, 'selector' => 'on'], $atts, 'secop_dep_prediccion');
+        $this->enqueue_module_stack();
+        wp_enqueue_script('secop-dep-prediccion', SECOP_SUITE_URL . 'assets/js/dep-prediccion.js',
+            ['jquery', 'd3plus', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+        $deps = ($atts['selector'] === 'on') ? $this->list_dependencies() : [];
+        $uid  = 'ss-pred-' . wp_unique_id();
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/prediccion.php';
         return ob_get_clean();
     }
 
