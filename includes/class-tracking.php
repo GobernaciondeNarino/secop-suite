@@ -503,7 +503,7 @@ final class Tracking
             'order_by'        => $order_by,
             'order_dir'       => $order_dir,
             'colors'          => $colors,
-            'show_legend'     => true,
+            'show_legend'     => array_key_exists('show_legend', $cfg) ? (bool) $cfg['show_legend'] : true,
             'legend_mode'     => 'text',
             'legend_position' => 'bottom',
             'show_timeline'   => false,
@@ -612,14 +612,168 @@ final class Tracking
         return (int) $id;
     }
 
+    /**
+     * Resuelve (o crea) el post secop_dep_card que respalda CUALQUIER config
+     * de card ad-hoc (la generada desde los atributos del shortcode). Es
+     * idempotente por hash de la config: dos shortcodes con la misma config
+     * efectiva comparten el mismo post de respaldo (sin duplicar posts). Así
+     * el motor existente (chart.php + AJAX secop_suite_get_chart_data) puede
+     * renderizar usando el ID del post sin cambios en el Visualizer.
+     *
+     * @param array $cardCfg Config efectiva de la card (dimension, chart_type, …).
+     * @return int Post ID, o 0 si falla la creación.
+     */
+    private function get_config_post_id(array $cardCfg): int
+    {
+        $hash = md5(wp_json_encode($cardCfg));
+        $q = [
+            'post_type'   => self::POST_TYPE,
+            'post_status' => 'any',
+            'meta_key'    => '_secop_cfg_hash',
+            'meta_value'  => $hash,
+            'numberposts' => 1,
+            'fields'      => 'ids',
+        ];
+        $existing = get_posts($q);
+        if (!empty($existing)) {
+            $id = (int) $existing[0];
+        } else {
+            // Lock para evitar creación duplicada bajo concurrencia.
+            $lock = SECOP_SUITE_PREFIX . 'cfg_lock_' . $hash;
+            if (get_transient($lock)) {
+                $again = get_posts($q);
+                if (!empty($again)) return (int) $again[0];
+            }
+            set_transient($lock, 1, 30);
+            $id = wp_insert_post([
+                'post_type'   => self::POST_TYPE,
+                'post_status' => 'publish',
+                'post_title'  => '(auto) ' . ($cardCfg['dimension'] ?? 'grafica'),
+            ]);
+            if (!$id || is_wp_error($id)) { delete_transient($lock); return 0; }
+            update_post_meta($id, '_secop_cfg_hash', $hash);
+            delete_transient($lock);
+        }
+
+        // Sólo reescribir la config si realmente cambió (evita writes por render).
+        $stored = get_post_meta($id, '_secop_dep_card_config', true);
+        if ($stored !== $cardCfg) {
+            update_post_meta($id, '_secop_dep_card_config', $cardCfg);
+            update_post_meta($id, '_secop_chart_config', $this->card_to_chart_config($cardCfg));
+        }
+        return (int) $id;
+    }
+
+    /**
+     * Construye la config efectiva de card a partir de los atributos del
+     * shortcode: parte de una base (card existente, preset, o dimensión por
+     * defecto) y aplica los overrides de los atributos validados.
+     *
+     * @param array $atts Atributos ya pasados por shortcode_atts().
+     * @return array Config efectiva de card lista para card_to_chart_config().
+     */
+    private function build_effective_card_config(array $atts): array
+    {
+        // 1) Config BASE.
+        $base = [];
+        if (!empty($atts['card'])) {
+            $base = get_post_meta((int) $atts['card'], '_secop_dep_card_config', true) ?: [];
+        } elseif (!empty($atts['preset'])) {
+            $presetKey = sanitize_key($atts['preset']);
+            $presets   = $this->presets();
+            if (isset($presets[$presetKey])) {
+                $p = $presets[$presetKey];
+                $base = [
+                    'dimension'   => $p['dimension'],
+                    'chart_type'  => $p['chart_type'],
+                    'metric'      => $p['metric'],
+                    'dependencia' => '',
+                    'limit'       => $p['limit'] ?? 0,
+                ];
+            }
+        }
+        if (empty($base)) {
+            $dim = sanitize_text_field($atts['dimension'] ?? '');
+            if (!isset(self::COMPAT[$dim])) $dim = 'dependencia';
+            $base = ['dimension' => $dim];
+        }
+
+        // 2) Overrides de atributos.
+        $dimension = sanitize_text_field($atts['dimension'] ?? '') !== ''
+            ? sanitize_text_field($atts['dimension'])
+            : ($base['dimension'] ?? 'dependencia');
+        if (!isset(self::COMPAT[$dimension])) $dimension = 'dependencia';
+
+        // chart_type: prioriza el att tipo (validado por compatibilidad), luego base.
+        $type = sanitize_text_field($atts['tipo'] ?? '');
+        if ($type === '') $type = (string) ($base['chart_type'] ?? '');
+        if (!self::is_compatible($dimension, $type)) $type = self::default_type($dimension);
+
+        // metric: valida contra metrics(); si no, conserva base/valordebito.
+        $metric = sanitize_text_field($atts['metric'] ?? '');
+        if ($metric === '' || !isset($this->metrics()[$metric])) {
+            $metric = (string) ($base['metric'] ?? 'valordebito');
+            if (!isset($this->metrics()[$metric])) $metric = 'valordebito';
+        }
+
+        // dependencia.
+        $dep = sanitize_text_field($atts['dependencia'] ?? '');
+        if ($dep === '') $dep = (string) ($base['dependencia'] ?? '');
+
+        // order / order_dir.
+        $order = sanitize_text_field($atts['order'] ?? '');
+        if (!in_array($order, ['valor', 'etiqueta'], true)) $order = $base['order'] ?? 'valor';
+        $order_dir = strtoupper(sanitize_text_field($atts['orderdir'] ?? ''));
+        if (!in_array($order_dir, ['ASC', 'DESC'], true)) $order_dir = $base['order_dir'] ?? 'DESC';
+
+        // limit.
+        $limit = (isset($atts['limit']) && $atts['limit'] !== '')
+            ? (int) $atts['limit']
+            : (int) ($base['limit'] ?? 0);
+
+        // colors: parsea la lista del att y conserva sólo hex válidos; si no, base.
+        $colors = $base['colors'] ?? [];
+        if (isset($atts['colors']) && $atts['colors'] !== '') {
+            $parsed = array_values(array_filter(
+                array_map('trim', explode(',', sanitize_text_field($atts['colors']))),
+                static fn($c) => (bool) preg_match('/^#[0-9a-fA-F]{6}$/', $c)
+            ));
+            if (!empty($parsed)) $colors = $parsed;
+        }
+
+        // legend: on→true / off→false. Sólo se fija si se pasó el att.
+        $legend = strtolower(sanitize_text_field($atts['legend'] ?? ''));
+        $show_legend = array_key_exists('show_legend', $base) ? (bool) $base['show_legend'] : true;
+        if ($legend === 'on')  $show_legend = true;
+        if ($legend === 'off') $show_legend = false;
+
+        return [
+            'dimension'   => $dimension,
+            'chart_type'  => $type,
+            'metric'      => $metric,
+            'dependencia' => $dep,
+            'order'       => $order,
+            'order_dir'   => $order_dir,
+            'limit'       => $limit,
+            'colors'      => $colors,
+            'show_legend' => $show_legend,
+        ];
+    }
+
     public function sc_chart(array $atts): string
     {
         $atts = shortcode_atts(
-            ['card' => 0, 'dimension' => '', 'tipo' => '', 'dependencia' => '', 'height' => 400, 'preset' => ''],
+            [
+                'card' => 0, 'dimension' => '', 'tipo' => '', 'dependencia' => '',
+                'height' => 400, 'preset' => '',
+                // v5.1.8: parámetros de personalización del shortcode.
+                'metric' => '', 'order' => '', 'orderdir' => '', 'limit' => '',
+                'colors' => '', 'legend' => '',
+            ],
             $atts, 'secop_dep_chart'
         );
 
-        // Resolve preset → backing card post (find-or-create).
+        // Validate preset early (give a friendly error if unknown).
         if (!empty($atts['preset'])) {
             $presetKey = sanitize_key($atts['preset']);
             $presets   = $this->presets();
@@ -630,12 +784,6 @@ final class Tracking
                     $presetKey
                 )) . '</p>';
             }
-            $atts['card'] = $this->get_preset_post_id($presetKey);
-        }
-
-        $card_id = (int) $atts['card'];
-        if (!$card_id) {
-            return '<p class="ss-error">' . esc_html__('Especifique un ID de card válido: [secop_dep_chart card="N"]', 'secop-suite') . '</p>';
         }
 
         // Runtime dependency override from the shortcode attribute (used by sc_seguimiento).
@@ -643,25 +791,52 @@ final class Tracking
         // NOT persisted into _secop_chart_config so the stored config stays general.
         $dependencia_filter = sanitize_text_field($atts['dependencia']);
 
-        // Try existing Visualizer-compatible config (written by save_card_meta or a previous render).
-        $config = get_post_meta($card_id, '_secop_chart_config', true);
+        // OPTIMIZATION: card="N" (or preset="x") without any override attribute →
+        // render the canonical card/preset post directly (no hash post created).
+        // Keeps existing [secop_dep_chart card=N] / preset=x cheap and clutter-free.
+        $override_atts = ['tipo', 'metric', 'order', 'orderdir', 'limit', 'colors', 'dependencia', 'legend'];
+        $has_override  = false;
+        foreach ($override_atts as $k) {
+            if (isset($atts[$k]) && $atts[$k] !== '') { $has_override = true; break; }
+        }
 
-        // On-the-fly build for legacy cards that lack _secop_chart_config.
-        if (empty($config) || !is_array($config)) {
-            $dep_cfg = get_post_meta($card_id, '_secop_dep_card_config', true) ?: [];
-            if (empty($dep_cfg)) {
-                return '<p class="ss-error">' . esc_html__('Card no encontrada o sin configuración.', 'secop-suite') . '</p>';
+        $direct_id = 0;
+        if (!$has_override) {
+            if (!empty($atts['preset'])) {
+                $direct_id = $this->get_preset_post_id(sanitize_key($atts['preset']));
+            } elseif (!empty($atts['card'])) {
+                $direct_id = (int) $atts['card'];
             }
-            // Apply dimension/type overrides but keep the card's own dependencia for the stored
-            // config — the runtime $dependencia_filter is applied via data-dependencia at render time.
-            $resolved             = $this->resolve_config($atts);
-            $dep_cfg['dimension'] = $resolved['dimension'];
-            $dep_cfg['chart_type'] = $resolved['chart_type'];
-            // Persist a general config (card's configured dependencia only, not the shortcode override).
-            $dep_cfg['dependencia'] = sanitize_text_field($dep_cfg['dependencia'] ?? '');
-            $config = $this->card_to_chart_config($dep_cfg);
-            // Persist so the Visualizer AJAX can serve data using this card's post ID.
-            update_post_meta($card_id, '_secop_chart_config', $config);
+        }
+
+        if ($direct_id) {
+            $card_id = $direct_id;
+            // Try existing Visualizer-compatible config (written by save_card_meta or a previous render).
+            $config = get_post_meta($card_id, '_secop_chart_config', true);
+            if (empty($config) || !is_array($config)) {
+                $dep_cfg = get_post_meta($card_id, '_secop_dep_card_config', true) ?: [];
+                if (empty($dep_cfg)) {
+                    return '<p class="ss-error">' . esc_html__('Card no encontrada o sin configuración.', 'secop-suite') . '</p>';
+                }
+                $config = $this->card_to_chart_config($dep_cfg);
+                update_post_meta($card_id, '_secop_chart_config', $config);
+            }
+        } else {
+            // Build the effective card config from base (card/preset/dimension) + attribute overrides,
+            // then map it to a backing post via config hash (find-or-create, no duplicates).
+            $effectiveCfg = $this->build_effective_card_config($atts);
+            $card_id      = $this->get_config_post_id($effectiveCfg);
+            if (!$card_id) {
+                return '<p class="ss-error">' . esc_html__('No se pudo preparar la gráfica.', 'secop-suite') . '</p>';
+            }
+            $config = get_post_meta($card_id, '_secop_chart_config', true);
+            if (empty($config) || !is_array($config)) {
+                $config = $this->card_to_chart_config($effectiveCfg);
+            }
+        }
+
+        if (!$card_id) {
+            return '<p class="ss-error">' . esc_html__('Especifique un ID de card válido: [secop_dep_chart card="N"]', 'secop-suite') . '</p>';
         }
 
         // Honor height shortcode attribute.

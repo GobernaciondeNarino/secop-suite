@@ -69,6 +69,11 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.1.8 — Parámetros de personalización en `[secop_dep_chart]`
+- **Configuración desde el shortcode**: `[secop_dep_chart]` ahora acepta parámetros de personalización (`metric`, `order`, `orderdir`, `limit`, `colors`, `legend`, `dimension`, `tipo`, `dependencia`, `height`) que se resuelven a una **card de respaldo automática**, reutilizando el motor del Visualizer sin cambios. Es posible configurar una gráfica completa sin crear una card manualmente.
+- **Card de respaldo por hash de configuración**: cada combinación de parámetros se mapea (find-or-create) a un único post `secop_dep_card` identificado por `_secop_cfg_hash`, evitando posts duplicados. `[secop_dep_chart card="N"]` y `preset="x"` sin overrides siguen renderizando el post canónico directamente (sin crear posts auxiliares).
+- **Leyenda configurable**: `card_to_chart_config()` respeta `show_legend` cuando la card lo define explícitamente.
+
 ### v5.1.6 — Vista previa EN VIVO del editor de Contratación
 - **Vista previa en vivo**: el metabox de vista previa de la card ya no renderiza el shortcode guardado; ahora reacciona al instante a los cambios del formulario (tipo de gráfica, colores, dimensión, métrica, orden, dependencia y límite) mediante un endpoint AJAX admin (`secop_dep_preview`, protegido con nonce + capacidad `edit_posts`). La gráfica se redibuja reutilizando el motor del Visualizer expuesto como `window.SSChartRender` en `frontend.js` (sin cambiar el comportamiento de `[secop_chart]`/`[secop_dep_chart]`).
 - **Sección de Datos**: tabla con las filas devueltas por la consulta (`x_value`, `y_value`, `group_value`), construida con `.text()` por celda (sin `innerHTML` de valores de BD).
