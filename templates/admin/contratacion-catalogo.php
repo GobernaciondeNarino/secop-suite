@@ -298,6 +298,114 @@ $presets = $tracking->presets();
             <?php endforeach; ?>
         </div>
     </div>
+
+    <?php
+    // v5.7.0: Predicción [secop_dep_prediccion].
+    $pred_params = [
+        ['dependencia', __('Filtra la serie por una dependencia concreta (vacío = todas).', 'secop-suite')],
+        ['height',      __('Altura mínima del gráfico en píxeles (por defecto 420).', 'secop-suite')],
+        ['selector',    __('Muestra el selector de dependencia: on u off (por defecto on).', 'secop-suite')],
+    ];
+    $pred_shortcodes = [
+        '[secop_dep_prediccion]',
+        '[secop_dep_prediccion height="520"]',
+        '[secop_dep_prediccion dependencia="Secretaría General" selector="off"]',
+    ];
+    ?>
+    <div class="ss-cat-card ss-cat-card-prediccion" style="margin-top:20px;">
+        <h2 class="ss-cat-title"><?php esc_html_e('Predicción de contratación', 'secop-suite'); ?></h2>
+        <p class="ss-cat-desc">
+            <?php esc_html_e('Evolución mensual del valor contratado (según la fecha del contrato) con línea de proyección punteada a fin de vigencia. La serie mensual se construye a partir del mes del contrato (campo fecha, DD/MM/YYYY) y la proyección se calcula por regresión lineal sobre el valor contratado acumulado.', 'secop-suite'); ?>
+        </p>
+        <details class="ss-cat-params">
+            <summary><strong><?php esc_html_e('Parámetros del shortcode [secop_dep_prediccion]', 'secop-suite'); ?></strong></summary>
+            <table class="widefat striped" style="max-width:760px;">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Parámetro', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Descripción', 'secop-suite'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($pred_params as $param) : ?>
+                        <tr>
+                            <td><code><?php echo esc_html($param[0]); ?></code></td>
+                            <td><?php echo esc_html($param[1]); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </details>
+        <div class="ss-cat-shortcodes">
+            <h3><?php esc_html_e('Shortcodes', 'secop-suite'); ?></h3>
+            <?php foreach ($pred_shortcodes as $sc) : ?>
+                <div class="ss-cat-sc-row">
+                    <input type="text" class="ss-cat-sc-input" readonly
+                           value="<?php echo esc_attr($sc); ?>"
+                           onclick="this.select();" />
+                    <button type="button" class="button ss-cat-copy"
+                            data-clipboard="<?php echo esc_attr($sc); ?>">
+                        <?php esc_html_e('Copiar', 'secop-suite'); ?>
+                    </button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <?php
+    // v5.8.0: Listas composables [secop_dep_lista].
+    $lista_params = [
+        ['tipo',   __('Qué lista renderiza: dependencias, modalidades, tipos o contratistas (por defecto dependencias).', 'secop-suite')],
+        ['titulo', __('Título de la lista (por defecto el nombre del tipo).', 'secop-suite')],
+        ['campos', __('Sólo para tipo="contratistas": campos de la fila 1 de cada contrato, separados por comas. Disponibles: numero_del_contrato, valor_contrato, fecha_inicio_ejecucion, fecha_fin_ejecucion, modalidad_de_contratacion, tipo_de_contrato, nombretercero, documento_proveedor. El objeto del contrato siempre se muestra en una segunda fila a ancho completo.', 'secop-suite')],
+        ['height', __('Altura máxima del cuerpo desplazable en píxeles (por defecto 360).', 'secop-suite')],
+    ];
+    $lista_shortcodes = [
+        '[secop_dep_lista tipo="dependencias"]',
+        '[secop_dep_lista tipo="modalidades"]',
+        '[secop_dep_lista tipo="tipos"]',
+        '[secop_dep_lista tipo="contratistas" campos="numero_del_contrato,valor_contrato,fecha_inicio_ejecucion,fecha_fin_ejecucion"]',
+    ];
+    ?>
+    <div class="ss-cat-card ss-cat-card-lista" style="margin-top:20px;">
+        <h2 class="ss-cat-title"><?php esc_html_e('Listas composables (filtrado cruzado)', 'secop-suite'); ?></h2>
+        <p class="ss-cat-desc">
+            <?php esc_html_e('Versión modular del explorador: cada lista es un shortcode independiente que puede colocarse en cualquier parte de la página (dependencias, modalidades, tipos de contratación o contratistas). Las listas presentes en la MISMA página se coordinan: al hacer clic en un elemento de una lista se filtran automáticamente las demás (filtrado cruzado). Una lista de tipo T nunca se filtra por su propio campo, de modo que siempre muestra todas sus opciones dadas las otras selecciones activas; al volver a hacer clic en el elemento activo se limpia ese filtro. La lista de contratistas es un acordeón que despliega los contratos de cada contratista. Coloque una sola lista o las cuatro: sólo coordinan las que estén presentes.', 'secop-suite'); ?>
+        </p>
+        <details class="ss-cat-params">
+            <summary><strong><?php esc_html_e('Parámetros del shortcode [secop_dep_lista]', 'secop-suite'); ?></strong></summary>
+            <table class="widefat striped" style="max-width:760px;">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Parámetro', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Descripción', 'secop-suite'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($lista_params as $param) : ?>
+                        <tr>
+                            <td><code><?php echo esc_html($param[0]); ?></code></td>
+                            <td><?php echo esc_html($param[1]); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </details>
+        <div class="ss-cat-shortcodes">
+            <h3><?php esc_html_e('Shortcodes', 'secop-suite'); ?></h3>
+            <?php foreach ($lista_shortcodes as $sc) : ?>
+                <div class="ss-cat-sc-row">
+                    <input type="text" class="ss-cat-sc-input" readonly
+                           value="<?php echo esc_attr($sc); ?>"
+                           onclick="this.select();" />
+                    <button type="button" class="button ss-cat-copy"
+                            data-clipboard="<?php echo esc_attr($sc); ?>">
+                        <?php esc_html_e('Copiar', 'secop-suite'); ?>
+                    </button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
 </div>
 
 <style>

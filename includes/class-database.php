@@ -343,26 +343,33 @@ final class Database
             return false;
         }
         $view = $this->get_view_name();
-        $ac   = $wpdb->prefix . 'sysman_auxiliar_cuentas';
-        $pp   = $wpdb->prefix . 'sysman_plan_presupuestal';
-        $c    = $this->table_name; // {prefix}secop_contracts
+        $aux  = $wpdb->prefix . 'sysman_auxiliar_cuentas';
+        $plan = $wpdb->prefix . 'sysman_plan_presupuestal';
+        $sec  = $this->table_name; // {prefix}secop_contracts
 
         // Identificadores desde whitelist/$wpdb->prefix → seguro interpolar.
         // Definición EXACTA de la vista creada por el usuario (ga_vista_secop_sysman),
         // para que una instalación nueva la reproduzca de forma idéntica.
+        //
+        // v5.9.0: base = secop_contracts con LEFT JOIN → TODOS los contratos aparecen.
+        // Los contratos sin cruce Sysman tienen NULL en dependencia/tercero/valordebito/…
+        // La vigencia ahora es YEAR(fecha_de_firma_del_contrato) (año de firma del
+        // contrato), de modo que la vista se auto-renueva cada año con YEAR(CURDATE()).
+        // Columnas del asiento renombradas: fecha→fecha_asiento, anio→anio_asiento,
+        // mes→mes_asiento. Nuevas: rubro_codigo, rubro_nombre, idsecop/idauxiliar/idplan.
         $sql = "CREATE OR REPLACE VIEW `{$view}` AS
-            SELECT
-              ac.id AS idauxiliar, pp.id AS idplan, c.id AS idsecop,
-              c.objeto_a_contratar, c.tipo_de_contrato, c.fecha_inicio_ejecucion, c.fecha_fin_ejecucion,
-              c.numero_del_contrato, c.numero_de_proceso, c.valor_contrato, c.nom_raz_social_contratista,
-              c.url_contrato, c.documento_proveedor, c.modalidad_de_contratacion,
-              ac.tercero, ac.nombretercero, pp.dependencia, pp.nombredependencia, ac.numero,
-              ac.valordebito, ac.valorcredito, ac.saldoporejecutaresp, ac.cmpteafectado, ac.fecha,
-              ac.anio, ac.mes
-            FROM `{$ac}` ac
-            INNER JOIN `{$pp}` pp ON ac.rubro = pp.codigo
-            INNER JOIN `{$c}` c  ON ac.nrodocumento = c.numero_de_proceso
-            WHERE ac.tipocpte = 'RES'";
+            SELECT sec.id AS idsecop, aux.id AS idauxiliar, plan.id AS idplan,
+              sec.numero_del_contrato, sec.numero_de_proceso, sec.objeto_a_contratar, sec.tipo_de_contrato,
+              sec.modalidad_de_contratacion, sec.fecha_de_firma_del_contrato, sec.fecha_inicio_ejecucion,
+              sec.fecha_fin_ejecucion, sec.valor_contrato, sec.nom_raz_social_contratista, sec.documento_proveedor,
+              sec.url_contrato, aux.tercero, aux.nombretercero, plan.dependencia, plan.nombredependencia,
+              aux.numero, aux.valordebito, aux.valorcredito, aux.saldoporejecutaresp, aux.cmpteafectado,
+              aux.fecha AS fecha_asiento, aux.anio AS anio_asiento, aux.mes AS mes_asiento,
+              plan.codigo AS rubro_codigo, plan.nombre AS rubro_nombre
+            FROM (`{$sec}` sec
+              LEFT JOIN `{$aux}` aux ON (aux.nrodocumento = sec.numero_de_proceso AND aux.tipocpte = 'RES'))
+              LEFT JOIN `{$plan}` plan ON (plan.codigo = aux.rubro)
+            WHERE YEAR(sec.fecha_de_firma_del_contrato) = YEAR(CURDATE())";
 
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $result = $wpdb->query($sql);
@@ -397,7 +404,7 @@ final class Database
         $view = $this->get_view_name();
         if ($anio !== null) {
             // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-            return (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$view}` WHERE anio = %d", $anio));
+            return (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d", $anio));
         }
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         return (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$view}`");
@@ -417,7 +424,7 @@ final class Database
         global $wpdb;
         $view = $this->get_view_name();
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        $rows = $wpdb->get_results("SELECT anio, COUNT(*) c FROM `{$view}` GROUP BY anio ORDER BY anio DESC", ARRAY_A);
+        $rows = $wpdb->get_results("SELECT YEAR(`fecha_de_firma_del_contrato`) AS anio, COUNT(*) c FROM `{$view}` GROUP BY YEAR(`fecha_de_firma_del_contrato`) ORDER BY anio DESC", ARRAY_A);
         $result = [];
         foreach ($rows as $row) {
             $result[(int) $row['anio']] = (int) $row['c'];
@@ -436,16 +443,17 @@ final class Database
             return -1;
         }
         global $wpdb;
-        $ac = $wpdb->prefix . 'sysman_auxiliar_cuentas';
-        $pp = $wpdb->prefix . 'sysman_plan_presupuestal';
-        $c  = $this->table_name;
+        $aux  = $wpdb->prefix . 'sysman_auxiliar_cuentas';
+        $plan = $wpdb->prefix . 'sysman_plan_presupuestal';
+        $sec  = $this->table_name;
 
+        // Mismo cruce que la vista (LEFT JOIN desde secop_contracts): cuenta TODAS
+        // las filas que produce la vista sin el filtro de vigencia.
         $sql = "SELECT COUNT(*) FROM (
             SELECT 1
-            FROM `{$ac}` ac
-            INNER JOIN `{$pp}` pp ON ac.rubro = pp.codigo
-            INNER JOIN `{$c}` c  ON ac.nrodocumento = c.numero_de_proceso
-            WHERE ac.tipocpte = 'RES'
+            FROM `{$sec}` sec
+            LEFT JOIN `{$aux}` aux  ON (aux.nrodocumento = sec.numero_de_proceso AND aux.tipocpte = 'RES')
+            LEFT JOIN `{$plan}` plan ON (plan.codigo = aux.rubro)
         ) t";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         return (int) $wpdb->get_var($sql);

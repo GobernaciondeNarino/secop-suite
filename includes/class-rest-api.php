@@ -455,11 +455,18 @@ final class Rest_Api
             return new \WP_REST_Response($cached);
         }
 
+        // v5.9.0: la vista cambió (LEFT JOIN desde secop_contracts). La vigencia es
+        // YEAR(fecha_de_firma_del_contrato); las columnas del asiento se renombraron a
+        // *_asiento. Se conservan los alias `anio`/`mes` del payload para no romper a
+        // los consumidores (anio = año de firma; mes = mes del asiento Sysman). Los
+        // contratos sin cruce Sysman se etiquetan "No Registra SYSMAN".
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT nombredependencia, numero_de_proceso, numero_del_contrato,
-                    nombretercero, valordebito, valorcredito, saldoporejecutaresp,
-                    valor_contrato, anio, mes
-             FROM `{$view}` WHERE anio = %d
+            "SELECT COALESCE(NULLIF(`nombredependencia`,''),'No Registra SYSMAN') AS nombredependencia,
+                    numero_de_proceso, numero_del_contrato,
+                    COALESCE(NULLIF(`nombretercero`,''), NULLIF(`nom_raz_social_contratista`,''),'No Registra SYSMAN') AS nombretercero,
+                    valordebito, valorcredito, saldoporejecutaresp,
+                    valor_contrato, YEAR(`fecha_de_firma_del_contrato`) AS anio, mes_asiento AS mes
+             FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d
              ORDER BY valordebito DESC LIMIT %d OFFSET %d",
             $vigencia, $per_page, $offset
         ), ARRAY_A);
@@ -487,8 +494,9 @@ final class Rest_Api
         $vigencia = (int) current_time('Y');
 
         // Exporta TODA la información de la vista (todas las columnas) para la vigencia actual.
+        // v5.9.0: vigencia por año de firma del contrato.
         $data = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM `{$view}` WHERE anio = %d ORDER BY valor_contrato DESC",
+            "SELECT * FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d ORDER BY valor_contrato DESC",
             $vigencia
         ), ARRAY_A);
 
@@ -528,8 +536,9 @@ final class Rest_Api
         $vigencia = (int) current_time('Y');
 
         // Exporta TODA la información de la vista (todas las columnas) para la vigencia actual.
+        // v5.9.0: vigencia por año de firma del contrato.
         $data = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM `{$view}` WHERE anio = %d ORDER BY valor_contrato DESC",
+            "SELECT * FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d ORDER BY valor_contrato DESC",
             $vigencia
         ), ARRAY_A);
 

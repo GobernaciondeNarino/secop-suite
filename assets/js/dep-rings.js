@@ -1,12 +1,12 @@
 (function ($) {
   'use strict';
 
-  // ── v5.4.1: Red ego de contratación — d3plus.Rings ─────────────────────────
-  // Grafo concéntrico centrado en UNA dependencia: el nodo central es la
-  // dependencia elegida (o la de mayor valor si no se elige ninguna) y sus
-  // conexiones se disponen en anillos automáticamente. Reutiliza network_data a
-  // través del endpoint AJAX secop_dep_network. d3plus.Rings renderiza HTML en
-  // los tooltips → todas las cadenas de BD se escapan con escapeHtml().
+  // ── Red ego de contratación — layout radial con d3 (fiable) ────────────────
+  // El nodo central es UNA dependencia; sus conexiones (modalidades, tipos y
+  // contratistas) se disponen en anillos concéntricos alrededor. Reutiliza
+  // network_data vía el endpoint AJAX secop_dep_network. Se renderiza con d3 puro
+  // (window.d3) porque d3plus.Rings requiere una configuración frágil y no
+  // renderizaba; el resultado visual (anillos concéntricos) es el mismo.
 
   var COLORS = {
     dependencia: '#0080c3',
@@ -14,87 +14,29 @@
     tipo:        '#3eba6a',
     modalidad:   '#ff7300'
   };
+  function colorByType(t) { return COLORS[t] || '#999999'; }
+  function money(v) { return '$' + Math.round(Number(v) || 0).toLocaleString('es-CO'); }
 
-  function colorByType(type) {
-    return COLORS[type] || '#999999';
-  }
+  // Radio de cada anillo por tipo (modalidades dentro, contratistas fuera).
+  var RING_ORDER = ['modalidad', 'tipo', 'contratista'];
 
-  function money(v) {
-    return '$' + Math.round(Number(v) || 0).toLocaleString('es-CO');
-  }
-
-  // Escapa cadenas para inserción segura en el HTML del tooltip de d3plus.
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
-
-  // d3plus envuelve cada dato en un objeto { __d3plus__: true, data: <nodo> } al
-  // pasarlo a los accesores. unwrap() devuelve el nodo original en ambos casos.
-  function unwrap(d) {
-    return (d && d.__d3plus__ && d.data) ? d.data : d;
-  }
-
-  // Filas del tooltip (array de [encabezado, valor]) según el tipo de nodo.
-  function tooltipRows(d) {
-    if (d.type === 'contratista') {
-      return [
-        ['Contratos', escapeHtml(d.count || 0)],
-        ['Valor', escapeHtml(money(d.value))],
-        ['Dependencia', escapeHtml(d.dependencia || '—')]
-      ];
-    }
-    if (d.type === 'dependencia') {
-      return [
-        ['Contratos', escapeHtml(d.count || 0)],
-        ['Valor', escapeHtml(money(d.value))]
-      ];
-    }
-    if (d.type === 'tipo') {
-      return [['Tipo de contrato', escapeHtml(d.label)]];
-    }
-    if (d.type === 'modalidad') {
-      return [['Modalidad', escapeHtml(d.label)]];
-    }
-    return [['', escapeHtml(d.label)]];
-  }
-
-  // Elige el id del nodo central: la dependencia seleccionada (si existe en los
-  // datos) o, en su defecto, la dependencia con mayor valor.
   function pickCenter(nodes, dependencia) {
-    var byId = {};
-    var best = null;
+    var byId = {}, best = null;
     nodes.forEach(function (n) {
       byId[n.id] = n;
-      if (n.type === 'dependencia' && (!best || (+n.value || 0) > (+best.value || 0))) {
-        best = n;
-      }
+      if (n.type === 'dependencia' && (!best || (+n.value || 0) > (+best.value || 0))) best = n;
     });
-    if (dependencia) {
-      var wanted = 'dep::' + dependencia;
-      if (byId[wanted]) return wanted;
-    }
+    if (dependencia && byId['dep::' + dependencia]) return 'dep::' + dependencia;
     return best ? best.id : null;
   }
 
   function renderRings(wrapper) {
     var $wrap = $(wrapper);
     var $chart = $wrap.find('.ss-rings-chart');
-
-    if (!window.d3plus || typeof window.d3plus.Rings !== 'function') {
-      $chart.empty().text('No se pudo cargar la librería de visualización (d3plus.Rings).');
-      return;
-    }
+    if (!window.d3) { $chart.empty().text('No se pudo cargar la librería de visualización (d3).'); return; }
 
     var dependencia = $wrap.attr('data-dependencia') || '';
-
-    $chart.empty().append(
-      $('<div>', { 'class': 'ss-rings-loading', text: 'Cargando red…' })
-    );
+    $chart.empty().append($('<div>', { 'class': 'ss-rings-loading', text: 'Cargando red…' }));
 
     $.post(secopDep.ajaxUrl, {
       action: 'secop_dep_network',
@@ -113,51 +55,136 @@
   }
 
   function draw($wrap, $chart, data, dependencia) {
-    var nodes = (data.nodes || []).map(function (n) { return Object.assign({}, n); });
-    var links = (data.links || []).map(function (l) { return { source: l.source, target: l.target }; });
-
-    if (!nodes.length) {
-      $chart.empty().text((secopDep.strings && secopDep.strings.noData) || 'No hay datos.');
-      return;
-    }
+    var d3 = window.d3;
+    var nodes = data.nodes || [];
+    var links = data.links || [];
+    var byId = {};
+    nodes.forEach(function (n) { byId[n.id] = n; });
 
     var centerId = pickCenter(nodes, dependencia);
-    if (!centerId) {
+    if (!centerId || !byId[centerId]) {
       $chart.empty().text((secopDep.strings && secopDep.strings.noData) || 'No hay datos.');
       return;
     }
+    var center = byId[centerId];
+
+    // Vecinos del centro: nodos enlazados a la dependencia central.
+    var neighborIds = {};
+    links.forEach(function (l) {
+      if (l.target === centerId && byId[l.source]) neighborIds[l.source] = true;
+      if (l.source === centerId && byId[l.target]) neighborIds[l.target] = true;
+    });
+    var neighbors = Object.keys(neighborIds).map(function (id) { return byId[id]; });
+    if (!neighbors.length) {
+      $chart.empty().text('La dependencia seleccionada no tiene conexiones.');
+      return;
+    }
+
+    // Agrupar vecinos por tipo y asignar anillos.
+    var groups = {};
+    neighbors.forEach(function (n) { (groups[n.type] = groups[n.type] || []).push(n); });
+    var ringsPresent = RING_ORDER.filter(function (t) { return groups[t] && groups[t].length; });
 
     $chart.empty();
-
+    var width = Math.max(320, $chart.width() || $wrap.width() || 600);
     var height = Math.max(360, parseInt($wrap.css('min-height'), 10) || 560);
+    var cx = width / 2, cy = height / 2;
+    var maxR = Math.min(width, height) / 2 - 40;
+    var ringGap = ringsPresent.length ? maxR / (ringsPresent.length + 0.5) : maxR;
 
-    // Reutiliza una sola instancia de Rings por contenedor (evita duplicados).
-    var target = $chart.get(0);
-    new window.d3plus.Rings()
-      .select(target)
-      .height(height)
-      .nodes(nodes)
-      .links(links)
-      .center(centerId)
-      .label(function (d) { d = unwrap(d); return d.label; })
-      .size(function (d) { d = unwrap(d); return Number(d.value) || 1; })
-      .shapeConfig({
-        fill: function (d) { d = unwrap(d); return d.color || colorByType(d.type); }
-      })
-      .tooltipConfig({
-        title: function (d) { d = unwrap(d); return escapeHtml(d.label); },
-        tbody: function (d) { d = unwrap(d); return tooltipRows(d); }
-      })
-      .render();
+    var svg = d3.select($chart.get(0)).append('svg')
+      .attr('width', '100%')
+      .attr('viewBox', '0 0 ' + width + ' ' + height)
+      .attr('preserveAspectRatio', 'xMidYMid meet');
+
+    // Posicionar vecinos.
+    var positioned = [];
+    ringsPresent.forEach(function (type, ri) {
+      var r = ringGap * (ri + 1);
+      var arr = groups[type];
+      arr.forEach(function (n, i) {
+        var ang = (i / arr.length) * 2 * Math.PI - Math.PI / 2;
+        positioned.push({ node: n, x: cx + r * Math.cos(ang), y: cy + r * Math.sin(ang) });
+      });
+    });
+
+    // Escala de tamaño por valor (para contratistas/dependencia).
+    var maxVal = d3.max(positioned.concat([{ node: center }]).map(function (p) { return +p.node.value || 0; })) || 1;
+    var rScale = d3.scaleSqrt().domain([0, maxVal]).range([4, 16]);
+
+    // Enlaces centro → vecino.
+    svg.append('g').selectAll('line').data(positioned).enter().append('line')
+      .attr('x1', cx).attr('y1', cy)
+      .attr('x2', function (p) { return p.x; }).attr('y2', function (p) { return p.y; })
+      .attr('stroke', '#d0d0d0').attr('stroke-width', 1);
+
+    // Tooltip.
+    var tip = d3.select($chart.get(0)).append('div').attr('class', 'ss-rings-tooltip').style('display', 'none');
+    function showTip(ev, n) {
+      var html = '<strong>' + esc(n.label) + '</strong>';
+      if (n.type === 'contratista') {
+        html += '<br>Contratos: ' + esc(n.count || 0) + '<br>Valor: ' + esc(money(n.value)) + '<br>Dependencia: ' + esc(n.dependencia || '—');
+      } else if (n.type === 'dependencia') {
+        html += '<br>Contratos: ' + esc(n.count || 0) + '<br>Valor: ' + esc(money(n.value));
+      } else if (n.type === 'tipo') { html += '<br>Tipo de contrato'; }
+      else if (n.type === 'modalidad') { html += '<br>Modalidad'; }
+      var off = $chart.offset();
+      tip.html(html).style('display', 'block')
+        .style('left', (ev.pageX - off.left + 12) + 'px')
+        .style('top', (ev.pageY - off.top + 12) + 'px');
+    }
+    function hideTip() { tip.style('display', 'none'); }
+
+    // Nodos vecinos.
+    var g = svg.append('g');
+    g.selectAll('circle').data(positioned).enter().append('circle')
+      .attr('cx', function (p) { return p.x; }).attr('cy', function (p) { return p.y; })
+      .attr('r', function (p) { return (p.node.type === 'contratista') ? rScale(+p.node.value || 0) : 7; })
+      .attr('fill', function (p) { return p.node.color || colorByType(p.node.type); })
+      .attr('stroke', '#fff').attr('stroke-width', 1)
+      .style('cursor', 'pointer')
+      .on('mousemove', function (p) { showTip(d3.event, p.node); })
+      .on('mouseout', hideTip);
+
+    // Nodo central (la dependencia).
+    svg.append('circle').attr('cx', cx).attr('cy', cy).attr('r', 18)
+      .attr('fill', center.color || colorByType('dependencia')).attr('stroke', '#fff').attr('stroke-width', 2)
+      .style('cursor', 'pointer')
+      .on('mousemove', function () { showTip(d3.event, center); }).on('mouseout', hideTip);
+    svg.append('text').attr('x', cx).attr('y', cy + 34).attr('text-anchor', 'middle')
+      .attr('font-size', '12px').attr('font-weight', 'bold').text(center.label);
+
+    // Leyenda + conteo.
+    renderLegend($wrap, ringsPresent, neighbors.length);
+  }
+
+  function renderLegend($wrap, ringsPresent, neighborCount) {
+    var $leg = $wrap.find('.ss-rings-legend');
+    if (!$leg.length) { $leg = $('<div class="ss-rings-legend"></div>').appendTo($wrap); }
+    $leg.empty();
+    var labels = { dependencia: 'Dependencia (centro)', modalidad: 'Modalidad', tipo: 'Tipo de contrato', contratista: 'Contratista' };
+    ['dependencia'].concat(ringsPresent).forEach(function (t) {
+      $leg.append($('<span class="ss-rings-leg-item"></span>').append(
+        $('<span class="ss-rings-leg-dot"></span>').css('background', colorByType(t)),
+        document.createTextNode(' ' + (labels[t] || t))
+      ));
+    });
+    $leg.append($('<span class="ss-rings-caption"></span>').text(neighborCount + ' conexiones'));
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   }
 
   $(function () {
     $('.ss-rings-wrapper').each(function () { renderRings(this); });
-
-    // Selector de dependencia central: recentra/recarga.
     $(document).on('change', '.ss-rings-selector', function () {
       var dep = $(this).val();
-      var $wrap = $(this).closest('.ss-rings-module').find('.ss-rings-wrapper');
+      var $wrap = $(this).closest('.ss-rings-module, .ss-rings-wrapper').find('.ss-rings-wrapper');
+      if (!$wrap.length) $wrap = $(this).closest('.ss-rings-wrapper');
+      if (!$wrap.length) $wrap = $('.ss-rings-wrapper').first();
       $wrap.attr('data-dependencia', dep);
       renderRings($wrap.get(0));
     });

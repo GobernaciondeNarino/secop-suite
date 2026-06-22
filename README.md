@@ -69,6 +69,23 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.9.0 — Adaptación a la nueva vista `vista_secop_sysman`
+- La vista cambió estructuralmente: ahora la **base es `secop_contracts` con `LEFT JOIN`** a las tablas Sysman, por lo que **todos los contratos aparecen** (los que no tienen cruce presupuestal Sysman quedan con `dependencia`/`tercero`/`valordebito`/… en `NULL`).
+- La **vigencia** se determina por `YEAR(fecha_de_firma_del_contrato)` (año de **firma** del contrato), y la propia vista se auto-renueva cada año (`= YEAR(CURDATE())`). Todas las consultas del módulo cambiaron `anio = %d` por `YEAR(fecha_de_firma_del_contrato) = %d`.
+- El **mes** de la serie/predicción se toma de `MONTH(fecha_de_firma_del_contrato)` (DATETIME real), eliminando el `STR_TO_DATE` del antiguo varchar.
+- Columnas del asiento **renombradas**: `fecha`→`fecha_asiento`, `anio`→`anio_asiento`, `mes`→`mes_asiento`. Nuevas columnas: `rubro_codigo`, `rubro_nombre`, `nom_raz_social_contratista`, `idsecop`/`idauxiliar`/`idplan`.
+- Los contratos **sin datos Sysman** se etiquetan **"No Registra SYSMAN"** (dependencia) o caen al **contratista del SECOP** (`nom_raz_social_contratista`) cuando Sysman no tiene tercero, tanto en agrupaciones como en filtros/drill-down.
+- Nuevos campos disponibles en el explorador: `nom_raz_social_contratista` (Contratista SECOP), `fecha_de_firma_del_contrato` (Firma) y `rubro_nombre` (Rubro).
+
+### v5.8.0 — Listas composables `[secop_dep_lista]` con filtrado cruzado
+- Versión **modular** del explorador: `[secop_dep_lista tipo="dependencias|modalidades|tipos|contratistas"]` divide el explorador en listas independientes que se pueden colocar en cualquier parte de la página para **maquetar el explorador a gusto**.
+- Las listas presentes en la **misma página interactúan entre sí (filtrado cruzado)**: al hacer clic en un elemento de una lista se filtran automáticamente las demás mediante un estado compartido a nivel de página `{dependencia, modalidad, tipo_contrato}` (volver a hacer clic en el elemento activo limpia ese filtro). Una lista de tipo T no se filtra por su propio campo. La lista `contratistas` es un acordeón que despliega los contratos. Datos por **AJAX** (`secop_dep_lista`, nonce `secop_dep_frontend` + rate-limit por IP); las cadenas de BD se insertan con `.text()`. Atributos: `tipo`, `titulo`, `campos`, `height`. Sólo coordinan las listas realmente presentes (1 o las 4).
+
+### v5.7.0 — Serie mensual por mes del contrato + predicción `[secop_dep_prediccion]`
+- La **serie mensual** ahora usa el **mes del contrato** (campo `fecha`, formato `DD/MM/YYYY`, parseado con `STR_TO_DATE(fecha, '%d/%m/%Y')`) en vez del **mes de actualización** (`mes` de Sysman, que era ~constante → serie degenerada). Las filas cuya `fecha` no parsea se excluyen. Esto corrige `monthly_series`/`build_dataset` y, con ello, el **análisis predictivo** automático.
+- Nuevo gráfico de predicción **`[secop_dep_prediccion]`** (d3plus.LinePlot): evolución mensual del valor contratado acumulado con **línea de proyección punteada** (`strokeDasharray`) a fin de vigencia, calculada por **regresión lineal**. Datos por **AJAX** (`secop_dep_prediccion`, nonce `secop_dep_frontend` + rate-limit por IP). Atributos: `dependencia`, `height`, `selector`. La metainformación (cierre proyectado, R²) se inserta con `.text()`.
+- Se **eliminaron** los presets degenerados `evolucion_mensual` y `evolucion_area` (usaban el mes de actualización vía el motor Visualizer); el nuevo shortcode los reemplaza como visualización temporal.
+
 ### v5.6.0 — Explorador interactivo `[secop_dep_explora]`
 - Nuevo **explorador interactivo** (`[secop_dep_explora]`): treemap de dependencias (vigencia actual) con un **panel inferior** que se despliega al hacer clic en una celda — a la izquierda la **lista de modalidades** (clicable) y a la derecha un **acordeón de contratistas** cuyos elementos se expanden para mostrar los contratos del contratista. Todo dinámico por **AJAX** (`secop_dep_explora_tree`/`_modalidades`/`_contratistas`, nonce `secop_dep_frontend` + rate-limit por IP). Al hacer clic en una modalidad se recarga sólo la lista de contratistas por AJAX. Cada contrato muestra dos filas: una con los **campos de fila configurables** (atributo `campos`) y otra a ancho completo con el `objeto_a_contratar`. Incluye un botón de **descarga de TODA la vista** (vigencia actual) reutilizando la ruta REST `consulta/csv`. Atributos: `campos`, `height`. Todas las cadenas de BD se renderizan con nodos de texto (sin innerHTML).
 

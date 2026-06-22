@@ -103,14 +103,17 @@ final class Tracking
     public function explora_fields(): array
     {
         return [
-            'numero_del_contrato'       => __('Nº contrato', 'secop-suite'),
-            'valor_contrato'            => __('Valor', 'secop-suite'),
-            'fecha_inicio_ejecucion'    => __('Inicio', 'secop-suite'),
-            'fecha_fin_ejecucion'       => __('Fin', 'secop-suite'),
-            'modalidad_de_contratacion' => __('Modalidad', 'secop-suite'),
-            'tipo_de_contrato'          => __('Tipo', 'secop-suite'),
-            'nombretercero'             => __('Contratista', 'secop-suite'),
-            'documento_proveedor'       => __('Documento', 'secop-suite'),
+            'numero_del_contrato'         => __('Nº contrato', 'secop-suite'),
+            'valor_contrato'              => __('Valor', 'secop-suite'),
+            'fecha_de_firma_del_contrato' => __('Firma', 'secop-suite'),
+            'fecha_inicio_ejecucion'      => __('Inicio', 'secop-suite'),
+            'fecha_fin_ejecucion'         => __('Fin', 'secop-suite'),
+            'modalidad_de_contratacion'   => __('Modalidad', 'secop-suite'),
+            'tipo_de_contrato'            => __('Tipo', 'secop-suite'),
+            'nombretercero'               => __('Contratista', 'secop-suite'),
+            'nom_raz_social_contratista'  => __('Contratista (SECOP)', 'secop-suite'),
+            'documento_proveedor'         => __('Documento', 'secop-suite'),
+            'rubro_nombre'                => __('Rubro', 'secop-suite'),
         ];
     }
 
@@ -156,6 +159,10 @@ final class Tracking
         add_action('wp_ajax_nopriv_secop_dep_network',   [$this, 'ajax_network']);
         // v5.4.1: red ego (Rings) centrada en una dependencia (d3plus.Rings).
         add_shortcode('secop_dep_rings',                 [$this, 'sc_rings']);
+        // v5.7.0: predicción — serie mensual (mes del contrato) + proyección punteada.
+        add_shortcode('secop_dep_prediccion',            [$this, 'sc_prediccion']);
+        add_action('wp_ajax_secop_dep_prediccion',        [$this, 'ajax_prediccion']);
+        add_action('wp_ajax_nopriv_secop_dep_prediccion', [$this, 'ajax_prediccion']);
         // v5.6.0: explorador interactivo (treemap de dependencias + panel modalidades/contratistas).
         add_shortcode('secop_dep_explora',                       [$this, 'sc_explora']);
         add_action('wp_ajax_secop_dep_explora_tree',             [$this, 'ajax_explora_tree']);
@@ -164,6 +171,11 @@ final class Tracking
         add_action('wp_ajax_nopriv_secop_dep_explora_modalidades', [$this, 'ajax_explora_modalidades']);
         add_action('wp_ajax_secop_dep_explora_contratistas',        [$this, 'ajax_explora_contratistas']);
         add_action('wp_ajax_nopriv_secop_dep_explora_contratistas', [$this, 'ajax_explora_contratistas']);
+        // v5.8.0: listas composables [secop_dep_lista] (dependencias/modalidades/tipos/contratistas)
+        // con filtrado cruzado entre las visibles en la misma página.
+        add_shortcode('secop_dep_lista',                 [$this, 'sc_lista']);
+        add_action('wp_ajax_secop_dep_lista',            [$this, 'ajax_lista']);
+        add_action('wp_ajax_nopriv_secop_dep_lista',     [$this, 'ajax_lista']);
         // Vista previa en vivo del editor de cards (solo admin, sin nopriv).
         add_action('wp_ajax_secop_dep_preview',          [$this, 'ajax_dep_preview']);
         add_shortcode('secop_consulta',                  [$this, 'sc_consulta']);
@@ -199,6 +211,24 @@ final class Tracking
         return (int) current_time('Y');
     }
 
+    /**
+     * v5.9.0: Expresión SQL etiquetadora para columnas que pueden venir NULL por el
+     * LEFT JOIN de la vista (contratos sin cruce Sysman). Devuelve una expresión
+     * segura (la columna procede de una whitelist interna, nunca del usuario):
+     *  - nombredependencia → "No Registra SYSMAN" cuando es NULL/''.
+     *  - nombretercero     → cae al contratista del SECOP (nom_raz_social_contratista)
+     *                        y, si tampoco hay, a "No Registra SYSMAN".
+     *  - cualquier otra    → la columna entre backticks, sin envolver.
+     */
+    private function sysman_label_expr(string $col): string
+    {
+        return match ($col) {
+            'nombredependencia' => "COALESCE(NULLIF(`nombredependencia`,''), 'No Registra SYSMAN')",
+            'nombretercero'     => "COALESCE(NULLIF(`nombretercero`,''), NULLIF(`nom_raz_social_contratista`,''), 'No Registra SYSMAN')",
+            default             => "`{$col}`",
+        };
+    }
+
     /** Agrupación por dimensión para la vigencia actual. */
     public function group_by_dimension(string $dimension, ?string $dependencia = null): array
     {
@@ -214,10 +244,10 @@ final class Tracking
         $cols   = $this->db->get_table_columns($view);
         if (!isset($cols[$col])) return [];
 
-        $where  = ['anio = %d'];
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
         $params = [$this->current_vigencia()];
         if ($dependencia !== null && $dependencia !== '') {
-            $where[]  = 'nombredependencia = %s';
+            $where[]  = $this->sysman_label_expr('nombredependencia') . ' = %s';
             $params[] = $dependencia;
         }
         $where_sql = implode(' AND ', $where);
@@ -225,11 +255,14 @@ final class Tracking
         // Métrica de valor: valor_contrato (valor principal) y conteo de contratos distintos.
         // NOTA: un contrato puede repetirse en varias filas presupuestales, por lo que
         // SUM(valor_contrato) sobrecuenta ligeramente los contratos multi-comprobante.
-        $sql = "SELECT `{$col}` AS label,
+        // v5.9.0: los contratos sin cruce Sysman (NULL por el LEFT JOIN) se agrupan bajo
+        // "No Registra SYSMAN" (dependencia) o caen al contratista del SECOP (tercero).
+        $label_expr = $this->sysman_label_expr($col);
+        $sql = "SELECT {$label_expr} AS label,
                        SUM(valor_contrato) AS valor,
                        COUNT(DISTINCT numero_del_contrato) AS conteo
                 FROM `{$view}` WHERE {$where_sql}
-                GROUP BY `{$col}` ORDER BY valor DESC";
+                GROUP BY {$label_expr} ORDER BY valor DESC";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
 
@@ -253,26 +286,89 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view = $this->db->get_view_name();
-        $where  = ['anio = %d'];
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
         $params = [$this->current_vigencia()];
         if ($dependencia !== null && $dependencia !== '') {
-            $where[]  = 'nombredependencia = %s';
+            $where[]  = $this->sysman_label_expr('nombredependencia') . ' = %s';
             $params[] = $dependencia;
         }
         $where_sql = implode(' AND ', $where);
-        $sql = "SELECT mes, SUM(valordebito) AS valor FROM `{$view}`
-                WHERE {$where_sql} GROUP BY mes ORDER BY mes ASC";
+
+        // v5.9.0: el mes proviene del MES DE FIRMA DEL CONTRATO. En la nueva vista
+        // fecha_de_firma_del_contrato es un DATETIME real, así que basta
+        // MONTH(`fecha_de_firma_del_contrato`) (sin STR_TO_DATE ni escapado de %%).
+        // Sólo la vigencia (%d) y la dependencia (%s) son placeholders preparados.
+        $expr = "MONTH(`fecha_de_firma_del_contrato`)";
+        $sql = "SELECT {$expr} AS mes, SUM(valor_contrato) AS valor
+                FROM `{$view}`
+                WHERE {$where_sql} AND `fecha_de_firma_del_contrato` IS NOT NULL
+                GROUP BY {$expr} ORDER BY mes ASC";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
 
         $acc = 0.0; $serie = [];
         foreach ($rows ?: [] as $r) {
+            if ($r['mes'] === null) continue; // defensa extra: meses no parseables.
             $acc += (float) $r['valor'];
             $serie[] = [(int) $r['mes'], $acc];
         }
 
         set_transient($cache_key, $serie, 30 * MINUTE_IN_SECONDS);
         return $serie;
+    }
+
+    /**
+     * v5.7.0: Dataset del gráfico de predicción. Serie observada (valor contratado
+     * acumulado por mes del contrato) + proyección de cierre de vigencia mediante
+     * regresión lineal. El primer punto «Proyectado» es el punto de UNIÓN (último
+     * mes observado con su valor observado) para que la línea punteada conecte con
+     * la sólida sin salto.
+     *
+     * @param string|null $dependencia Filtra por una dependencia (null = todas).
+     * @return array{points:array<int,array{mes:int,valor:float,serie:string}>,meta:array<string,mixed>}
+     */
+    public function prediccion_data(?string $dependencia = null): array
+    {
+        $cache_key = 'secop_trk_' . md5('prediccion_data|' . ($dependencia ?? '') . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
+        $serie = $this->monthly_series($dependencia);
+        $reg   = \SecopSuite\Stats::linear_regression($serie);
+
+        $points = [];
+        foreach ($serie as [$m, $acc]) {
+            $points[] = ['mes' => (int) $m, 'valor' => (float) $acc, 'serie' => 'Observado'];
+        }
+
+        if (!$reg['insufficient'] && !empty($serie)) {
+            $last = end($serie);
+            $L = (int) $last[0];
+            // Punto de unión: arranca en el último mes observado con su valor real.
+            $points[] = ['mes' => $L, 'valor' => (float) $last[1], 'serie' => 'Proyectado'];
+            for ($m = $L + 1; $m <= 12; $m++) {
+                $points[] = [
+                    'mes'   => $m,
+                    'valor' => max(0.0, (float) \SecopSuite\Stats::project($reg, (float) $m)),
+                    'serie' => 'Proyectado',
+                ];
+            }
+        }
+
+        $result = [
+            'points' => $points,
+            'meta'   => [
+                'slope'        => $reg['slope'],
+                'r2'           => $reg['r2'],
+                'n'            => $reg['n'],
+                'cierre'       => $reg['insufficient'] ? null : \SecopSuite\Stats::project($reg, 12.0),
+                'insufficient' => (bool) $reg['insufficient'],
+                'vigencia'     => $this->current_vigencia(),
+            ],
+        ];
+
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
+        return $result;
     }
 
     /** Construir el dataset de análisis completo para una card. */
@@ -288,9 +384,9 @@ final class Tracking
         $serie = $this->monthly_series($dependencia);
         $view  = $this->db->get_view_name();
 
-        $where  = ['anio = %d'];
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
         $params = [$this->current_vigencia()];
-        if ($dependencia) { $where[] = 'nombredependencia = %s'; $params[] = $dependencia; }
+        if ($dependencia) { $where[] = $this->sysman_label_expr('nombredependencia') . ' = %s'; $params[] = $dependencia; }
         $where_sql = implode(' AND ', $where);
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $tot = $wpdb->get_row($wpdb->prepare(
@@ -642,7 +738,12 @@ final class Tracking
         $tf = array_values(array_intersect((array) ($cfg['tooltip_fields'] ?? ['categoria', 'valor']), ['categoria', 'valor', 'conteo']));
         if (empty($tf)) $tf = ['categoria', 'valor'];
 
-        $filters = [['field' => 'anio', 'operator' => '=', 'value' => (string) $this->current_vigencia()]];
+        // v5.9.0: la vista ya está acotada a la vigencia actual por su propio WHERE
+        // (YEAR(fecha_de_firma_del_contrato) = YEAR(CURDATE())), por lo que NO se añade
+        // un filtro de `anio` (columna que ya no existe en la vista; build_chart_query
+        // lo descartaría por no validar contra columnas reales). Toda consulta sobre la
+        // vista es intrínsecamente de la vigencia en curso.
+        $filters = [];
         $dep = ($dependencia !== null && $dependencia !== '') ? $dependencia : ($cfg['dependencia'] ?? '');
         if ($dep !== '') {
             $filters[] = ['field' => 'nombredependencia', 'operator' => '=', 'value' => $dep];
@@ -749,22 +850,12 @@ final class Tracking
                 'limit'       => 40,
                 'descripcion' => __('Los contratistas con mayor valor, representados como burbujas proporcionales.', 'secop-suite'),
             ],
-            'evolucion_mensual' => [
-                'titulo'      => __('Evolución mensual (línea + predicción)', 'secop-suite'),
-                'dimension'   => 'mensual',
-                'chart_type'  => 'line',
-                'metric'      => 'valor_contrato',
-                'limit'       => 0,
-                'descripcion' => __('Valor contratado acumulado mes a mes, con proyección de cierre de vigencia.', 'secop-suite'),
-            ],
-            'evolucion_area' => [
-                'titulo'      => __('Evolución mensual (área)', 'secop-suite'),
-                'dimension'   => 'mensual',
-                'chart_type'  => 'area',
-                'metric'      => 'valor_contrato',
-                'limit'       => 0,
-                'descripcion' => __('Valor contratado acumulado mes a mes, en área.', 'secop-suite'),
-            ],
+            // v5.7.0: los presets 'evolucion_mensual'/'evolucion_area' se eliminaron.
+            // Usaban DIM_COLUMN['mensual']='mes' (mes de actualización de Sysman ≈
+            // constante → serie degenerada) y el motor Visualizer no puede parsear el
+            // varchar `fecha` (DD/MM/YYYY). El nuevo shortcode [secop_dep_prediccion]
+            // los reemplaza como visualización temporal (serie por mes del contrato +
+            // proyección punteada).
         ];
     }
 
@@ -1192,7 +1283,7 @@ final class Tracking
         global $post;
         if (!is_a($post, 'WP_Post')) return;
         $has = false;
-        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings','secop_dep_explora'] as $sc) {
+        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings','secop_dep_explora','secop_dep_prediccion','secop_dep_lista'] as $sc) {
             if (has_shortcode($post->post_content, $sc)) { $has = true; break; }
         }
         if (!$has) return;
@@ -1244,9 +1335,13 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view = $this->db->get_view_name();
+        // v5.9.0: vigencia por año de firma; la dependencia se compara contra la
+        // expresión etiquetada para que "No Registra SYSMAN" encuentre los contratos
+        // con dependencia NULL (sin cruce Sysman).
+        $dep_expr = $this->sysman_label_expr('nombredependencia');
         $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
                        fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_a_contratar
-                FROM `{$view}` WHERE anio = %d AND nombredependencia = %s
+                FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d AND {$dep_expr} = %s
                 GROUP BY numero_del_contrato
                 ORDER BY valor_contrato DESC LIMIT %d";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
@@ -1267,9 +1362,13 @@ final class Tracking
         $view = $this->db->get_view_name();
         $cols = $this->db->get_table_columns($view);
         if (!isset($cols[$column])) return [];
+        // v5.9.0: vigencia por año de firma; el valor de la dimensión se compara contra
+        // la expresión etiquetada (para que "No Registra SYSMAN" / el contratista del
+        // SECOP localicen los contratos sin cruce Sysman).
+        $col_expr = $this->sysman_label_expr($column);
         $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
                        fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_a_contratar
-                FROM `{$view}` WHERE anio = %d AND `{$column}` = %s
+                FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d AND {$col_expr} = %s
                 GROUP BY numero_del_contrato ORDER BY valor_contrato DESC LIMIT %d";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, $this->current_vigencia(), $value, $limit), ARRAY_A);
@@ -1335,20 +1434,22 @@ final class Tracking
 
         $view = $this->db->get_view_name();
 
-        // WHERE de la subconsulta deduplicadora (año + dependencia opcional).
-        $where  = ['anio = %d'];
+        // WHERE de la subconsulta deduplicadora (año de firma + dependencia opcional).
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
         $params = [$this->current_vigencia()];
         if ($dep !== null) {
-            $where[]  = 'nombredependencia = %s';
+            $where[]  = $this->sysman_label_expr('nombredependencia') . ' = %s';
             $params[] = $dep;
         }
         $where_sql = implode(' AND ', $where);
 
         // Subconsulta: un registro por contrato (MAX por columna textual para
         // colapsar las múltiples filas presupuestales de un mismo contrato).
+        // v5.9.0: las columnas de dependencia/tercero se etiquetan vía COALESCE para
+        // que los contratos sin cruce Sysman tengan un nodo nombrado en la red.
         $sub = "SELECT numero_del_contrato,
-                       MAX(nombredependencia)         AS nombredependencia,
-                       MAX(nombretercero)             AS nombretercero,
+                       MAX(" . $this->sysman_label_expr('nombredependencia') . ") AS nombredependencia,
+                       MAX(" . $this->sysman_label_expr('nombretercero') . ")     AS nombretercero,
                        MAX(tipo_de_contrato)          AS tipo_de_contrato,
                        MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
                        MAX(valor_contrato)            AS valor_contrato
@@ -1536,11 +1637,42 @@ final class Tracking
     {
         $atts = shortcode_atts(['dependencia' => '', 'height' => 560, 'selector' => 'on'], $atts, 'secop_dep_rings');
         $this->enqueue_module_stack();
-        wp_enqueue_script('secop-dep-rings', SECOP_SUITE_URL . 'assets/js/dep-rings.js', ['jquery', 'd3plus', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+        wp_enqueue_script('secop-dep-rings', SECOP_SUITE_URL . 'assets/js/dep-rings.js', ['jquery', 'd3', 'd3plus', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
         $deps = ($atts['selector'] === 'on') ? $this->list_dependencies() : [];
         $uid  = 'ss-rings-' . wp_unique_id();
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/rings.php';
+        return ob_get_clean();
+    }
+
+    // ── v5.7.0: Predicción (serie mensual del contrato + proyección) ──
+
+    /** AJAX — datos del gráfico de predicción (mismo nonce + rate-limit que ajax_drill). */
+    public function ajax_prediccion(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
+
+        $dep = sanitize_text_field(wp_unslash($_POST['dependencia'] ?? ''));
+        wp_send_json_success($this->prediccion_data($dep !== '' ? $dep : null));
+    }
+
+    /**
+     * Shortcode [secop_dep_prediccion] — evolución mensual del valor contratado
+     * (por mes del contrato) con línea de proyección punteada a fin de vigencia.
+     */
+    public function sc_prediccion(array $atts): string
+    {
+        $atts = shortcode_atts(['dependencia' => '', 'height' => 420, 'selector' => 'on'], $atts, 'secop_dep_prediccion');
+        $this->enqueue_module_stack();
+        wp_enqueue_script('secop-dep-prediccion', SECOP_SUITE_URL . 'assets/js/dep-prediccion.js',
+            ['jquery', 'd3plus', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+        $deps = ($atts['selector'] === 'on') ? $this->list_dependencies() : [];
+        $uid  = 'ss-pred-' . wp_unique_id();
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/prediccion.php';
         return ob_get_clean();
     }
 
@@ -1554,9 +1686,12 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view = $this->db->get_view_name();
+        // v5.9.0: valores distintos de la dependencia etiquetada (incluye "No Registra
+        // SYSMAN" para los contratos sin cruce Sysman) en la vigencia (año de firma).
+        $dep_expr = $this->sysman_label_expr('nombredependencia');
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $result = $wpdb->get_col($wpdb->prepare(
-            "SELECT DISTINCT nombredependencia FROM `{$view}` WHERE anio = %d AND nombredependencia <> '' ORDER BY nombredependencia",
+            "SELECT DISTINCT {$dep_expr} AS d FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d ORDER BY d",
             $this->current_vigencia()
         )) ?: [];
 
@@ -1647,12 +1782,13 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view = $this->db->get_view_name();
+        $dep_expr = $this->sysman_label_expr('nombredependencia');
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT modalidad_de_contratacion AS label,
                     COUNT(DISTINCT numero_del_contrato) AS conteo,
                     SUM(valor_contrato) AS valor
-             FROM `{$view}` WHERE anio = %d AND nombredependencia = %s
+             FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d AND {$dep_expr} = %s
              GROUP BY modalidad_de_contratacion ORDER BY valor DESC",
             $this->current_vigencia(), $dep
         ), ARRAY_A);
@@ -1692,7 +1828,7 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view = $this->db->get_view_name();
-        $where  = ['anio = %d', 'nombredependencia = %s'];
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d', $this->sysman_label_expr('nombredependencia') . ' = %s'];
         $params = [$this->current_vigencia(), $dep];
         if ($modalidad !== null && $modalidad !== '') {
             $where[]  = 'modalidad_de_contratacion = %s';
@@ -1701,9 +1837,10 @@ final class Tracking
         $where_sql = implode(' AND ', $where);
 
         // Un registro por contrato (MAX por columna textual). Sólo columnas de la
-        // vista; ningún nombre de columna proviene del usuario.
+        // vista; ningún nombre de columna proviene del usuario. v5.9.0: el nombre del
+        // contratista cae al del SECOP cuando Sysman no tiene cruce (LEFT JOIN → NULL).
         $sql = "SELECT numero_del_contrato,
-                       MAX(nombretercero)             AS nombretercero,
+                       MAX(" . $this->sysman_label_expr('nombretercero') . ") AS nombretercero,
                        MAX(valor_contrato)            AS valor_contrato,
                        MAX(fecha_inicio_ejecucion)    AS fecha_inicio_ejecucion,
                        MAX(fecha_fin_ejecucion)       AS fecha_fin_ejecucion,
@@ -1822,6 +1959,278 @@ final class Tracking
 
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/explora.php';
+        return ob_get_clean();
+    }
+
+    // ── v5.8.0: Listas composables [secop_dep_lista] ──────────────────
+
+    /**
+     * Mapa de claves de filtro → columna del VIEW. Define el conjunto de
+     * dimensiones que pueden cruzarse entre las listas de una misma página.
+     *
+     * @return array<string,string>
+     */
+    private function lista_filter_map(): array
+    {
+        return [
+            'dependencia'   => 'nombredependencia',
+            'modalidad'     => 'modalidad_de_contratacion',
+            'tipo_contrato' => 'tipo_de_contrato',
+        ];
+    }
+
+    /**
+     * Construye el fragmento WHERE (sin el AND inicial) y los parámetros para
+     * los filtros activos. Sólo claves de lista_filter_map() con valor no vacío
+     * se incluyen; el valor se prepara después con $wpdb->prepare (placeholders).
+     *
+     * @param array $filtros [clave => valor] (potencialmente sucio).
+     * @return array{0:string,1:array<int,string>} [fragmento_sql, params].
+     */
+    private function lista_where(array $filtros): array
+    {
+        $map    = $this->lista_filter_map();
+        $where  = [];
+        $params = [];
+        foreach ($map as $key => $col) {
+            $val = isset($filtros[$key]) ? sanitize_text_field((string) $filtros[$key]) : '';
+            if ($val === '') continue;
+            // v5.9.0: compara contra la expresión etiquetada (COALESCE) para que el
+            // filtro "No Registra SYSMAN" alcance los contratos con dependencia NULL.
+            $where[]  = $this->sysman_label_expr($col) . " = %s";
+            $params[] = $val;
+        }
+        return [implode(' AND ', $where), $params];
+    }
+
+    /**
+     * Agregador genérico filtrado: agrupa el VIEW por $column (que debe ser una
+     * de las tres columnas de filtro o nombretercero) en la vigencia actual,
+     * aplicando el WHERE de los filtros activos. Devuelve [label, valor, conteo]
+     * ordenado por valor DESC. El nombre de columna SÓLO procede de una whitelist
+     * fija; los valores de filtro se preparan con $wpdb->prepare. Cacheado 15 min.
+     *
+     * @param string $column  Columna de agrupación (whitelist).
+     * @param array  $filtros Filtros activos [clave => valor].
+     * @return array<int,array{label:string,valor:float,conteo:int}>
+     */
+    public function lista_aggregate(string $column, array $filtros): array
+    {
+        global $wpdb;
+
+        $allowed = array_merge(array_values($this->lista_filter_map()), ['nombretercero']);
+        if (!in_array($column, $allowed, true)) return [];
+
+        [$where_extra, $extra_params] = $this->lista_where($filtros);
+
+        $cache_key = 'secop_trk_' . md5('lista_aggregate|' . $column . '|' . wp_json_encode([$where_extra, $extra_params]) . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
+        $view   = $this->db->get_view_name();
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
+        $params = [$this->current_vigencia()];
+        if ($where_extra !== '') {
+            $where[] = $where_extra;
+            $params  = array_merge($params, $extra_params);
+        }
+        $where_sql = implode(' AND ', $where);
+
+        // v5.9.0: agrupa por la columna etiquetada (COALESCE) → los contratos sin cruce
+        // Sysman caen bajo "No Registra SYSMAN" (dependencia) o el contratista del SECOP.
+        $label_expr = $this->sysman_label_expr($column);
+        $sql = "SELECT {$label_expr} AS label,
+                       SUM(valor_contrato) AS valor,
+                       COUNT(DISTINCT numero_del_contrato) AS conteo
+                FROM `{$view}` WHERE {$where_sql}
+                GROUP BY {$label_expr} ORDER BY valor DESC";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
+
+        $result = array_map(static fn($r) => [
+            'label'  => (string) ($r['label'] ?? 'N/D'),
+            'valor'  => (float) ($r['valor'] ?? 0),
+            'conteo' => (int) ($r['conteo'] ?? 0),
+        ], $rows ?: []);
+
+        set_transient($cache_key, $result, 15 * MINUTE_IN_SECONDS);
+        return $result;
+    }
+
+    /**
+     * Contratistas (acordeón) filtrados por el conjunto completo de filtros
+     * (dependencia / modalidad / tipo_contrato). Como explora_contratistas pero
+     * acepta los tres filtros. Los contratos se deduplican por
+     * numero_del_contrato (MAX sobre columnas textuales) y se agrupan en PHP por
+     * nombretercero → [contratista, conteo, valor, contratos]. Preparada y
+     * cacheada 15 min.
+     *
+     * @param array $filtros Filtros activos [dependencia, modalidad, tipo_contrato].
+     * @param array $campos  Campos de fila 1 validados (sólo para el caché key).
+     * @return array<int,array{contratista:string,conteo:int,valor:float,contratos:array<int,array<string,mixed>>}>
+     */
+    public function lista_contratistas(array $filtros, array $campos): array
+    {
+        global $wpdb;
+
+        $allowed = $this->explora_fields();
+        $campos  = array_values(array_filter($campos, static fn($c) => isset($allowed[$c])));
+
+        [$where_extra, $extra_params] = $this->lista_where($filtros);
+
+        $cache_key = 'secop_trk_' . md5('lista_contratistas|' . wp_json_encode([$where_extra, $extra_params]) . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
+        $view   = $this->db->get_view_name();
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
+        $params = [$this->current_vigencia()];
+        if ($where_extra !== '') {
+            $where[] = $where_extra;
+            $params  = array_merge($params, $extra_params);
+        }
+        $where_sql = implode(' AND ', $where);
+
+        // Un registro por contrato (MAX por columna textual). Ningún nombre de
+        // columna proviene del usuario. v5.9.0: el nombre del contratista cae al del
+        // SECOP cuando Sysman no tiene cruce (LEFT JOIN → NULL).
+        $sql = "SELECT numero_del_contrato,
+                       MAX(" . $this->sysman_label_expr('nombretercero') . ") AS nombretercero,
+                       MAX(valor_contrato)            AS valor_contrato,
+                       MAX(fecha_inicio_ejecucion)    AS fecha_inicio_ejecucion,
+                       MAX(fecha_fin_ejecucion)       AS fecha_fin_ejecucion,
+                       MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
+                       MAX(tipo_de_contrato)          AS tipo_de_contrato,
+                       MAX(documento_proveedor)       AS documento_proveedor,
+                       MAX(url_contrato)              AS url_contrato,
+                       MAX(objeto_a_contratar)        AS objeto_a_contratar
+                FROM `{$view}` WHERE {$where_sql}
+                GROUP BY numero_del_contrato";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
+        $rows = $rows ?: [];
+
+        $by = [];
+        foreach ($rows as $r) {
+            $name = (string) ($r['nombretercero'] ?? '');
+            if ($name === '') $name = 'N/D';
+            if (!isset($by[$name])) {
+                $by[$name] = ['contratista' => $name, 'conteo' => 0, 'valor' => 0.0, 'contratos' => []];
+            }
+            $by[$name]['conteo'] += 1;
+            $by[$name]['valor']  += (float) ($r['valor_contrato'] ?? 0);
+            $by[$name]['contratos'][] = [
+                'numero_del_contrato'       => (string) ($r['numero_del_contrato'] ?? ''),
+                'valor_contrato'            => (float) ($r['valor_contrato'] ?? 0),
+                'fecha_inicio_ejecucion'    => (string) ($r['fecha_inicio_ejecucion'] ?? ''),
+                'fecha_fin_ejecucion'       => (string) ($r['fecha_fin_ejecucion'] ?? ''),
+                'modalidad_de_contratacion' => (string) ($r['modalidad_de_contratacion'] ?? ''),
+                'tipo_de_contrato'          => (string) ($r['tipo_de_contrato'] ?? ''),
+                'documento_proveedor'       => (string) ($r['documento_proveedor'] ?? ''),
+                'url_contrato'              => (string) ($r['url_contrato'] ?? ''),
+                'objeto_a_contratar'        => (string) ($r['objeto_a_contratar'] ?? ''),
+            ];
+        }
+
+        usort($by, static fn($a, $b) => $b['valor'] <=> $a['valor']);
+        $result = array_values($by);
+
+        set_transient($cache_key, $result, 15 * MINUTE_IN_SECONDS);
+        return $result;
+    }
+
+    /**
+     * AJAX — datos de una lista composable. Mismo nonce + rate-limit que el resto
+     * del explorador. Para una lista de tipo T NO se filtra por la propia columna
+     * de T (sólo por las otras), de modo que la lista muestra todas sus opciones
+     * dadas las demás selecciones activas.
+     */
+    public function ajax_lista(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        if ($this->explora_rate_limit()) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+
+        $tipo = sanitize_text_field(wp_unslash($_POST['tipo'] ?? 'dependencias'));
+        if (!in_array($tipo, ['dependencias', 'modalidades', 'tipos', 'contratistas'], true)) {
+            $tipo = 'dependencias';
+        }
+
+        $filtros = [
+            'dependencia'   => sanitize_text_field(wp_unslash($_POST['dependencia'] ?? '')),
+            'modalidad'     => sanitize_text_field(wp_unslash($_POST['modalidad'] ?? '')),
+            'tipo_contrato' => sanitize_text_field(wp_unslash($_POST['tipo_contrato'] ?? '')),
+        ];
+
+        $allowed = $this->explora_fields();
+        $campos  = array_values(array_filter(
+            array_map('trim', explode(',', sanitize_text_field(wp_unslash($_POST['campos'] ?? '')))),
+            static fn($c) => isset($allowed[$c])
+        ));
+        if (empty($campos)) $campos = ['numero_del_contrato', 'valor_contrato', 'fecha_inicio_ejecucion', 'fecha_fin_ejecucion', 'modalidad_de_contratacion'];
+
+        switch ($tipo) {
+            case 'modalidades':
+                // Excluye el propio filtro (modalidad).
+                $rows = $this->lista_aggregate('modalidad_de_contratacion', array_merge($filtros, ['modalidad' => '']));
+                break;
+            case 'tipos':
+                // Excluye el propio filtro (tipo_contrato).
+                $rows = $this->lista_aggregate('tipo_de_contrato', array_merge($filtros, ['tipo_contrato' => '']));
+                break;
+            case 'contratistas':
+                $rows = $this->lista_contratistas($filtros, $campos);
+                break;
+            case 'dependencias':
+            default:
+                // Excluye el propio filtro (dependencia).
+                $rows = $this->lista_aggregate('nombredependencia', array_merge($filtros, ['dependencia' => '']));
+                break;
+        }
+
+        wp_send_json_success(['tipo' => $tipo, 'rows' => $rows, 'campos' => $campos]);
+    }
+
+    /**
+     * Shortcode [secop_dep_lista] — una lista composable independiente. Varias
+     * listas en una misma página coordinan su estado de filtro (filtrado cruzado).
+     */
+    public function sc_lista(array $atts): string
+    {
+        $atts = shortcode_atts([
+            'tipo'   => 'dependencias',
+            'titulo' => '',
+            'campos' => 'numero_del_contrato,valor_contrato,fecha_inicio_ejecucion,fecha_fin_ejecucion,modalidad_de_contratacion',
+            'height' => 360,
+        ], $atts, 'secop_dep_lista');
+
+        $tipo = in_array($atts['tipo'], ['dependencias', 'modalidades', 'tipos', 'contratistas'], true)
+            ? $atts['tipo'] : 'dependencias';
+
+        $campos = array_values(array_filter(
+            array_map('trim', explode(',', $atts['campos'])),
+            fn($c) => isset($this->explora_fields()[$c])
+        ));
+        if (empty($campos)) {
+            $campos = ['numero_del_contrato', 'valor_contrato', 'fecha_inicio_ejecucion', 'fecha_fin_ejecucion', 'modalidad_de_contratacion'];
+        }
+
+        $this->enqueue_module_stack();
+        wp_enqueue_script('secop-dep-lista', SECOP_SUITE_URL . 'assets/js/dep-lista.js',
+            ['jquery', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+
+        $field_labels   = $this->explora_fields();
+        $default_titles = [
+            'dependencias' => __('Dependencias', 'secop-suite'),
+            'modalidades'  => __('Modalidades', 'secop-suite'),
+            'tipos'        => __('Tipos de contrato', 'secop-suite'),
+            'contratistas' => __('Contratistas', 'secop-suite'),
+        ];
+        $titulo = $atts['titulo'] !== '' ? $atts['titulo'] : $default_titles[$tipo];
+        $height = max(120, (int) $atts['height']);
+        $uid    = 'ss-lista-' . wp_unique_id();
+
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/lista.php';
         return ob_get_clean();
     }
 }
