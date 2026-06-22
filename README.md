@@ -69,6 +69,12 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.1.3 — Rendimiento y limpieza
+- **Caché de consultas del VIEW** (TTL 10 min) en los métodos de lectura del módulo de seguimiento (`group_by_dimension`, `monthly_series`, `build_dataset`, `contracts_by_dependency`, `list_dependencies`) y en el endpoint REST `/consulta` — evita golpear el JOIN de 3 tablas en cada render. Los exports streaming CSV/TXT siguen sin caché (ya tienen rate-limit).
+- **`get_preset_post_id` sin escrituras por render**: la config sólo se reescribe cuando realmente cambió; creación del post de respaldo protegida con un lock transitorio para evitar duplicados bajo concurrencia.
+- **Fix de fuga de manejadores en gráficas interactivas** (`frontend.js`): el binding de `keyup` (Escape) en `document` ahora usa un namespace por instancia (`keyup.ssc<uniqueId>`) y los botones de la toolbar usan `click.ssc`, eliminando handlers apilados al reinicializar `SSChartManager` desde `[secop_seguimiento]`.
+- **Eliminación de código muerto**: plantilla huérfana `templates/frontend/dep-chart.php` y el handler AJAX sin uso `secop_dep_chart_data` (`ajax_chart_data()` + sus dos hooks).
+
 ### v5.1.2 — Seguridad: exports públicos, CSV anti-fórmula, headers, nonce
 - **Rate-limit + streaming paginado en exports públicos** (`/export/csv` y `/export/txt`): comparten el limitador por IP de los endpoints `/consulta` (max 30 req/min); la tabla completa ya no se carga en memoria — se emite en lotes de 2 000 filas vía `LIMIT/OFFSET` (anti-DoS / memory exhaustion).
 - **CSV anti-fórmula** (`csv_safe`) aplicado a cabeceras y celdas en `get_chart_csv()` y en el nuevo `export_csv()` paginado (mitiga inyección de fórmulas Excel/LibreOffice).

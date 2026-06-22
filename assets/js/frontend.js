@@ -84,7 +84,7 @@
 
         bindToolbarEvents() {
             const self = this;
-            this.$container.find('.ss-toolbar-btn').on('click', function() {
+            this.$container.find('.ss-toolbar-btn').off('click.ssc').on('click.ssc', function() {
                 const action = $(this).data('action');
                 switch (action) {
                     case 'detail': self.showDetailModal(); break;
@@ -103,9 +103,11 @@
                 $modal.find('.ss-modal-close, .ss-modal-close-btn').on('click', function() { $modal.fadeOut(200); });
                 $modal.find('.ss-modal-overlay').on('click', function() { $modal.fadeOut(200); });
             });
-            $(document).on('keyup', function(e) {
-                if (e.key === 'Escape') { $('.ss-modal:visible').fadeOut(200); }
-            });
+            $(document)
+                .off('keyup.ssc' + this.uniqueId)
+                .on('keyup.ssc' + this.uniqueId, function(e) {
+                    if (e.key === 'Escape') { $('.ss-modal:visible').fadeOut(200); }
+                });
             var $shareModal = $('#' + this.uniqueId + '-share-modal');
             $shareModal.find('.ss-share-btn[data-network]').on('click', function(e) { e.preventDefault(); self.shareToNetwork($(this).data('network')); });
             $shareModal.find('[data-action="copy-link"]').on('click', function() { self.copyLink(); });

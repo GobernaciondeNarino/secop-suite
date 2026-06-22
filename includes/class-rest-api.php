@@ -449,6 +449,12 @@ final class Rest_Api
         $page     = max(1, (int) $request->get_param('page'));
         $offset   = ($page - 1) * $per_page;
 
+        $cache_key = 'secop_trk_' . md5('rest_consulta|' . $page . '|' . $per_page . '|' . $vigencia);
+        $cached    = get_transient($cache_key);
+        if (is_array($cached)) {
+            return new \WP_REST_Response($cached);
+        }
+
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT nombredependencia, numero_de_proceso, numero_del_contrato,
                     nombretercero, valordebito, valorcredito, saldoporejecutaresp,
@@ -458,11 +464,14 @@ final class Rest_Api
             $vigencia, $per_page, $offset
         ), ARRAY_A);
 
-        return new \WP_REST_Response([
+        $payload = [
             'vigencia' => $vigencia,
             'page'     => $page,
             'data'     => $rows ?: [],
-        ]);
+        ];
+        set_transient($cache_key, $payload, 10 * MINUTE_IN_SECONDS);
+
+        return new \WP_REST_Response($payload);
     }
 
     public function get_consulta_csv(\WP_REST_Request $request): void
