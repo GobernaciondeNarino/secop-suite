@@ -1422,6 +1422,91 @@
     .ss-explora-modalidades,
     .ss-explora-contratistas { max-height: none; flex-basis: auto; }
 }
+
+/* ==========================================================================
+   v5.8.0: Listas composables [secop_dep_lista]
+   Listas independientes (dependencias / modalidades / tipos / contratistas)
+   que coordinan un estado de filtro compartido en la misma página. Reutiliza
+   la estética de .ss-explora-*.
+   ========================================================================== */
+.ss-lista { margin: 1rem 0; }
+.ss-lista-title { margin: 0 0 .5rem; font-size: 14px; color: #1d2327; }
+.ss-lista-body { overflow: auto; }
+.ss-lista-loading,
+.ss-lista-empty {
+    padding: 1rem 0;
+    text-align: center;
+    color: #50575e;
+    font-size: 13px;
+    margin: 0;
+}
+.ss-lista-ul { list-style: none; margin: 0; padding: 0; }
+.ss-lista-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: .5rem;
+    padding: .45rem .6rem;
+    cursor: pointer;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    margin-bottom: 3px;
+    font-size: 13px;
+    transition: background .12s ease;
+}
+.ss-lista-item:hover { background: #f0f6fb; }
+.ss-lista-item.active {
+    background: #e6f2fa;
+    border-color: #0080c3;
+    font-weight: 600;
+}
+.ss-lista-name { flex: 1 1 auto; }
+.ss-lista-meta { flex: 0 0 auto; color: #50575e; font-size: 12px; }
+.ss-lista-acc-item {
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    overflow: hidden;
+}
+.ss-lista-acc-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: .75rem;
+    width: 100%;
+    text-align: left;
+    padding: .6rem .8rem;
+    background: #f6f7f7;
+    border: 0;
+    cursor: pointer;
+    font-size: 13px;
+    color: #1d2327;
+}
+.ss-lista-acc-head:hover { background: #eef0f1; }
+.ss-lista-acc-name { font-weight: 600; flex: 1 1 auto; }
+.ss-lista-acc-meta { flex: 0 0 auto; color: #50575e; font-size: 12px; white-space: nowrap; }
+.ss-lista-acc-body { display: none; padding: .5rem .8rem; background: #fff; overflow-x: auto; }
+.ss-lista-acc-item.open .ss-lista-acc-body { display: block; }
+.ss-lista-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ss-lista-table th {
+    text-align: left;
+    padding: .35rem .5rem;
+    border-bottom: 2px solid #dcdcde;
+    color: #50575e;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.ss-lista-row1 td {
+    padding: .35rem .5rem;
+    border-top: 1px solid #f0f0f1;
+    vertical-align: top;
+}
+.ss-lista-objeto {
+    padding: .25rem .5rem .6rem;
+    color: #50575e;
+    font-style: italic;
+    line-height: 1.45;
+}
 .ss-rings-chart svg { width: 100%; height: auto; display: block; }
 
 /* v5.7.0: Predicción de contratación (LinePlot + proyección punteada) */

@@ -168,6 +168,11 @@ final class Tracking
         add_action('wp_ajax_nopriv_secop_dep_explora_modalidades', [$this, 'ajax_explora_modalidades']);
         add_action('wp_ajax_secop_dep_explora_contratistas',        [$this, 'ajax_explora_contratistas']);
         add_action('wp_ajax_nopriv_secop_dep_explora_contratistas', [$this, 'ajax_explora_contratistas']);
+        // v5.8.0: listas composables [secop_dep_lista] (dependencias/modalidades/tipos/contratistas)
+        // con filtrado cruzado entre las visibles en la misma página.
+        add_shortcode('secop_dep_lista',                 [$this, 'sc_lista']);
+        add_action('wp_ajax_secop_dep_lista',            [$this, 'ajax_lista']);
+        add_action('wp_ajax_nopriv_secop_dep_lista',     [$this, 'ajax_lista']);
         // Vista previa en vivo del editor de cards (solo admin, sin nopriv).
         add_action('wp_ajax_secop_dep_preview',          [$this, 'ajax_dep_preview']);
         add_shortcode('secop_consulta',                  [$this, 'sc_consulta']);
@@ -1252,7 +1257,7 @@ final class Tracking
         global $post;
         if (!is_a($post, 'WP_Post')) return;
         $has = false;
-        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings','secop_dep_explora','secop_dep_prediccion'] as $sc) {
+        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings','secop_dep_explora','secop_dep_prediccion','secop_dep_lista'] as $sc) {
             if (has_shortcode($post->post_content, $sc)) { $has = true; break; }
         }
         if (!$has) return;
@@ -1913,6 +1918,272 @@ final class Tracking
 
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/explora.php';
+        return ob_get_clean();
+    }
+
+    // ── v5.8.0: Listas composables [secop_dep_lista] ──────────────────
+
+    /**
+     * Mapa de claves de filtro → columna del VIEW. Define el conjunto de
+     * dimensiones que pueden cruzarse entre las listas de una misma página.
+     *
+     * @return array<string,string>
+     */
+    private function lista_filter_map(): array
+    {
+        return [
+            'dependencia'   => 'nombredependencia',
+            'modalidad'     => 'modalidad_de_contratacion',
+            'tipo_contrato' => 'tipo_de_contrato',
+        ];
+    }
+
+    /**
+     * Construye el fragmento WHERE (sin el AND inicial) y los parámetros para
+     * los filtros activos. Sólo claves de lista_filter_map() con valor no vacío
+     * se incluyen; el valor se prepara después con $wpdb->prepare (placeholders).
+     *
+     * @param array $filtros [clave => valor] (potencialmente sucio).
+     * @return array{0:string,1:array<int,string>} [fragmento_sql, params].
+     */
+    private function lista_where(array $filtros): array
+    {
+        $map    = $this->lista_filter_map();
+        $where  = [];
+        $params = [];
+        foreach ($map as $key => $col) {
+            $val = isset($filtros[$key]) ? sanitize_text_field((string) $filtros[$key]) : '';
+            if ($val === '') continue;
+            $where[]  = "`{$col}` = %s";
+            $params[] = $val;
+        }
+        return [implode(' AND ', $where), $params];
+    }
+
+    /**
+     * Agregador genérico filtrado: agrupa el VIEW por $column (que debe ser una
+     * de las tres columnas de filtro o nombretercero) en la vigencia actual,
+     * aplicando el WHERE de los filtros activos. Devuelve [label, valor, conteo]
+     * ordenado por valor DESC. El nombre de columna SÓLO procede de una whitelist
+     * fija; los valores de filtro se preparan con $wpdb->prepare. Cacheado 15 min.
+     *
+     * @param string $column  Columna de agrupación (whitelist).
+     * @param array  $filtros Filtros activos [clave => valor].
+     * @return array<int,array{label:string,valor:float,conteo:int}>
+     */
+    public function lista_aggregate(string $column, array $filtros): array
+    {
+        global $wpdb;
+
+        $allowed = array_merge(array_values($this->lista_filter_map()), ['nombretercero']);
+        if (!in_array($column, $allowed, true)) return [];
+
+        [$where_extra, $extra_params] = $this->lista_where($filtros);
+
+        $cache_key = 'secop_trk_' . md5('lista_aggregate|' . $column . '|' . wp_json_encode([$where_extra, $extra_params]) . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
+        $view   = $this->db->get_view_name();
+        $where  = ['anio = %d'];
+        $params = [$this->current_vigencia()];
+        if ($where_extra !== '') {
+            $where[] = $where_extra;
+            $params  = array_merge($params, $extra_params);
+        }
+        $where_sql = implode(' AND ', $where);
+
+        $sql = "SELECT `{$column}` AS label,
+                       SUM(valor_contrato) AS valor,
+                       COUNT(DISTINCT numero_del_contrato) AS conteo
+                FROM `{$view}` WHERE {$where_sql}
+                GROUP BY `{$column}` ORDER BY valor DESC";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
+
+        $result = array_map(static fn($r) => [
+            'label'  => (string) ($r['label'] ?? 'N/D'),
+            'valor'  => (float) ($r['valor'] ?? 0),
+            'conteo' => (int) ($r['conteo'] ?? 0),
+        ], $rows ?: []);
+
+        set_transient($cache_key, $result, 15 * MINUTE_IN_SECONDS);
+        return $result;
+    }
+
+    /**
+     * Contratistas (acordeón) filtrados por el conjunto completo de filtros
+     * (dependencia / modalidad / tipo_contrato). Como explora_contratistas pero
+     * acepta los tres filtros. Los contratos se deduplican por
+     * numero_del_contrato (MAX sobre columnas textuales) y se agrupan en PHP por
+     * nombretercero → [contratista, conteo, valor, contratos]. Preparada y
+     * cacheada 15 min.
+     *
+     * @param array $filtros Filtros activos [dependencia, modalidad, tipo_contrato].
+     * @param array $campos  Campos de fila 1 validados (sólo para el caché key).
+     * @return array<int,array{contratista:string,conteo:int,valor:float,contratos:array<int,array<string,mixed>>}>
+     */
+    public function lista_contratistas(array $filtros, array $campos): array
+    {
+        global $wpdb;
+
+        $allowed = $this->explora_fields();
+        $campos  = array_values(array_filter($campos, static fn($c) => isset($allowed[$c])));
+
+        [$where_extra, $extra_params] = $this->lista_where($filtros);
+
+        $cache_key = 'secop_trk_' . md5('lista_contratistas|' . wp_json_encode([$where_extra, $extra_params]) . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
+        $view   = $this->db->get_view_name();
+        $where  = ['anio = %d'];
+        $params = [$this->current_vigencia()];
+        if ($where_extra !== '') {
+            $where[] = $where_extra;
+            $params  = array_merge($params, $extra_params);
+        }
+        $where_sql = implode(' AND ', $where);
+
+        // Un registro por contrato (MAX por columna textual). Ningún nombre de
+        // columna proviene del usuario.
+        $sql = "SELECT numero_del_contrato,
+                       MAX(nombretercero)             AS nombretercero,
+                       MAX(valor_contrato)            AS valor_contrato,
+                       MAX(fecha_inicio_ejecucion)    AS fecha_inicio_ejecucion,
+                       MAX(fecha_fin_ejecucion)       AS fecha_fin_ejecucion,
+                       MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
+                       MAX(tipo_de_contrato)          AS tipo_de_contrato,
+                       MAX(documento_proveedor)       AS documento_proveedor,
+                       MAX(url_contrato)              AS url_contrato,
+                       MAX(objeto_a_contratar)        AS objeto_a_contratar
+                FROM `{$view}` WHERE {$where_sql}
+                GROUP BY numero_del_contrato";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
+        $rows = $rows ?: [];
+
+        $by = [];
+        foreach ($rows as $r) {
+            $name = (string) ($r['nombretercero'] ?? '');
+            if ($name === '') $name = 'N/D';
+            if (!isset($by[$name])) {
+                $by[$name] = ['contratista' => $name, 'conteo' => 0, 'valor' => 0.0, 'contratos' => []];
+            }
+            $by[$name]['conteo'] += 1;
+            $by[$name]['valor']  += (float) ($r['valor_contrato'] ?? 0);
+            $by[$name]['contratos'][] = [
+                'numero_del_contrato'       => (string) ($r['numero_del_contrato'] ?? ''),
+                'valor_contrato'            => (float) ($r['valor_contrato'] ?? 0),
+                'fecha_inicio_ejecucion'    => (string) ($r['fecha_inicio_ejecucion'] ?? ''),
+                'fecha_fin_ejecucion'       => (string) ($r['fecha_fin_ejecucion'] ?? ''),
+                'modalidad_de_contratacion' => (string) ($r['modalidad_de_contratacion'] ?? ''),
+                'tipo_de_contrato'          => (string) ($r['tipo_de_contrato'] ?? ''),
+                'documento_proveedor'       => (string) ($r['documento_proveedor'] ?? ''),
+                'url_contrato'              => (string) ($r['url_contrato'] ?? ''),
+                'objeto_a_contratar'        => (string) ($r['objeto_a_contratar'] ?? ''),
+            ];
+        }
+
+        usort($by, static fn($a, $b) => $b['valor'] <=> $a['valor']);
+        $result = array_values($by);
+
+        set_transient($cache_key, $result, 15 * MINUTE_IN_SECONDS);
+        return $result;
+    }
+
+    /**
+     * AJAX — datos de una lista composable. Mismo nonce + rate-limit que el resto
+     * del explorador. Para una lista de tipo T NO se filtra por la propia columna
+     * de T (sólo por las otras), de modo que la lista muestra todas sus opciones
+     * dadas las demás selecciones activas.
+     */
+    public function ajax_lista(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        if ($this->explora_rate_limit()) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+
+        $tipo = sanitize_text_field(wp_unslash($_POST['tipo'] ?? 'dependencias'));
+        if (!in_array($tipo, ['dependencias', 'modalidades', 'tipos', 'contratistas'], true)) {
+            $tipo = 'dependencias';
+        }
+
+        $filtros = [
+            'dependencia'   => sanitize_text_field(wp_unslash($_POST['dependencia'] ?? '')),
+            'modalidad'     => sanitize_text_field(wp_unslash($_POST['modalidad'] ?? '')),
+            'tipo_contrato' => sanitize_text_field(wp_unslash($_POST['tipo_contrato'] ?? '')),
+        ];
+
+        $allowed = $this->explora_fields();
+        $campos  = array_values(array_filter(
+            array_map('trim', explode(',', sanitize_text_field(wp_unslash($_POST['campos'] ?? '')))),
+            static fn($c) => isset($allowed[$c])
+        ));
+        if (empty($campos)) $campos = ['numero_del_contrato', 'valor_contrato', 'fecha_inicio_ejecucion', 'fecha_fin_ejecucion', 'modalidad_de_contratacion'];
+
+        switch ($tipo) {
+            case 'modalidades':
+                // Excluye el propio filtro (modalidad).
+                $rows = $this->lista_aggregate('modalidad_de_contratacion', array_merge($filtros, ['modalidad' => '']));
+                break;
+            case 'tipos':
+                // Excluye el propio filtro (tipo_contrato).
+                $rows = $this->lista_aggregate('tipo_de_contrato', array_merge($filtros, ['tipo_contrato' => '']));
+                break;
+            case 'contratistas':
+                $rows = $this->lista_contratistas($filtros, $campos);
+                break;
+            case 'dependencias':
+            default:
+                // Excluye el propio filtro (dependencia).
+                $rows = $this->lista_aggregate('nombredependencia', array_merge($filtros, ['dependencia' => '']));
+                break;
+        }
+
+        wp_send_json_success(['tipo' => $tipo, 'rows' => $rows, 'campos' => $campos]);
+    }
+
+    /**
+     * Shortcode [secop_dep_lista] — una lista composable independiente. Varias
+     * listas en una misma página coordinan su estado de filtro (filtrado cruzado).
+     */
+    public function sc_lista(array $atts): string
+    {
+        $atts = shortcode_atts([
+            'tipo'   => 'dependencias',
+            'titulo' => '',
+            'campos' => 'numero_del_contrato,valor_contrato,fecha_inicio_ejecucion,fecha_fin_ejecucion,modalidad_de_contratacion',
+            'height' => 360,
+        ], $atts, 'secop_dep_lista');
+
+        $tipo = in_array($atts['tipo'], ['dependencias', 'modalidades', 'tipos', 'contratistas'], true)
+            ? $atts['tipo'] : 'dependencias';
+
+        $campos = array_values(array_filter(
+            array_map('trim', explode(',', $atts['campos'])),
+            fn($c) => isset($this->explora_fields()[$c])
+        ));
+        if (empty($campos)) {
+            $campos = ['numero_del_contrato', 'valor_contrato', 'fecha_inicio_ejecucion', 'fecha_fin_ejecucion', 'modalidad_de_contratacion'];
+        }
+
+        $this->enqueue_module_stack();
+        wp_enqueue_script('secop-dep-lista', SECOP_SUITE_URL . 'assets/js/dep-lista.js',
+            ['jquery', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+
+        $field_labels   = $this->explora_fields();
+        $default_titles = [
+            'dependencias' => __('Dependencias', 'secop-suite'),
+            'modalidades'  => __('Modalidades', 'secop-suite'),
+            'tipos'        => __('Tipos de contrato', 'secop-suite'),
+            'contratistas' => __('Contratistas', 'secop-suite'),
+        ];
+        $titulo = $atts['titulo'] !== '' ? $atts['titulo'] : $default_titles[$tipo];
+        $height = max(120, (int) $atts['height']);
+        $uid    = 'ss-lista-' . wp_unique_id();
+
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/lista.php';
         return ob_get_clean();
     }
 }

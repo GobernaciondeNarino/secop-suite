@@ -69,6 +69,10 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.8.0 — Listas composables `[secop_dep_lista]` con filtrado cruzado
+- Versión **modular** del explorador: `[secop_dep_lista tipo="dependencias|modalidades|tipos|contratistas"]` divide el explorador en listas independientes que se pueden colocar en cualquier parte de la página para **maquetar el explorador a gusto**.
+- Las listas presentes en la **misma página interactúan entre sí (filtrado cruzado)**: al hacer clic en un elemento de una lista se filtran automáticamente las demás mediante un estado compartido a nivel de página `{dependencia, modalidad, tipo_contrato}` (volver a hacer clic en el elemento activo limpia ese filtro). Una lista de tipo T no se filtra por su propio campo. La lista `contratistas` es un acordeón que despliega los contratos. Datos por **AJAX** (`secop_dep_lista`, nonce `secop_dep_frontend` + rate-limit por IP); las cadenas de BD se insertan con `.text()`. Atributos: `tipo`, `titulo`, `campos`, `height`. Sólo coordinan las listas realmente presentes (1 o las 4).
+
 ### v5.7.0 — Serie mensual por mes del contrato + predicción `[secop_dep_prediccion]`
 - La **serie mensual** ahora usa el **mes del contrato** (campo `fecha`, formato `DD/MM/YYYY`, parseado con `STR_TO_DATE(fecha, '%d/%m/%Y')`) en vez del **mes de actualización** (`mes` de Sysman, que era ~constante → serie degenerada). Las filas cuya `fecha` no parsea se excluyen. Esto corrige `monthly_series`/`build_dataset` y, con ello, el **análisis predictivo** automático.
 - Nuevo gráfico de predicción **`[secop_dep_prediccion]`** (d3plus.LinePlot): evolución mensual del valor contratado acumulado con **línea de proyección punteada** (`strokeDasharray`) a fin de vigencia, calculada por **regresión lineal**. Datos por **AJAX** (`secop_dep_prediccion`, nonce `secop_dep_frontend` + rate-limit por IP). Atributos: `dependencia`, `height`, `selector`. La metainformación (cierre proyectado, R²) se inserta con `.text()`.
