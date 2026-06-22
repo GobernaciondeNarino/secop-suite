@@ -106,6 +106,8 @@ final class Tracking
         add_shortcode('secop_dep_contratos',             [$this, 'sc_contratos']);
         add_action('wp_ajax_secop_dep_contratos',        [$this, 'ajax_contratos']);
         add_action('wp_ajax_nopriv_secop_dep_contratos', [$this, 'ajax_contratos']);
+        // Vista previa en vivo del editor de cards (solo admin, sin nopriv).
+        add_action('wp_ajax_secop_dep_preview',          [$this, 'ajax_dep_preview']);
         add_shortcode('secop_consulta',                  [$this, 'sc_consulta']);
     }
 
@@ -300,17 +302,58 @@ final class Tracking
 
     public function render_preview_metabox(\WP_Post $post): void
     {
-        $chart_config = get_post_meta($post->ID, '_secop_chart_config', true);
-        $dep_config   = get_post_meta($post->ID, '_secop_dep_card_config', true) ?: [];
-        $configured   = (is_array($chart_config) && !empty($chart_config))
-            || !empty($dep_config['dimension']);
-        if (!$configured) {
-            echo '<p>' . esc_html__('Guarde la tarjeta para ver la vista previa de la gráfica.', 'secop-suite') . '</p>';
-            return;
+        ?>
+        <div class="secop-dep-card-preview">
+            <p>
+                <button type="button" class="button button-primary" id="ss-dep-refresh-preview">
+                    <span class="dashicons dashicons-update" style="vertical-align:text-bottom"></span>
+                    <?php esc_html_e('Actualizar vista previa', 'secop-suite'); ?>
+                </button>
+                <span class="description"><?php esc_html_e('La vista previa se actualiza automáticamente al cambiar la configuración.', 'secop-suite'); ?></span>
+            </p>
+            <div id="ss-dep-preview-render" class="ss-chart-render" style="min-height:380px"></div>
+            <h4><?php esc_html_e('Datos', 'secop-suite'); ?></h4>
+            <div id="ss-dep-preview-data"></div>
+            <h4><?php esc_html_e('Consulta SQL generada', 'secop-suite'); ?></h4>
+            <pre id="ss-dep-preview-sql" style="white-space:pre-wrap;overflow:auto;background:#f6f7f7;padding:10px;border:1px solid #dcdcde;"></pre>
+        </div>
+        <?php
+    }
+
+    /**
+     * AJAX (solo admin) — genera la vista previa en vivo del editor de cards.
+     * Reconstruye la config a partir de los valores actuales del formulario,
+     * la traduce a una config segura del Visualizer y ejecuta la query SIN caché
+     * para devolver los datos y el SQL realmente ejecutado.
+     */
+    public function ajax_dep_preview(): void
+    {
+        check_ajax_referer('secop_dep_preview', 'nonce');
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error(['message' => 'Permisos insuficientes']);
         }
-        echo '<div class="secop-dep-card-preview">';
-        echo do_shortcode('[secop_dep_chart card="' . (int) $post->ID . '"]');
-        echo '</div>';
+
+        $cfg = [
+            'dimension'   => sanitize_text_field(wp_unslash($_POST['dimension'] ?? 'dependencia')),
+            'chart_type'  => sanitize_text_field(wp_unslash($_POST['chart_type'] ?? '')),
+            'metric'      => sanitize_text_field(wp_unslash($_POST['metric'] ?? 'valordebito')),
+            'dependencia' => sanitize_text_field(wp_unslash($_POST['dependencia'] ?? '')),
+            'order'       => sanitize_text_field(wp_unslash($_POST['order'] ?? 'valor')),
+            'order_dir'   => sanitize_text_field(wp_unslash($_POST['order_dir'] ?? 'DESC')),
+            'limit'       => (int) ($_POST['limit'] ?? 0),
+            'colors'      => array_values(array_filter(
+                array_map('trim', explode(',', sanitize_text_field(wp_unslash($_POST['colors'] ?? '')))),
+                static fn($c) => (bool) preg_match('/^#[0-9a-fA-F]{6}$/', $c)
+            )),
+        ];
+
+        $chart_config = $this->card_to_chart_config($cfg);
+        $res = \SecopSuite\Plugin::get_instance()->visualizer()->get_chart_data_with_sql($chart_config);
+        wp_send_json_success([
+            'config' => $chart_config,
+            'data'   => $res['data'],
+            'sql'    => $res['sql'],
+        ]);
     }
 
     public function save_card_meta(int $post_id, \WP_Post $post): void
@@ -344,6 +387,7 @@ final class Tracking
             'metric'      => $metric,
             'order'       => $order,
             'order_dir'   => $order_dir,
+            'limit'       => (int) ($_POST['dep_limit'] ?? 0),
             'colors'      => $colors,
         ];
         update_post_meta($post_id, '_secop_dep_card_config', $config);
@@ -352,13 +396,33 @@ final class Tracking
 
     public function enqueue_admin_assets(string $hook): void
     {
-        global $post_type;
-        if ($post_type !== self::POST_TYPE) return;
+        // Detección robusta de la pantalla de edición de la card (el global
+        // $post_type a veces no está disponible en admin_enqueue_scripts).
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $is_card_screen = ($screen && $screen->post_type === self::POST_TYPE)
+            || (($GLOBALS['post_type'] ?? '') === self::POST_TYPE)
+            || (in_array($hook, ['post.php', 'post-new.php'], true)
+                && ($_GET['post_type'] ?? '') === self::POST_TYPE);
+        if (!$is_card_screen) return;
         // Reutiliza las librerías de gráfica del Visualizer vía el handle compartido.
         wp_enqueue_style('secop-suite-admin', SECOP_SUITE_URL . 'assets/css/admin.css', [], SECOP_SUITE_VERSION);
         // Carga el stack de gráficas del frontend para que ChartManager pueda renderizar
         // la vista previa en la pantalla de edición de la tarjeta.
         \SecopSuite\Plugin::get_instance()->visualizer()->enqueue_frontend_chart_stack();
+
+        // Script de vista previa en vivo: depende de secop-suite-frontend para
+        // disponer de window.SSChartRender (motor de gráficas reutilizable).
+        wp_enqueue_script('secop-dep-card-preview', SECOP_SUITE_URL . 'assets/js/dep-card-preview.js',
+            ['jquery', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+        wp_localize_script('secop-dep-card-preview', 'secopDepPreview', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce'   => wp_create_nonce('secop_dep_preview'),
+            'strings' => [
+                'loading' => __('Generando vista previa…', 'secop-suite'),
+                'error'   => __('Error al generar la vista previa', 'secop-suite'),
+                'noData'  => __('La consulta no devolvió datos.', 'secop-suite'),
+            ],
+        ]);
     }
 
     // ── Shortcodes frontend ───────────────────────────────────────
