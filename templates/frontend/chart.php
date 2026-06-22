@@ -251,6 +251,9 @@ $chart_height = $config['chart_height'] ?? 400;
     'yAxisTitle' => $config['y_axis_title'] ?? '',
     'xAxisTitle' => $config['x_axis_title'] ?? '',
     'numberFormat' => $config['number_format'] ?? 'colombiano',
+    // v5.3.2: campos del tooltip. Ausente en [secop_chart] → frontend usa el
+    // valor por defecto ['categoria','valor'] (comportamiento previo intacto).
+    'tooltipFields' => (!empty($config['tooltip_fields']) && is_array($config['tooltip_fields'])) ? $config['tooltip_fields'] : ['categoria', 'valor'],
     'multiY' => !empty($config['y_fields']),
     'title' => $chart_title,
     'chartNonce' => wp_create_nonce('secop_suite_chart_' . $chart_id),

@@ -67,6 +67,31 @@ final class Tracking
         ];
     }
 
+    /**
+     * Whitelist de columnas filtrables del módulo de Contratación.
+     * Sólo columnas que existen en la vista vista_secop_sysman. El valor es la
+     * etiqueta amigable mostrada en el editor. build_chart_query revalida la
+     * columna contra las columnas reales y prepara el valor con $wpdb->prepare,
+     * por lo que esta whitelist es la primera (no la única) línea de defensa.
+     *
+     * @return array<string,string> [columna => etiqueta].
+     */
+    public function filter_columns(): array
+    {
+        return [
+            'nombredependencia'         => __('Dependencia', 'secop-suite'),
+            'tipo_de_contrato'          => __('Tipo de contrato', 'secop-suite'),
+            'modalidad_de_contratacion' => __('Modalidad', 'secop-suite'),
+            'nombretercero'             => __('Contratista', 'secop-suite'),
+            'documento_proveedor'       => __('Documento proveedor', 'secop-suite'),
+            'mes'                       => __('Mes', 'secop-suite'),
+            'valor_contrato'            => __('Valor del contrato', 'secop-suite'),
+            'valordebito'               => __('Valor ejecutado', 'secop-suite'),
+            'saldoporejecutaresp'       => __('Saldo por ejecutar', 'secop-suite'),
+            'numero_del_contrato'       => __('Nº de contrato', 'secop-suite'),
+        ];
+    }
+
     public static function is_compatible(string $dimension, string $type): bool
     {
         return in_array($type, self::COMPAT[$dimension] ?? [], true);
@@ -103,6 +128,10 @@ final class Tracking
         // Drill-down: contratos asociados al valor de una dimensión (click en gráfica).
         add_action('wp_ajax_secop_dep_drill',            [$this, 'ajax_drill']);
         add_action('wp_ajax_nopriv_secop_dep_drill',     [$this, 'ajax_drill']);
+        // v5.4.0: red de contratación (grafo de fuerza dependencias↔contratistas/tipos/modalidades).
+        add_shortcode('secop_dep_red',                   [$this, 'sc_red']);
+        add_action('wp_ajax_secop_dep_network',          [$this, 'ajax_network']);
+        add_action('wp_ajax_nopriv_secop_dep_network',   [$this, 'ajax_network']);
         // Vista previa en vivo del editor de cards (solo admin, sin nopriv).
         add_action('wp_ajax_secop_dep_preview',          [$this, 'ajax_dep_preview']);
         add_shortcode('secop_consulta',                  [$this, 'sc_consulta']);
@@ -282,6 +311,7 @@ final class Tracking
             'mensual'        => __('Mensual (evolución)', 'secop-suite'),
         ];
         $dependencias = $this->list_dependencies();
+        $filter_columns = $this->filter_columns();
         include SECOP_SUITE_DIR . 'templates/admin/dep-card-config.php';
     }
 
@@ -359,6 +389,10 @@ final class Tracking
                     : explode(',', sanitize_text_field(wp_unslash($_POST['toolbar_options'] ?? '')))),
                 ['detail', 'share', 'data', 'image', 'download']
             )),
+            // v5.3.2: campos del tooltip (array o cadena separada por comas).
+            'tooltip_fields'  => $this->sanitize_tooltip_fields(wp_unslash($_POST['tooltip_fields'] ?? ['categoria', 'valor'])),
+            // v5.3.1: filtros configurables enviados por la vista previa.
+            'filters'         => $this->sanitize_filter_rows($_POST['filters'] ?? []),
         ];
 
         $chart_config = $this->card_to_chart_config($cfg);
@@ -424,9 +458,66 @@ final class Tracking
             'legend_position' => in_array($_POST['dep_legend_position'] ?? '', ['bottom', 'top', 'left', 'right'], true) ? $_POST['dep_legend_position'] : 'bottom',
             'show_toolbar'    => isset($_POST['dep_show_toolbar']),
             'toolbar_options' => array_values(array_intersect((array) ($_POST['dep_toolbar_options'] ?? []), ['detail', 'share', 'data', 'image', 'download'])),
+            // v5.3.2: campos del tooltip (categoría / valor / nº de contratos).
+            'tooltip_fields'  => $this->sanitize_tooltip_fields($_POST['dep_tooltip_fields'] ?? ['categoria', 'valor']),
+            // v5.3.1: filtros configurables (columna/operador/valor).
+            // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce verificado arriba.
+            'filters'         => $this->sanitize_filter_rows($_POST['dep_filters'] ?? []),
         ];
         update_post_meta($post_id, '_secop_dep_card_config', $config);
         update_post_meta($post_id, '_secop_chart_config', $this->card_to_chart_config($config));
+    }
+
+    /**
+     * Sanea las filas de filtros personalizados provenientes del formulario o de
+     * la petición AJAX de vista previa. Cada fila es ['field','operator','value'].
+     * Descarta filas con columna no permitida, operador inválido (→ '=') o valor
+     * vacío. El valor se desliza+sanea; build_chart_query lo prepara después.
+     *
+     * @param mixed $raw Array de filas (potencialmente sucio) o no-array.
+     * @return array<int,array{field:string,operator:string,value:string}>
+     */
+    private function sanitize_filter_rows($raw): array
+    {
+        if (!is_array($raw)) return [];
+        $allowed_ops = ['=', '!=', '>', '<', '>=', '<=', 'LIKE'];
+        $cols = $this->filter_columns();
+        $clean = [];
+        foreach ($raw as $row) {
+            if (!is_array($row)) continue;
+            $field = sanitize_text_field(wp_unslash($row['field'] ?? ''));
+            if (!isset($cols[$field])) continue;
+            $op  = (string) ($row['operator'] ?? '=');
+            if (!in_array($op, $allowed_ops, true)) $op = '=';
+            $val = sanitize_text_field(wp_unslash($row['value'] ?? ''));
+            if ($val === '') continue;
+            $clean[] = ['field' => $field, 'operator' => $op, 'value' => $val];
+        }
+        return array_values($clean);
+    }
+
+    /**
+     * v5.3.2: Sanea los campos del tooltip provenientes del formulario, de la
+     * vista previa AJAX o del atributo del shortcode. Acepta un array o una
+     * cadena separada por comas. Devuelve un subconjunto validado de
+     * ['categoria','valor','conteo']; por defecto ['categoria','valor'].
+     *
+     * @param mixed $raw Array o string (lista separada por comas).
+     * @return array<int,string>
+     */
+    private function sanitize_tooltip_fields($raw): array
+    {
+        if (is_string($raw)) {
+            $raw = explode(',', $raw);
+        }
+        if (!is_array($raw)) {
+            $raw = [];
+        }
+        $clean = array_values(array_intersect(
+            array_map(static fn($v) => sanitize_text_field((string) $v), $raw),
+            ['categoria', 'valor', 'conteo']
+        ));
+        return empty($clean) ? ['categoria', 'valor'] : $clean;
     }
 
     public function enqueue_admin_assets(string $hook): void
@@ -514,10 +605,26 @@ final class Tracking
         $default_palette = ['#844e80', '#ff7300', '#ffc53b', '#3eba6a', '#0080c3', '#e74c3c', '#9b59b6', '#1abc9c'];
         $colors = (!empty($cfg['colors']) && is_array($cfg['colors'])) ? $cfg['colors'] : $default_palette;
 
+        // v5.3.2: campos del tooltip configurables (categoría / valor / nº de contratos).
+        // Subconjunto validado; por defecto categoría + valor (comportamiento previo).
+        $tf = array_values(array_intersect((array) ($cfg['tooltip_fields'] ?? ['categoria', 'valor']), ['categoria', 'valor', 'conteo']));
+        if (empty($tf)) $tf = ['categoria', 'valor'];
+
         $filters = [['field' => 'anio', 'operator' => '=', 'value' => (string) $this->current_vigencia()]];
         $dep = ($dependencia !== null && $dependencia !== '') ? $dependencia : ($cfg['dependencia'] ?? '');
         if ($dep !== '') {
             $filters[] = ['field' => 'nombredependencia', 'operator' => '=', 'value' => $dep];
+        }
+
+        // Filtros personalizados de la card (columna/operador/valor), validados
+        // contra la whitelist. build_chart_query revalida y prepara el valor.
+        foreach (($cfg['filters'] ?? []) as $f) {
+            $field = $f['field'] ?? '';
+            if (!isset($this->filter_columns()[$field])) continue;
+            $op = in_array($f['operator'] ?? '=', ['=', '!=', '>', '<', '>=', '<=', 'LIKE'], true) ? $f['operator'] : '=';
+            $val = (string) ($f['value'] ?? '');
+            if ($val === '') continue;
+            $filters[] = ['field' => $field, 'operator' => $op, 'value' => $val];
         }
 
         return [
@@ -548,6 +655,10 @@ final class Tracking
             'y_axis_title'    => isset($cfg['y_axis_title']) ? (string) $cfg['y_axis_title'] : '',
             'x_axis_title'    => isset($cfg['x_axis_title']) ? (string) $cfg['x_axis_title'] : '',
             'number_format'   => in_array($cfg['number_format'] ?? '', ['colombiano', 'millones', 'internacional', 'sin_formato'], true) ? $cfg['number_format'] : 'colombiano',
+            // v5.3.2: tooltip configurable. tooltip_count activa la columna de conteo
+            // en build_chart_query solo cuando se pide «conteo».
+            'tooltip_fields'  => $tf,
+            'tooltip_count'   => in_array('conteo', $tf, true),
             'custom_query'    => '',
         ];
     }
@@ -832,6 +943,12 @@ final class Tracking
             $toolbar_options = $parsed; // permitir vaciar la barra explícitamente.
         }
 
+        // v5.3.2: campos del tooltip. Override sólo si se proporciona el atributo.
+        $tooltip_fields = $this->sanitize_tooltip_fields($base['tooltip_fields'] ?? ['categoria', 'valor']);
+        if (isset($atts['tooltip']) && $atts['tooltip'] !== '') {
+            $tooltip_fields = $this->sanitize_tooltip_fields(strtolower(sanitize_text_field($atts['tooltip'])));
+        }
+
         return [
             'dimension'   => $dimension,
             'chart_type'  => $type,
@@ -851,6 +968,8 @@ final class Tracking
             'legend_position' => $legend_position,
             'show_toolbar'    => $show_toolbar,
             'toolbar_options' => $toolbar_options,
+            // v5.3.2: campos del tooltip.
+            'tooltip_fields'  => $tooltip_fields,
         ];
     }
 
@@ -866,6 +985,8 @@ final class Tracking
                 // v5.3.0: personalización del gráfico (mirror del editor).
                 'numberformat' => '', 'xtitle' => '', 'ytitle' => '',
                 'legendmode' => '', 'legendpos' => '', 'toolbar' => '', 'toolbaropts' => '',
+                // v5.3.2: campos del tooltip (lista separada por comas: categoria,valor,conteo).
+                'tooltip' => '',
                 // v5.1.9: click-to-drill (popup con contratos de la categoría).
                 'drill' => '',
             ],
@@ -899,7 +1020,7 @@ final class Tracking
         // render the canonical card/preset post directly (no hash post created).
         // Keeps existing [secop_dep_chart card=N] / preset=x cheap and clutter-free.
         $override_atts = ['tipo', 'metric', 'order', 'orderdir', 'limit', 'colors', 'dependencia', 'legend',
-            'numberformat', 'xtitle', 'ytitle', 'legendmode', 'legendpos', 'toolbar', 'toolbaropts'];
+            'numberformat', 'xtitle', 'ytitle', 'legendmode', 'legendpos', 'toolbar', 'toolbaropts', 'tooltip'];
         $has_override  = false;
         foreach ($override_atts as $k) {
             if (isset($atts[$k]) && $atts[$k] !== '') { $has_override = true; break; }
@@ -997,7 +1118,7 @@ final class Tracking
         global $post;
         if (!is_a($post, 'WP_Post')) return;
         $has = false;
-        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta'] as $sc) {
+        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red'] as $sc) {
             if (has_shortcode($post->post_content, $sc)) { $has = true; break; }
         }
         if (!$has) return;
@@ -1108,6 +1229,213 @@ final class Tracking
         $dep = sanitize_text_field($_POST['dependencia'] ?? '');
         if ($dep === '') wp_send_json_error(['message' => 'Dependencia requerida']);
         wp_send_json_success(['rows' => $this->contracts_by_dependency($dep)]);
+    }
+
+    // ── v5.4.0: Red de contratación (grafo de fuerza) ─────────────
+
+    /**
+     * Construye el modelo de nodos/enlaces de la red de contratación de la
+     * vigencia actual: las dependencias son los nodos centrales, conectadas a
+     * sus contratistas, tipos de contrato y modalidades de contratación.
+     *
+     * Los datos se deduplican por contrato (GROUP BY numero_del_contrato) para
+     * que cada contrato cuente una sola vez con su valor_contrato. Sólo se usan
+     * columnas de la vista y se prepara el año + la dependencia con $wpdb->prepare.
+     *
+     * @param string|null $dependencia        Filtra por una dependencia concreta (null = todas).
+     * @param int         $limit_contratistas Top-N contratistas por valor cuando no hay filtro.
+     * @return array{nodes:array<int,array<string,mixed>>,links:array<int,array<string,string>>}
+     */
+    public function network_data(?string $dependencia = null, int $limit_contratistas = 80): array
+    {
+        global $wpdb;
+
+        $limit_contratistas = max(10, min(300, $limit_contratistas));
+        $dep = ($dependencia !== null && $dependencia !== '') ? $dependencia : null;
+
+        $cache_key = 'secop_trk_' . md5('network_data|' . ($dep ?? '') . '|' . $limit_contratistas . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
+        $view = $this->db->get_view_name();
+
+        // WHERE de la subconsulta deduplicadora (año + dependencia opcional).
+        $where  = ['anio = %d'];
+        $params = [$this->current_vigencia()];
+        if ($dep !== null) {
+            $where[]  = 'nombredependencia = %s';
+            $params[] = $dep;
+        }
+        $where_sql = implode(' AND ', $where);
+
+        // Subconsulta: un registro por contrato (MAX por columna textual para
+        // colapsar las múltiples filas presupuestales de un mismo contrato).
+        $sub = "SELECT numero_del_contrato,
+                       MAX(nombredependencia)         AS nombredependencia,
+                       MAX(nombretercero)             AS nombretercero,
+                       MAX(tipo_de_contrato)          AS tipo_de_contrato,
+                       MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
+                       MAX(valor_contrato)            AS valor_contrato
+                FROM `{$view}` WHERE {$where_sql}
+                GROUP BY numero_del_contrato";
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare($sub, ...$params), ARRAY_A);
+        $rows = $rows ?: [];
+
+        // Agregados.
+        $deps_agg = [];   // nombredependencia => [valor, count]
+        $cons_agg = [];   // nombretercero => [valor, count, deps => [dep => count|valor]]
+        $tipos    = [];   // dep => [tipo => true]
+        $mods     = [];   // dep => [mod => true]
+
+        foreach ($rows as $r) {
+            $depName = (string) ($r['nombredependencia'] ?? '');
+            $conName = (string) ($r['nombretercero'] ?? '');
+            $tipo    = (string) ($r['tipo_de_contrato'] ?? '');
+            $mod     = (string) ($r['modalidad_de_contratacion'] ?? '');
+            $val     = (float) ($r['valor_contrato'] ?? 0);
+            if ($depName === '') continue;
+
+            if (!isset($deps_agg[$depName])) $deps_agg[$depName] = ['valor' => 0.0, 'count' => 0];
+            $deps_agg[$depName]['valor'] += $val;
+            $deps_agg[$depName]['count'] += 1;
+
+            if ($tipo !== '') $tipos[$depName][$tipo] = true;
+            if ($mod !== '')  $mods[$depName][$mod]   = true;
+
+            if ($conName !== '') {
+                if (!isset($cons_agg[$conName])) {
+                    $cons_agg[$conName] = ['valor' => 0.0, 'count' => 0, 'deps' => []];
+                }
+                $cons_agg[$conName]['valor'] += $val;
+                $cons_agg[$conName]['count'] += 1;
+                // Acumula el valor por dependencia para elegir luego la principal (MAX valor).
+                $cons_agg[$conName]['deps'][$depName] = ($cons_agg[$conName]['deps'][$depName] ?? 0.0) + $val;
+            }
+        }
+
+        // Top-N contratistas por valor cuando NO hay filtro de dependencia.
+        if ($dep === null && count($cons_agg) > $limit_contratistas) {
+            uasort($cons_agg, static fn($a, $b) => $b['valor'] <=> $a['valor']);
+            $cons_agg = array_slice($cons_agg, 0, $limit_contratistas, true);
+        }
+
+        $nodes    = [];
+        $node_ids = [];
+        $add_node = static function (array $node) use (&$nodes, &$node_ids): void {
+            if (!isset($node_ids[$node['id']])) {
+                $node_ids[$node['id']] = true;
+                $nodes[] = $node;
+            }
+        };
+
+        // Nodos dependencia.
+        foreach ($deps_agg as $name => $a) {
+            $add_node([
+                'id'    => 'dep::' . $name,
+                'label' => $name,
+                'type'  => 'dependencia',
+                'value' => $a['valor'],
+                'count' => $a['count'],
+            ]);
+        }
+
+        // Nodos contratista (con su dependencia principal = la de MAX valor).
+        foreach ($cons_agg as $name => $a) {
+            $depName = '';
+            $best = -1.0;
+            foreach ($a['deps'] as $dName => $dVal) {
+                if ($dVal > $best) { $best = $dVal; $depName = $dName; }
+            }
+            $add_node([
+                'id'          => 'con::' . $name,
+                'label'       => $name,
+                'type'        => 'contratista',
+                'value'       => $a['valor'],
+                'count'       => $a['count'],
+                'dependencia' => $depName,
+            ]);
+        }
+
+        // Nodos tipo y modalidad (distintos, asociados a la dependencia que los usa).
+        foreach ($tipos as $depName => $set) {
+            foreach (array_keys($set) as $t) {
+                $add_node(['id' => 'tipo::' . $t, 'label' => $t, 'type' => 'tipo']);
+            }
+        }
+        foreach ($mods as $depName => $set) {
+            foreach (array_keys($set) as $m) {
+                $add_node(['id' => 'mod::' . $m, 'label' => $m, 'type' => 'modalidad']);
+            }
+        }
+
+        // Enlaces — sólo si ambos extremos están en el conjunto de nodos.
+        $links     = [];
+        $link_seen = [];
+        $add_link = static function (string $source, string $target) use (&$links, &$link_seen, $node_ids): void {
+            if (!isset($node_ids[$source]) || !isset($node_ids[$target])) return;
+            $key = $source . '|' . $target;
+            if (isset($link_seen[$key])) return;
+            $link_seen[$key] = true;
+            $links[] = ['source' => $source, 'target' => $target];
+        };
+
+        // contratista → su dependencia principal.
+        foreach ($cons_agg as $name => $a) {
+            $depName = '';
+            $best = -1.0;
+            foreach ($a['deps'] as $dName => $dVal) {
+                if ($dVal > $best) { $best = $dVal; $depName = $dName; }
+            }
+            if ($depName !== '') $add_link('con::' . $name, 'dep::' . $depName);
+        }
+        // tipo → dependencia.
+        foreach ($tipos as $depName => $set) {
+            foreach (array_keys($set) as $t) {
+                $add_link('tipo::' . $t, 'dep::' . $depName);
+            }
+        }
+        // modalidad → dependencia.
+        foreach ($mods as $depName => $set) {
+            foreach (array_keys($set) as $m) {
+                $add_link('mod::' . $m, 'dep::' . $depName);
+            }
+        }
+
+        $result = ['nodes' => $nodes, 'links' => $links];
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
+        return $result;
+    }
+
+    /** AJAX — datos de la red de contratación. */
+    public function ajax_network(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
+
+        $dep   = sanitize_text_field(wp_unslash($_POST['dependencia'] ?? ''));
+        $limit = max(10, min(300, (int) ($_POST['limit'] ?? 80)));
+        wp_send_json_success($this->network_data($dep !== '' ? $dep : null, $limit));
+    }
+
+    /** Shortcode [secop_dep_red] — red de contratación (grafo de fuerza d3). */
+    public function sc_red(array $atts): string
+    {
+        $atts = shortcode_atts(['dependencia' => '', 'limit' => 80, 'height' => 560, 'selector' => 'on'], $atts, 'secop_dep_red');
+
+        $this->enqueue_module_stack(); // d3 + d3plus + secopDep (ajaxUrl + nonce).
+        wp_enqueue_script('secop-dep-network', SECOP_SUITE_URL . 'assets/js/dep-network.js',
+            ['jquery', 'd3', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+
+        $deps = ($atts['selector'] === 'on') ? $this->list_dependencies() : [];
+        $uid  = 'ss-red-' . wp_unique_id();
+
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/red.php';
+        return ob_get_clean();
     }
 
     /** Dependencias disponibles en la vigencia actual (para el selector). */

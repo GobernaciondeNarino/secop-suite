@@ -132,6 +132,60 @@ $presets = $tracking->presets();
             </div>
         <?php endforeach; ?>
     </div>
+
+    <?php
+    // v5.4.0: Red de contratación [secop_dep_red].
+    $red_params = [
+        ['dependencia', __('Filtra la red por una dependencia concreta (vacío = todas).', 'secop-suite')],
+        ['limit',       __('Top-N de contratistas por valor cuando no se filtra por dependencia (10–300, por defecto 80).', 'secop-suite')],
+        ['height',      __('Altura mínima del lienzo en píxeles (por defecto 560).', 'secop-suite')],
+        ['selector',    __('Muestra el selector de dependencia: on u off (por defecto on).', 'secop-suite')],
+    ];
+    $red_shortcodes = [
+        '[secop_dep_red]',
+        '[secop_dep_red limit="120" height="640"]',
+        '[secop_dep_red dependencia="Secretaría General" selector="off"]',
+    ];
+    ?>
+    <div class="ss-cat-card ss-cat-card-red" style="margin-top:20px;">
+        <h2 class="ss-cat-title"><?php esc_html_e('Red de contratación', 'secop-suite'); ?></h2>
+        <p class="ss-cat-desc">
+            <?php esc_html_e('Red de contratación: dependencias como nodos centrales conectadas a contratistas, tipos y modalidades; tooltip con nº de contratos, valor y dependencia.', 'secop-suite'); ?>
+        </p>
+        <details class="ss-cat-params">
+            <summary><strong><?php esc_html_e('Parámetros del shortcode [secop_dep_red]', 'secop-suite'); ?></strong></summary>
+            <table class="widefat striped" style="max-width:760px;">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Parámetro', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Descripción', 'secop-suite'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($red_params as $param) : ?>
+                        <tr>
+                            <td><code><?php echo esc_html($param[0]); ?></code></td>
+                            <td><?php echo esc_html($param[1]); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </details>
+        <div class="ss-cat-shortcodes">
+            <h3><?php esc_html_e('Shortcodes', 'secop-suite'); ?></h3>
+            <?php foreach ($red_shortcodes as $sc) : ?>
+                <div class="ss-cat-sc-row">
+                    <input type="text" class="ss-cat-sc-input" readonly
+                           value="<?php echo esc_attr($sc); ?>"
+                           onclick="this.select();" />
+                    <button type="button" class="button ss-cat-copy"
+                            data-clipboard="<?php echo esc_attr($sc); ?>">
+                        <?php esc_html_e('Copiar', 'secop-suite'); ?>
+                    </button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
 </div>
 
 <style>

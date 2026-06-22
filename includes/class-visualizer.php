@@ -679,6 +679,12 @@ final class Visualizer
             $select_parts[] = ($aggregate === 'COUNT_DISTINCT')
                 ? "COUNT(DISTINCT `{$y_field}`) AS y_value"
                 : "{$aggregate}(`{$y_field}`) AS y_value";
+            // v5.3.2: columna secundaria con el conteo de contratos de cada categoría,
+            // para el tooltip configurable. Solo se añade cuando la card lo solicita
+            // (tooltip_count) y la columna existe → [secop_chart] no se ve afectado.
+            if (!empty($config['tooltip_count']) && isset($valid_columns['numero_del_contrato'])) {
+                $select_parts[] = "COUNT(DISTINCT `numero_del_contrato`) AS y_count";
+            }
         }
 
         if (empty($select_parts)) return [];

@@ -79,7 +79,13 @@
         // Prepare data — force x to string so d3plus won't parse years as dates
         const chartData = rows.map(function(d) {
             var xVal = (d.x_value !== null && d.x_value !== undefined) ? String(d.x_value) : '';
-            return { x: xVal, y: parseFloat(d.y_value) || 0, group: d.group_value || xVal };
+            return {
+                x: xVal,
+                y: parseFloat(d.y_value) || 0,
+                group: d.group_value || xVal,
+                // v5.3.2: conteo de contratos por categoría (solo si la query lo devolvió).
+                count: (d.y_count !== undefined && d.y_count !== null) ? (parseFloat(d.y_count) || 0) : null
+            };
         });
 
         if (isMultiY) config.showLegend = true;
@@ -87,12 +93,24 @@
         const groups = [...new Set(chartData.map(function(d) { return d.group; }))];
         const colorScale = d3.scaleOrdinal().domain(groups).range(colors);
 
-        const tooltipConfig = {
-            tbody: [
-                [config.xAxisTitle || 'Categoría', function(d) { return d.x; }],
-                [config.yAxisTitle || 'Valor', function(d) { return NumberFormatter.fullFormat(d.y); }]
-            ]
+        // v5.3.2: tooltip configurable. Por defecto (sin tooltipFields) muestra
+        // categoría + valor → [secop_chart] queda byte-a-byte igual.
+        var tooltipFields = (Array.isArray(config.tooltipFields) && config.tooltipFields.length)
+            ? config.tooltipFields
+            : ['categoria', 'valor'];
+        var tooltipRowBuilders = {
+            categoria: [config.xAxisTitle || 'Categoría', function(d) { return d.x; }],
+            valor:     [config.yAxisTitle || 'Valor', function(d) { return NumberFormatter.fullFormat(d.y); }],
+            conteo:    ['Contratos', function(d) { return (d.count !== null && d.count !== undefined) ? d.count : ''; }]
         };
+        var tooltipBody = [];
+        tooltipFields.forEach(function(f) {
+            if (tooltipRowBuilders[f]) tooltipBody.push(tooltipRowBuilders[f]);
+        });
+        if (!tooltipBody.length) {
+            tooltipBody = [tooltipRowBuilders.categoria, tooltipRowBuilders.valor];
+        }
+        const tooltipConfig = { tbody: tooltipBody };
         const yConfig = {
             title: config.yAxisTitle || 'Valor',
             tickFormat: function(d) { return NumberFormatter.format(d, numberFormat); }
