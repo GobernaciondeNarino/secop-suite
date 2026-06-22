@@ -396,8 +396,14 @@ final class Tracking
 
     public function enqueue_admin_assets(string $hook): void
     {
-        global $post_type;
-        if ($post_type !== self::POST_TYPE) return;
+        // Detección robusta de la pantalla de edición de la card (el global
+        // $post_type a veces no está disponible en admin_enqueue_scripts).
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $is_card_screen = ($screen && $screen->post_type === self::POST_TYPE)
+            || (($GLOBALS['post_type'] ?? '') === self::POST_TYPE)
+            || (in_array($hook, ['post.php', 'post-new.php'], true)
+                && ($_GET['post_type'] ?? '') === self::POST_TYPE);
+        if (!$is_card_screen) return;
         // Reutiliza las librerías de gráfica del Visualizer vía el handle compartido.
         wp_enqueue_style('secop-suite-admin', SECOP_SUITE_URL . 'assets/css/admin.css', [], SECOP_SUITE_VERSION);
         // Carga el stack de gráficas del frontend para que ChartManager pueda renderizar

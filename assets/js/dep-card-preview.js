@@ -107,13 +107,18 @@
                 // Gráfica
                 var $render = $('#ss-dep-preview-render');
                 $render.empty();
-                try {
-                    if (typeof window.SSChartRender === 'function') {
+                if (typeof window.SSChartRender !== 'function' || typeof window.d3plus === 'undefined') {
+                    $render.append($('<p>').text(
+                        'No se cargó el motor de gráficas (d3plus). Revise que el plugin esté actualizado y recargue con Ctrl+F5. Los datos y la consulta SQL se muestran abajo.'
+                    ));
+                } else {
+                    try {
                         window.SSChartRender('#ss-dep-preview-render', chartType, res.data, toRenderConfig(res.config));
+                    } catch (e) {
+                        $render.append($('<p>').text('Error al renderizar la gráfica: ' + (e && e.message ? e.message : e)));
+                        /* eslint-disable-next-line no-console */
+                        console.error('SECOP dep preview render error:', e);
                     }
-                } catch (e) {
-                    /* eslint-disable-next-line no-console */
-                    console.error('SECOP dep preview render error:', e);
                 }
 
                 // Datos
