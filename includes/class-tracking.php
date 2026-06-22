@@ -245,6 +245,7 @@ final class Tracking
         wp_nonce_field('secop_dep_card_config', 'secop_dep_card_nonce');
         $config = get_post_meta($post->ID, '_secop_dep_card_config', true) ?: [];
         $dimensions = self::COMPAT;
+        $dependencias = $this->list_dependencies();
         include SECOP_SUITE_DIR . 'templates/admin/dep-card-config.php';
     }
 
@@ -260,18 +261,17 @@ final class Tracking
 
     public function render_preview_metabox(\WP_Post $post): void
     {
-        $config = get_post_meta($post->ID, '_secop_dep_card_config', true) ?: [];
-        if (empty($config['dimension'])) {
-            echo '<p>' . esc_html__('Guarde la card para ver el análisis.', 'secop-suite') . '</p>';
+        $chart_config = get_post_meta($post->ID, '_secop_chart_config', true);
+        $dep_config   = get_post_meta($post->ID, '_secop_dep_card_config', true) ?: [];
+        $configured   = (is_array($chart_config) && !empty($chart_config))
+            || !empty($dep_config['dimension']);
+        if (!$configured) {
+            echo '<p>' . esc_html__('Guarde la tarjeta para ver la vista previa de la gráfica.', 'secop-suite') . '</p>';
             return;
         }
-        $ds = \SecopSuite\Plugin::get_instance()->tracking()->build_dataset(
-            $config['dimension'], $config['dependencia'] ?? null
-        );
-        foreach (['descripcion', 'cualitativo', 'cuantitativo', 'prediccion'] as $tipo) {
-            $m = 'analisis_' . $tipo;
-            echo '<h4>' . esc_html(ucfirst($tipo)) . '</h4><p>' . esc_html(Stats::$m($ds)) . '</p>';
-        }
+        echo '<div class="secop-dep-card-preview">';
+        echo do_shortcode('[secop_dep_chart card="' . (int) $post->ID . '"]');
+        echo '</div>';
     }
 
     public function save_card_meta(int $post_id, \WP_Post $post): void
@@ -288,11 +288,15 @@ final class Tracking
         $type = sanitize_text_field($_POST['dep_chart_type'] ?? '');
         if (!self::is_compatible($dimension, $type)) $type = self::default_type($dimension);
 
+        $colors_raw = sanitize_text_field(wp_unslash($_POST['dep_colors'] ?? ''));
+        $colors = array_values(array_filter(array_map('trim', explode(',', $colors_raw)), static fn($c) => (bool) preg_match('/^#[0-9a-fA-F]{6}$/', $c)));
+
         $config = [
             'dimension'   => $dimension,
             'chart_type'  => $type,
             'dependencia' => sanitize_text_field($_POST['dep_dependencia'] ?? ''),
             'metric'      => sanitize_text_field($_POST['dep_metric'] ?? 'valordebito'),
+            'colors'      => $colors,
         ];
         update_post_meta($post_id, '_secop_dep_card_config', $config);
         update_post_meta($post_id, '_secop_chart_config', $this->card_to_chart_config($config));
@@ -304,6 +308,9 @@ final class Tracking
         if ($post_type !== self::POST_TYPE) return;
         // Reutiliza las librerías de gráfica del Visualizer vía el handle compartido.
         wp_enqueue_style('secop-suite-admin', SECOP_SUITE_URL . 'assets/css/admin.css', [], SECOP_SUITE_VERSION);
+        // Carga el stack de gráficas del frontend para que ChartManager pueda renderizar
+        // la vista previa en la pantalla de edición de la tarjeta.
+        \SecopSuite\Plugin::get_instance()->visualizer()->enqueue_frontend_chart_stack();
     }
 
     // ── Shortcodes frontend ───────────────────────────────────────
@@ -344,6 +351,9 @@ final class Tracking
             : 'valordebito';
         $x_field = self::DIM_COLUMN[$dimension] ?? 'nombredependencia';
 
+        $default_palette = ['#844e80', '#ff7300', '#ffc53b', '#3eba6a', '#0080c3', '#e74c3c', '#9b59b6', '#1abc9c'];
+        $colors = (!empty($cfg['colors']) && is_array($cfg['colors'])) ? $cfg['colors'] : $default_palette;
+
         $filters = [['field' => 'anio', 'operator' => '=', 'value' => (string) $this->current_vigencia()]];
         $dep = ($dependencia !== null && $dependencia !== '') ? $dependencia : ($cfg['dependencia'] ?? '');
         if ($dep !== '') {
@@ -367,7 +377,7 @@ final class Tracking
             'limit'           => (!empty($cfg['limit']) && (int)$cfg['limit'] > 0) ? (int)$cfg['limit'] : ($dimension === 'mensual' ? 0 : 50),
             'order_by'        => ($dimension === 'mensual') ? $x_field : $metric,
             'order_dir'       => ($dimension === 'mensual') ? 'ASC' : 'DESC',
-            'colors'          => [],
+            'colors'          => $colors,
             'show_legend'     => true,
             'legend_mode'     => 'text',
             'legend_position' => 'bottom',

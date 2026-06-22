@@ -69,6 +69,11 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.1.4 — Editor avanzado de Contratación (Fase 1)
+- **Vista previa del editor sin textos de análisis**: el metabox de vista previa de la tarjeta ya no imprime los párrafos `Stats::analisis_*`; ahora renderiza únicamente la gráfica (vía `[secop_dep_chart]`) cargando el stack de gráficas del frontend en la pantalla de edición. Si la tarjeta no está configurada, muestra una nota para guardarla.
+- **Paleta de 8 colores editable**: `card_to_chart_config` aplica una paleta por defecto de 8 colores (`#844e80, #ff7300, #ffc53b, #3eba6a, #0080c3, #e74c3c, #9b59b6, #1abc9c`) y un nuevo campo «Colores» permite sobrescribirla con una lista de hex `#rrggbb` separados por comas; si se deja vacía, se usa la paleta por defecto.
+- **Dependencia como lista desplegable**: el campo «Dependencia» pasa de texto libre a un `<select>` poblado con las dependencias de la vigencia actual (`list_dependencies`), con opción «— Todas las dependencias —»; si aún no hay datos, conserva el campo de texto como respaldo.
+
 ### v5.1.3 — Rendimiento y limpieza
 - **Caché de consultas del VIEW** (TTL 10 min) en los métodos de lectura del módulo de seguimiento (`group_by_dimension`, `monthly_series`, `build_dataset`, `contracts_by_dependency`, `list_dependencies`) y en el endpoint REST `/consulta` — evita golpear el JOIN de 3 tablas en cada render. Los exports streaming CSV/TXT siguen sin caché (ya tienen rate-limit).
 - **`get_preset_post_id` sin escrituras por render**: la config sólo se reescribe cuando realmente cambió; creación del post de respaldo protegida con un lock transitorio para evitar duplicados bajo concurrencia.
