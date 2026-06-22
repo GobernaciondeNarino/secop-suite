@@ -69,6 +69,9 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.3.0 — Personalización del gráfico en Contratación
+- Personalización del gráfico en Contratación: formato de números, altura, títulos de ejes, leyenda (mostrar/ocultar, modo icono/texto, posición), barra de herramientas (mostrar/ocultar + botones); disponible en el editor, el shortcode y la vista previa en vivo.
+
 ### v5.2.2 — Catálogo de Contratación más rápido
 - El catálogo ya no renderiza gráficas ni análisis (carga instantánea): cada tarjeta muestra solo título, descripción y los shortcodes copiables, sin ejecutar `build_dataset()` ni `do_shortcode()` al cargar la página.
 - La vista previa y los cuatro análisis (descripción, cualitativo, cuantitativo, predicción) se ven solo en el editor individual de la card, cargados en vivo por AJAX (`secop_dep_preview`), sin consultas pesadas al renderizar el metabox.
