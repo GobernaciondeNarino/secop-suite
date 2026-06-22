@@ -300,6 +300,13 @@ final class Database
             $tables[$row[0]] = str_replace($wpdb->prefix, '', $row[0]);
         }
 
+        // VIEW del módulo de Contratación (vista_secop_sysman). Sin esto, el motor de
+        // gráficas rechaza la tabla y devuelve vacío → las gráficas no renderizan.
+        $view = $this->get_view_name();
+        if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $view)) === $view) {
+            $tables[$view] = str_replace($wpdb->prefix, '', $view);
+        }
+
         wp_cache_set('secop_available_tables', $tables, 'secop_suite', 300);
         return $tables;
     }

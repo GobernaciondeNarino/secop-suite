@@ -311,6 +311,8 @@ final class Tracking
             <div id="ss-dep-preview-data"></div>
             <h4><?php esc_html_e('Consulta SQL generada', 'secop-suite'); ?></h4>
             <pre id="ss-dep-preview-sql" style="white-space:pre-wrap;overflow:auto;background:#f6f7f7;padding:10px;border:1px solid #dcdcde;"></pre>
+            <h4><?php esc_html_e('Análisis', 'secop-suite'); ?></h4>
+            <div id="ss-dep-preview-analisis"></div>
         </div>
         <?php
     }
@@ -344,10 +346,21 @@ final class Tracking
 
         $chart_config = $this->card_to_chart_config($cfg);
         $res = \SecopSuite\Plugin::get_instance()->visualizer()->get_chart_data_with_sql($chart_config);
+
+        // Análisis en vivo para la dimensión/dependencia de la card.
+        $ds = $this->build_dataset($cfg['dimension'], $cfg['dependencia'] !== '' ? $cfg['dependencia'] : null);
+        $analisis = [
+            'descripcion'  => \SecopSuite\Stats::analisis_descripcion($ds),
+            'cualitativo'  => \SecopSuite\Stats::analisis_cualitativo($ds),
+            'cuantitativo' => \SecopSuite\Stats::analisis_cuantitativo($ds),
+            'prediccion'   => \SecopSuite\Stats::analisis_prediccion($ds),
+        ];
+
         wp_send_json_success([
-            'config' => $chart_config,
-            'data'   => $res['data'],
-            'sql'    => $res['sql'],
+            'config'   => $chart_config,
+            'data'     => $res['data'],
+            'sql'      => $res['sql'],
+            'analisis' => $analisis,
         ]);
     }
 
