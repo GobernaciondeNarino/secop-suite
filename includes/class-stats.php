@@ -173,14 +173,8 @@ final class Stats
             'dependencia'   => 'dependencia',
             'tipo_contrato' => 'tipo de contrato',
             'modalidad'     => 'modalidad de contratación',
-            'estado'        => 'estado del proceso',
-            'tipo_documento'=> 'tipo de documento del proveedor',
-            'programa'      => 'programa presupuestal',
-            'rubro'         => 'rubro presupuestal',
-            'fuente'        => 'fuente de financiación',
-            'mensual'       => 'mes',
-            'ejecucion'     => 'ejecución presupuestal',
             'tercero'       => 'contratista',
+            'mensual'       => 'mes',
         ][$dim] ?? $dim;
     }
 

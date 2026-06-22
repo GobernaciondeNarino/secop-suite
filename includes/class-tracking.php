@@ -17,19 +17,16 @@ final class Tracking
     private Database $db;
     private const POST_TYPE = 'secop_dep_card';
 
-    /** Dimensiones del módulo → tipos de gráfica compatibles. */
+    /**
+     * Dimensiones del módulo → tipos de gráfica compatibles.
+     * Limitadas a columnas que existen en la vista vista_secop_sysman.
+     */
     private const COMPAT = [
         'dependencia'   => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
         'tipo_contrato' => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
         'modalidad'     => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'estado'        => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'tipo_documento'=> ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'programa'      => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'rubro'         => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'fuente'        => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
+        'tercero'       => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
         'mensual'       => ['line', 'area'],
-        'ejecucion'     => ['donut', 'bar'],
-        'tercero'       => ['bar', 'treemap', 'pie', 'donut', 'stacked_bar'],
     ];
 
     /** Columna del VIEW que agrupa cada dimensión. */
@@ -37,14 +34,8 @@ final class Tracking
         'dependencia'   => 'nombredependencia',
         'tipo_contrato' => 'tipo_de_contrato',
         'modalidad'     => 'modalidad_de_contratacion',
-        'estado'        => 'estado_del_proceso',
-        'tipo_documento'=> 'tipo_documento_proveedor',
-        'programa'      => 'nombreplan',
-        'rubro'         => 'rubro',
-        'fuente'        => 'origen',
-        'mensual'       => 'mes',
-        'ejecucion'     => 'nombredependencia',
         'tercero'       => 'nombretercero',
+        'mensual'       => 'mes',
     ];
 
     public function __construct(Database $db)
@@ -60,16 +51,19 @@ final class Tracking
      * Métricas configurables del módulo de Contratación.
      * Cada entrada define la etiqueta visible, la función de agregación y la
      * columna del VIEW a agregar. COUNT_DISTINCT lo traduce el Visualizer a
-     * COUNT(DISTINCT col); valor_contrato se omite a propósito porque se
-     * duplica por fila y daría sumas infladas.
+     * COUNT(DISTINCT col). valor_contrato es la métrica de valor PRINCIPAL.
+     * NOTA: un contrato puede aparecer en varias filas presupuestales, por lo
+     * que SUM(valor_contrato) sobrecuenta ligeramente los contratos con varios
+     * comprobantes — compromiso aceptado y documentado al usar valor_contrato.
      */
     public function metrics(): array
     {
         return [
-            'valordebito'         => ['label' => __('Valor ejecutado', 'secop-suite'),    'agg' => 'SUM',            'col' => 'valordebito'],
-            'saldoporejecutaresp' => ['label' => __('Saldo por ejecutar', 'secop-suite'), 'agg' => 'SUM',            'col' => 'saldoporejecutaresp'],
-            'contratos'           => ['label' => __('Nº de contratos', 'secop-suite'),     'agg' => 'COUNT_DISTINCT', 'col' => 'numero_del_contrato'],
-            'registros'           => ['label' => __('Nº de registros', 'secop-suite'),     'agg' => 'COUNT',          'col' => 'numero_de_proceso'],
+            'valor_contrato'      => ['label' => __('Valor del contrato', 'secop-suite'),  'agg' => 'SUM',            'col' => 'valor_contrato'],
+            'valordebito'         => ['label' => __('Valor ejecutado', 'secop-suite'),     'agg' => 'SUM',            'col' => 'valordebito'],
+            'saldoporejecutaresp' => ['label' => __('Saldo por ejecutar', 'secop-suite'),  'agg' => 'SUM',            'col' => 'saldoporejecutaresp'],
+            'contratos'           => ['label' => __('Nº de contratos', 'secop-suite'),      'agg' => 'COUNT_DISTINCT', 'col' => 'numero_del_contrato'],
+            'registros'           => ['label' => __('Nº de registros', 'secop-suite'),      'agg' => 'COUNT',          'col' => 'numero_de_proceso'],
         ];
     }
 
@@ -106,6 +100,9 @@ final class Tracking
         add_shortcode('secop_dep_contratos',             [$this, 'sc_contratos']);
         add_action('wp_ajax_secop_dep_contratos',        [$this, 'ajax_contratos']);
         add_action('wp_ajax_nopriv_secop_dep_contratos', [$this, 'ajax_contratos']);
+        // Drill-down: contratos asociados al valor de una dimensión (click en gráfica).
+        add_action('wp_ajax_secop_dep_drill',            [$this, 'ajax_drill']);
+        add_action('wp_ajax_nopriv_secop_dep_drill',     [$this, 'ajax_drill']);
         // Vista previa en vivo del editor de cards (solo admin, sin nopriv).
         add_action('wp_ajax_secop_dep_preview',          [$this, 'ajax_dep_preview']);
         add_shortcode('secop_consulta',                  [$this, 'sc_consulta']);
@@ -164,9 +161,11 @@ final class Tracking
         }
         $where_sql = implode(' AND ', $where);
 
-        // Métrica: suma de débito (ejecución) y conteo de contratos distintos.
+        // Métrica de valor: valor_contrato (valor principal) y conteo de contratos distintos.
+        // NOTA: un contrato puede repetirse en varias filas presupuestales, por lo que
+        // SUM(valor_contrato) sobrecuenta ligeramente los contratos multi-comprobante.
         $sql = "SELECT `{$col}` AS label,
-                       SUM(valordebito) AS valor,
+                       SUM(valor_contrato) AS valor,
                        COUNT(DISTINCT numero_del_contrato) AS conteo
                 FROM `{$view}` WHERE {$where_sql}
                 GROUP BY `{$col}` ORDER BY valor DESC";
@@ -179,7 +178,7 @@ final class Tracking
             'conteo' => (int) $r['conteo'],
         ], $rows ?: []);
 
-        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
         return $result;
     }
 
@@ -211,7 +210,7 @@ final class Tracking
             $serie[] = [(int) $r['mes'], $acc];
         }
 
-        set_transient($cache_key, $serie, 10 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $serie, 30 * MINUTE_IN_SECONDS);
         return $serie;
     }
 
@@ -251,7 +250,7 @@ final class Tracking
             'saldo'         => (float) ($tot['saldo'] ?? 0),
         ];
 
-        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
         return $result;
     }
 
@@ -273,16 +272,12 @@ final class Tracking
         $config = get_post_meta($post->ID, '_secop_dep_card_config', true) ?: [];
         $dimensions = self::COMPAT;
         $metrics    = $this->metrics();
-        // Etiquetas amigables para el desplegable de dimensión. 'fuente' se excluye
-        // del menú (columna de valor único), pero se conserva en COMPAT por compatibilidad.
+        // Etiquetas amigables para el desplegable de dimensión.
+        // Limitadas a las columnas que existen en la vista vista_secop_sysman.
         $dim_labels = [
             'dependencia'    => __('Dependencia', 'secop-suite'),
             'tipo_contrato'  => __('Tipo de contrato', 'secop-suite'),
             'modalidad'      => __('Modalidad de contratación', 'secop-suite'),
-            'estado'         => __('Estado del proceso', 'secop-suite'),
-            'tipo_documento' => __('Tipo de documento del proveedor', 'secop-suite'),
-            'programa'       => __('Programa presupuestal', 'secop-suite'),
-            'rubro'          => __('Rubro presupuestal', 'secop-suite'),
             'tercero'        => __('Contratista', 'secop-suite'),
             'mensual'        => __('Mensual (evolución)', 'secop-suite'),
         ];
@@ -336,7 +331,7 @@ final class Tracking
         $cfg = [
             'dimension'   => sanitize_text_field(wp_unslash($_POST['dimension'] ?? 'dependencia')),
             'chart_type'  => sanitize_text_field(wp_unslash($_POST['chart_type'] ?? '')),
-            'metric'      => sanitize_text_field(wp_unslash($_POST['metric'] ?? 'valordebito')),
+            'metric'      => sanitize_text_field(wp_unslash($_POST['metric'] ?? 'valor_contrato')),
             'dependencia' => sanitize_text_field(wp_unslash($_POST['dependencia'] ?? '')),
             'order'       => sanitize_text_field(wp_unslash($_POST['order'] ?? 'valor')),
             'order_dir'   => sanitize_text_field(wp_unslash($_POST['order_dir'] ?? 'DESC')),
@@ -373,8 +368,8 @@ final class Tracking
         $colors_raw = sanitize_text_field(wp_unslash($_POST['dep_colors'] ?? ''));
         $colors = array_values(array_filter(array_map('trim', explode(',', $colors_raw)), static fn($c) => (bool) preg_match('/^#[0-9a-fA-F]{6}$/', $c)));
 
-        $metric = sanitize_text_field($_POST['dep_metric'] ?? 'valordebito');
-        if (!in_array($metric, array_keys($this->metrics()), true)) $metric = 'valordebito';
+        $metric = sanitize_text_field($_POST['dep_metric'] ?? 'valor_contrato');
+        if (!in_array($metric, array_keys($this->metrics()), true)) $metric = 'valor_contrato';
         $order = sanitize_text_field($_POST['dep_order'] ?? 'valor');
         if (!in_array($order, ['valor', 'etiqueta'], true)) $order = 'valor';
         $order_dir = sanitize_text_field($_POST['dep_order_dir'] ?? 'DESC');
@@ -458,8 +453,8 @@ final class Tracking
             ? $cfg['chart_type']
             : self::default_type($dimension);
         $metrics    = $this->metrics();
-        $raw_metric = $cfg['metric'] ?? 'valordebito';
-        $metric_key = isset($metrics[$raw_metric]) ? $raw_metric : 'valordebito';
+        $raw_metric = $cfg['metric'] ?? 'valor_contrato';
+        $metric_key = isset($metrics[$raw_metric]) ? $raw_metric : 'valor_contrato';
         $m          = $metrics[$metric_key];
         $x_field    = self::DIM_COLUMN[$dimension] ?? 'nombredependencia';
 
@@ -503,7 +498,7 @@ final class Tracking
             'order_by'        => $order_by,
             'order_dir'       => $order_dir,
             'colors'          => $colors,
-            'show_legend'     => true,
+            'show_legend'     => array_key_exists('show_legend', $cfg) ? (bool) $cfg['show_legend'] : true,
             'legend_mode'     => 'text',
             'legend_position' => 'bottom',
             'show_timeline'   => false,
@@ -612,14 +607,170 @@ final class Tracking
         return (int) $id;
     }
 
+    /**
+     * Resuelve (o crea) el post secop_dep_card que respalda CUALQUIER config
+     * de card ad-hoc (la generada desde los atributos del shortcode). Es
+     * idempotente por hash de la config: dos shortcodes con la misma config
+     * efectiva comparten el mismo post de respaldo (sin duplicar posts). Así
+     * el motor existente (chart.php + AJAX secop_suite_get_chart_data) puede
+     * renderizar usando el ID del post sin cambios en el Visualizer.
+     *
+     * @param array $cardCfg Config efectiva de la card (dimension, chart_type, …).
+     * @return int Post ID, o 0 si falla la creación.
+     */
+    private function get_config_post_id(array $cardCfg): int
+    {
+        $hash = md5(wp_json_encode($cardCfg));
+        $q = [
+            'post_type'   => self::POST_TYPE,
+            'post_status' => 'any',
+            'meta_key'    => '_secop_cfg_hash',
+            'meta_value'  => $hash,
+            'numberposts' => 1,
+            'fields'      => 'ids',
+        ];
+        $existing = get_posts($q);
+        if (!empty($existing)) {
+            $id = (int) $existing[0];
+        } else {
+            // Lock para evitar creación duplicada bajo concurrencia.
+            $lock = SECOP_SUITE_PREFIX . 'cfg_lock_' . $hash;
+            if (get_transient($lock)) {
+                $again = get_posts($q);
+                if (!empty($again)) return (int) $again[0];
+            }
+            set_transient($lock, 1, 30);
+            $id = wp_insert_post([
+                'post_type'   => self::POST_TYPE,
+                'post_status' => 'publish',
+                'post_title'  => '(auto) ' . ($cardCfg['dimension'] ?? 'grafica'),
+            ]);
+            if (!$id || is_wp_error($id)) { delete_transient($lock); return 0; }
+            update_post_meta($id, '_secop_cfg_hash', $hash);
+            delete_transient($lock);
+        }
+
+        // Sólo reescribir la config si realmente cambió (evita writes por render).
+        $stored = get_post_meta($id, '_secop_dep_card_config', true);
+        if ($stored !== $cardCfg) {
+            update_post_meta($id, '_secop_dep_card_config', $cardCfg);
+            update_post_meta($id, '_secop_chart_config', $this->card_to_chart_config($cardCfg));
+        }
+        return (int) $id;
+    }
+
+    /**
+     * Construye la config efectiva de card a partir de los atributos del
+     * shortcode: parte de una base (card existente, preset, o dimensión por
+     * defecto) y aplica los overrides de los atributos validados.
+     *
+     * @param array $atts Atributos ya pasados por shortcode_atts().
+     * @return array Config efectiva de card lista para card_to_chart_config().
+     */
+    private function build_effective_card_config(array $atts): array
+    {
+        // 1) Config BASE.
+        $base = [];
+        if (!empty($atts['card'])) {
+            $base = get_post_meta((int) $atts['card'], '_secop_dep_card_config', true) ?: [];
+        } elseif (!empty($atts['preset'])) {
+            $presetKey = sanitize_key($atts['preset']);
+            $presets   = $this->presets();
+            if (isset($presets[$presetKey])) {
+                $p = $presets[$presetKey];
+                $base = [
+                    'dimension'   => $p['dimension'],
+                    'chart_type'  => $p['chart_type'],
+                    'metric'      => $p['metric'],
+                    'dependencia' => '',
+                    'limit'       => $p['limit'] ?? 0,
+                ];
+            }
+        }
+        if (empty($base)) {
+            $dim = sanitize_text_field($atts['dimension'] ?? '');
+            if (!isset(self::COMPAT[$dim])) $dim = 'dependencia';
+            $base = ['dimension' => $dim];
+        }
+
+        // 2) Overrides de atributos.
+        $dimension = sanitize_text_field($atts['dimension'] ?? '') !== ''
+            ? sanitize_text_field($atts['dimension'])
+            : ($base['dimension'] ?? 'dependencia');
+        if (!isset(self::COMPAT[$dimension])) $dimension = 'dependencia';
+
+        // chart_type: prioriza el att tipo (validado por compatibilidad), luego base.
+        $type = sanitize_text_field($atts['tipo'] ?? '');
+        if ($type === '') $type = (string) ($base['chart_type'] ?? '');
+        if (!self::is_compatible($dimension, $type)) $type = self::default_type($dimension);
+
+        // metric: valida contra metrics(); si no, conserva base/valor_contrato.
+        $metric = sanitize_text_field($atts['metric'] ?? '');
+        if ($metric === '' || !isset($this->metrics()[$metric])) {
+            $metric = (string) ($base['metric'] ?? 'valor_contrato');
+            if (!isset($this->metrics()[$metric])) $metric = 'valor_contrato';
+        }
+
+        // dependencia.
+        $dep = sanitize_text_field($atts['dependencia'] ?? '');
+        if ($dep === '') $dep = (string) ($base['dependencia'] ?? '');
+
+        // order / order_dir.
+        $order = sanitize_text_field($atts['order'] ?? '');
+        if (!in_array($order, ['valor', 'etiqueta'], true)) $order = $base['order'] ?? 'valor';
+        $order_dir = strtoupper(sanitize_text_field($atts['orderdir'] ?? ''));
+        if (!in_array($order_dir, ['ASC', 'DESC'], true)) $order_dir = $base['order_dir'] ?? 'DESC';
+
+        // limit.
+        $limit = (isset($atts['limit']) && $atts['limit'] !== '')
+            ? (int) $atts['limit']
+            : (int) ($base['limit'] ?? 0);
+
+        // colors: parsea la lista del att y conserva sólo hex válidos; si no, base.
+        $colors = $base['colors'] ?? [];
+        if (isset($atts['colors']) && $atts['colors'] !== '') {
+            $parsed = array_values(array_filter(
+                array_map('trim', explode(',', sanitize_text_field($atts['colors']))),
+                static fn($c) => (bool) preg_match('/^#[0-9a-fA-F]{6}$/', $c)
+            ));
+            if (!empty($parsed)) $colors = $parsed;
+        }
+
+        // legend: on→true / off→false. Sólo se fija si se pasó el att.
+        $legend = strtolower(sanitize_text_field($atts['legend'] ?? ''));
+        $show_legend = array_key_exists('show_legend', $base) ? (bool) $base['show_legend'] : true;
+        if ($legend === 'on')  $show_legend = true;
+        if ($legend === 'off') $show_legend = false;
+
+        return [
+            'dimension'   => $dimension,
+            'chart_type'  => $type,
+            'metric'      => $metric,
+            'dependencia' => $dep,
+            'order'       => $order,
+            'order_dir'   => $order_dir,
+            'limit'       => $limit,
+            'colors'      => $colors,
+            'show_legend' => $show_legend,
+        ];
+    }
+
     public function sc_chart(array $atts): string
     {
         $atts = shortcode_atts(
-            ['card' => 0, 'dimension' => '', 'tipo' => '', 'dependencia' => '', 'height' => 400, 'preset' => ''],
+            [
+                'card' => 0, 'dimension' => '', 'tipo' => '', 'dependencia' => '',
+                'height' => 400, 'preset' => '',
+                // v5.1.8: parámetros de personalización del shortcode.
+                'metric' => '', 'order' => '', 'orderdir' => '', 'limit' => '',
+                'colors' => '', 'legend' => '',
+                // v5.1.9: click-to-drill (popup con contratos de la categoría).
+                'drill' => '',
+            ],
             $atts, 'secop_dep_chart'
         );
 
-        // Resolve preset → backing card post (find-or-create).
+        // Validate preset early (give a friendly error if unknown).
         if (!empty($atts['preset'])) {
             $presetKey = sanitize_key($atts['preset']);
             $presets   = $this->presets();
@@ -630,12 +781,6 @@ final class Tracking
                     $presetKey
                 )) . '</p>';
             }
-            $atts['card'] = $this->get_preset_post_id($presetKey);
-        }
-
-        $card_id = (int) $atts['card'];
-        if (!$card_id) {
-            return '<p class="ss-error">' . esc_html__('Especifique un ID de card válido: [secop_dep_chart card="N"]', 'secop-suite') . '</p>';
         }
 
         // Runtime dependency override from the shortcode attribute (used by sc_seguimiento).
@@ -643,25 +788,52 @@ final class Tracking
         // NOT persisted into _secop_chart_config so the stored config stays general.
         $dependencia_filter = sanitize_text_field($atts['dependencia']);
 
-        // Try existing Visualizer-compatible config (written by save_card_meta or a previous render).
-        $config = get_post_meta($card_id, '_secop_chart_config', true);
+        // OPTIMIZATION: card="N" (or preset="x") without any override attribute →
+        // render the canonical card/preset post directly (no hash post created).
+        // Keeps existing [secop_dep_chart card=N] / preset=x cheap and clutter-free.
+        $override_atts = ['tipo', 'metric', 'order', 'orderdir', 'limit', 'colors', 'dependencia', 'legend'];
+        $has_override  = false;
+        foreach ($override_atts as $k) {
+            if (isset($atts[$k]) && $atts[$k] !== '') { $has_override = true; break; }
+        }
 
-        // On-the-fly build for legacy cards that lack _secop_chart_config.
-        if (empty($config) || !is_array($config)) {
-            $dep_cfg = get_post_meta($card_id, '_secop_dep_card_config', true) ?: [];
-            if (empty($dep_cfg)) {
-                return '<p class="ss-error">' . esc_html__('Card no encontrada o sin configuración.', 'secop-suite') . '</p>';
+        $direct_id = 0;
+        if (!$has_override) {
+            if (!empty($atts['preset'])) {
+                $direct_id = $this->get_preset_post_id(sanitize_key($atts['preset']));
+            } elseif (!empty($atts['card'])) {
+                $direct_id = (int) $atts['card'];
             }
-            // Apply dimension/type overrides but keep the card's own dependencia for the stored
-            // config — the runtime $dependencia_filter is applied via data-dependencia at render time.
-            $resolved             = $this->resolve_config($atts);
-            $dep_cfg['dimension'] = $resolved['dimension'];
-            $dep_cfg['chart_type'] = $resolved['chart_type'];
-            // Persist a general config (card's configured dependencia only, not the shortcode override).
-            $dep_cfg['dependencia'] = sanitize_text_field($dep_cfg['dependencia'] ?? '');
-            $config = $this->card_to_chart_config($dep_cfg);
-            // Persist so the Visualizer AJAX can serve data using this card's post ID.
-            update_post_meta($card_id, '_secop_chart_config', $config);
+        }
+
+        if ($direct_id) {
+            $card_id = $direct_id;
+            // Try existing Visualizer-compatible config (written by save_card_meta or a previous render).
+            $config = get_post_meta($card_id, '_secop_chart_config', true);
+            if (empty($config) || !is_array($config)) {
+                $dep_cfg = get_post_meta($card_id, '_secop_dep_card_config', true) ?: [];
+                if (empty($dep_cfg)) {
+                    return '<p class="ss-error">' . esc_html__('Card no encontrada o sin configuración.', 'secop-suite') . '</p>';
+                }
+                $config = $this->card_to_chart_config($dep_cfg);
+                update_post_meta($card_id, '_secop_chart_config', $config);
+            }
+        } else {
+            // Build the effective card config from base (card/preset/dimension) + attribute overrides,
+            // then map it to a backing post via config hash (find-or-create, no duplicates).
+            $effectiveCfg = $this->build_effective_card_config($atts);
+            $card_id      = $this->get_config_post_id($effectiveCfg);
+            if (!$card_id) {
+                return '<p class="ss-error">' . esc_html__('No se pudo preparar la gráfica.', 'secop-suite') . '</p>';
+            }
+            $config = get_post_meta($card_id, '_secop_chart_config', true);
+            if (empty($config) || !is_array($config)) {
+                $config = $this->card_to_chart_config($effectiveCfg);
+            }
+        }
+
+        if (!$card_id) {
+            return '<p class="ss-error">' . esc_html__('Especifique un ID de card válido: [secop_dep_chart card="N"]', 'secop-suite') . '</p>';
         }
 
         // Honor height shortcode attribute.
@@ -674,6 +846,10 @@ final class Tracking
         $chart_id    = $card_id;
         $unique_id   = 'ss-dep-' . wp_unique_id();
         $extra_class = ' ss-dep-chart';
+
+        // v5.1.9: click-to-drill. La columna de drill es la dimensión X efectiva.
+        $drill_enabled = in_array(strtolower((string) $atts['drill']), ['on', '1', 'true', 'yes'], true);
+        $drill_column  = $drill_enabled ? (string) ($config['x_field'] ?? '') : '';
 
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/chart.php';
@@ -727,6 +903,10 @@ final class Tracking
         // Depends only on jquery (contracts table) + secop-suite-frontend (for SSChartManager).
         wp_enqueue_script('secop-dep-tracking', SECOP_SUITE_URL . 'assets/js/dep-tracking.js',
             ['jquery', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+        // v5.1.9: click-to-drill — popup con los contratos de la categoría clicada.
+        // Reutiliza el objeto localizado secopDep (ajaxUrl + nonce secop_dep_frontend).
+        wp_enqueue_script('secop-dep-drill', SECOP_SUITE_URL . 'assets/js/dep-drill.js',
+            ['jquery'], SECOP_SUITE_VERSION, true);
         // FIX 6: cadenas i18n expuestas al JS para evitar literales hardcoded en el bundle
         wp_localize_script('secop-dep-tracking', 'secopDep', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
@@ -753,7 +933,7 @@ final class Tracking
 
         $view = $this->db->get_view_name();
         $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
-                       fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_del_proceso
+                       fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_a_contratar
                 FROM `{$view}` WHERE anio = %d AND nombredependencia = %s
                 GROUP BY numero_del_contrato
                 ORDER BY valor_contrato DESC LIMIT %d";
@@ -761,8 +941,41 @@ final class Tracking
         $rows = $wpdb->get_results($wpdb->prepare($sql, $this->current_vigencia(), $dependencia, $limit), ARRAY_A);
 
         $result = $rows ?: [];
-        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
         return $result;
+    }
+
+    /** Contratos asociados a un valor de una columna del VIEW (vigencia actual), deduplicados. */
+    public function contracts_by_value(string $column, string $value, int $limit = 200): array
+    {
+        global $wpdb;
+        // SEGURIDAD: la columna debe ser una de las columnas de dimensión permitidas.
+        $allowed = array_values(self::DIM_COLUMN);
+        if (!in_array($column, $allowed, true)) return [];
+        $view = $this->db->get_view_name();
+        $cols = $this->db->get_table_columns($view);
+        if (!isset($cols[$column])) return [];
+        $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
+                       fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_a_contratar
+                FROM `{$view}` WHERE anio = %d AND `{$column}` = %s
+                GROUP BY numero_del_contrato ORDER BY valor_contrato DESC LIMIT %d";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare($sql, $this->current_vigencia(), $value, $limit), ARRAY_A);
+        return $rows ?: [];
+    }
+
+    public function ajax_drill(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        // rate limit por IP (igual patrón que ajax_contratos)
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
+
+        $column = sanitize_text_field(wp_unslash($_POST['column'] ?? ''));
+        $value  = sanitize_text_field(wp_unslash($_POST['value'] ?? ''));
+        if ($column === '' || $value === '') wp_send_json_error(['message' => 'Parámetros incompletos']);
+        wp_send_json_success(['rows' => $this->contracts_by_value($column, $value)]);
     }
 
     public function ajax_contratos(): void
@@ -796,7 +1009,7 @@ final class Tracking
             $this->current_vigencia()
         )) ?: [];
 
-        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
         return $result;
     }
 

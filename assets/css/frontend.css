@@ -1224,3 +1224,13 @@
 .ss-dep-help { font-size: .8rem; color: #666; margin-top: .5rem; }
 .ss-dep-analisis { line-height: 1.6; margin: .75rem 0; }
 .ss-dep-prediccion { font-style: italic; }
+
+/* ==========================================================================
+   Click-to-drill modal (v5.1.9)
+   Reutiliza .ss-modal / .ss-modal-content / .ss-data-table. Se inyecta por JS
+   (sin display:none inline) por lo que .ss-modal (display:flex) lo muestra.
+   ========================================================================== */
+.ss-drill-modal { cursor: default; }
+.ss-drill-modal .ss-modal-content { max-width: 1000px; }
+.ss-drill-modal .ss-modal-body { max-height: 70vh; overflow: auto; }
+.ss-drill-empty { color: var(--ss-gray-500, #666); text-align: center; padding: 1.5rem 0; margin: 0; }

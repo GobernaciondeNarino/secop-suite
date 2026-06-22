@@ -111,6 +111,16 @@
             if (showLegend && legendMode === 'icon' && typeof chart.legendConfig === 'function') {
                 chart.legendConfig({ label: function() { return ''; } });
             }
+            // v5.1.9: click-to-drill. Solo cuando la config lo activa (no afecta a
+            // [secop_chart], cuya config no define drill). No-op si el tipo no emite clicks.
+            if (config.drill && config.drillColumn && typeof chart.on === 'function') {
+                chart.on('click', function(d) {
+                    var val = (d && d.x !== undefined && d.x !== null) ? d.x : (d && d.id);
+                    if (val !== undefined && val !== null && typeof window.SSChartDrill === 'function') {
+                        window.SSChartDrill(String(config.drillColumn), String(val));
+                    }
+                });
+            }
             chart.render();
         }
         return chart;

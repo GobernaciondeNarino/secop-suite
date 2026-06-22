@@ -304,11 +304,11 @@ final class Database
         return $tables;
     }
 
-    /** Nombre del VIEW del módulo de seguimiento. */
+    /** Nombre del VIEW del módulo de seguimiento (creado por el usuario). */
     public function get_view_name(): string
     {
         global $wpdb;
-        return $wpdb->prefix . 'dat_seguimiento_dependencias';
+        return $wpdb->prefix . 'vista_secop_sysman';
     }
 
     /** ¿Existen las tablas Sysman requeridas por el VIEW? */
@@ -341,17 +341,17 @@ final class Database
         $c    = $this->table_name; // {prefix}secop_contracts
 
         // Identificadores desde whitelist/$wpdb->prefix → seguro interpolar.
+        // Definición EXACTA de la vista creada por el usuario (ga_vista_secop_sysman),
+        // para que una instalación nueva la reproduzca de forma idéntica.
         $sql = "CREATE OR REPLACE VIEW `{$view}` AS
             SELECT
-              pp.dependencia, pp.nombredependencia,
-              ac.tercero, ac.nombretercero,
-              ac.numero AS numero_de_proceso,
-              ac.valordebito, ac.valorcredito, ac.saldoporejecutaresp,
-              ac.cmpteafectado, ac.fecha, ac.anio, ac.mes,
-              c.numero_del_contrato, c.nom_raz_social_contratista,
-              c.fecha_inicio_ejecucion, c.fecha_fin_ejecucion,
-              c.valor_contrato, c.objeto_del_proceso, c.url_contrato,
-              c.tipo_de_contrato, c.modalidad_de_contratacion, c.origen
+              ac.id AS idauxiliar, pp.id AS idplan, c.id AS idsecop,
+              c.objeto_a_contratar, c.tipo_de_contrato, c.fecha_inicio_ejecucion, c.fecha_fin_ejecucion,
+              c.numero_del_contrato, c.numero_de_proceso, c.valor_contrato, c.nom_raz_social_contratista,
+              c.url_contrato, c.documento_proveedor, c.modalidad_de_contratacion,
+              ac.tercero, ac.nombretercero, pp.dependencia, pp.nombredependencia, ac.numero,
+              ac.valordebito, ac.valorcredito, ac.saldoporejecutaresp, ac.cmpteafectado, ac.fecha,
+              ac.anio, ac.mes
             FROM `{$ac}` ac
             INNER JOIN `{$pp}` pp ON ac.rubro = pp.codigo
             INNER JOIN `{$c}` c  ON ac.nrodocumento = c.numero_de_proceso

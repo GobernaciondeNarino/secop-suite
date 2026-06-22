@@ -469,7 +469,7 @@ final class Rest_Api
             'page'     => $page,
             'data'     => $rows ?: [],
         ];
-        set_transient($cache_key, $payload, 10 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $payload, 30 * MINUTE_IN_SECONDS);
 
         return new \WP_REST_Response($payload);
     }
