@@ -55,6 +55,13 @@ $presets = $tracking->presets();
         ['dependencia', __('Filtra la gráfica por una dependencia concreta.', 'secop-suite')],
         ['legend',      __('Muestra u oculta la leyenda: on u off.', 'secop-suite')],
         ['height',      __('Altura de la gráfica en píxeles (por defecto 400).', 'secop-suite')],
+        ['numberformat', __('Formato de números: colombiano (1.000.000), millones (1M), internacional (1,000,000) o sin_formato.', 'secop-suite')],
+        ['xtitle',      __('Título del eje X.', 'secop-suite')],
+        ['ytitle',      __('Título del eje Y.', 'secop-suite')],
+        ['legendmode',  __('Modo de la leyenda: text (texto + icono) o icon (solo icono).', 'secop-suite')],
+        ['legendpos',   __('Posición de la leyenda: bottom, top, left o right.', 'secop-suite')],
+        ['toolbar',     __('Muestra u oculta la barra de herramientas: on u off.', 'secop-suite')],
+        ['toolbaropts', __('Botones de la barra separados por comas: detail, share, data, image, download.', 'secop-suite')],
     ];
     ?>
     <details class="ss-cat-params">

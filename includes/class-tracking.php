@@ -342,6 +342,23 @@ final class Tracking
                 array_map('trim', explode(',', sanitize_text_field(wp_unslash($_POST['colors'] ?? '')))),
                 static fn($c) => (bool) preg_match('/^#[0-9a-fA-F]{6}$/', $c)
             )),
+            // v5.3.0: personalización del gráfico. show_legend/show_toolbar llegan como
+            // '1'/'0' o 'true'/'false' desde JS — se interpretan como truthy.
+            'number_format'   => in_array($_POST['number_format'] ?? '', ['colombiano', 'millones', 'internacional', 'sin_formato'], true) ? sanitize_text_field(wp_unslash($_POST['number_format'])) : 'colombiano',
+            'chart_height'    => max(150, (int) ($_POST['chart_height'] ?? 400)),
+            'x_axis_title'    => sanitize_text_field(wp_unslash($_POST['x_axis_title'] ?? '')),
+            'y_axis_title'    => sanitize_text_field(wp_unslash($_POST['y_axis_title'] ?? '')),
+            'show_legend'     => in_array((string) ($_POST['show_legend'] ?? '1'), ['1', 'true', 'on'], true),
+            'legend_mode'     => in_array($_POST['legend_mode'] ?? '', ['text', 'icon'], true) ? sanitize_text_field(wp_unslash($_POST['legend_mode'])) : 'text',
+            'legend_position' => in_array($_POST['legend_position'] ?? '', ['bottom', 'top', 'left', 'right'], true) ? sanitize_text_field(wp_unslash($_POST['legend_position'])) : 'bottom',
+            'show_toolbar'    => in_array((string) ($_POST['show_toolbar'] ?? '1'), ['1', 'true', 'on'], true),
+            // toolbar_options llega como lista separada por comas (JS) o como array.
+            'toolbar_options' => array_values(array_intersect(
+                array_map('trim', is_array($_POST['toolbar_options'] ?? '')
+                    ? array_map('sanitize_text_field', wp_unslash($_POST['toolbar_options']))
+                    : explode(',', sanitize_text_field(wp_unslash($_POST['toolbar_options'] ?? '')))),
+                ['detail', 'share', 'data', 'image', 'download']
+            )),
         ];
 
         $chart_config = $this->card_to_chart_config($cfg);
@@ -397,6 +414,16 @@ final class Tracking
             'order_dir'   => $order_dir,
             'limit'       => (int) ($_POST['dep_limit'] ?? 0),
             'colors'      => $colors,
+            // v5.3.0: personalización del gráfico (mirror del Visualizer).
+            'number_format'   => in_array($_POST['dep_number_format'] ?? '', ['colombiano', 'millones', 'internacional', 'sin_formato'], true) ? $_POST['dep_number_format'] : 'colombiano',
+            'chart_height'    => max(150, (int) ($_POST['dep_chart_height'] ?? 400)),
+            'x_axis_title'    => sanitize_text_field(wp_unslash($_POST['dep_x_title'] ?? '')),
+            'y_axis_title'    => sanitize_text_field(wp_unslash($_POST['dep_y_title'] ?? '')),
+            'show_legend'     => isset($_POST['dep_show_legend']),
+            'legend_mode'     => in_array($_POST['dep_legend_mode'] ?? '', ['text', 'icon'], true) ? $_POST['dep_legend_mode'] : 'text',
+            'legend_position' => in_array($_POST['dep_legend_position'] ?? '', ['bottom', 'top', 'left', 'right'], true) ? $_POST['dep_legend_position'] : 'bottom',
+            'show_toolbar'    => isset($_POST['dep_show_toolbar']),
+            'toolbar_options' => array_values(array_intersect((array) ($_POST['dep_toolbar_options'] ?? []), ['detail', 'share', 'data', 'image', 'download'])),
         ];
         update_post_meta($post_id, '_secop_dep_card_config', $config);
         update_post_meta($post_id, '_secop_chart_config', $this->card_to_chart_config($config));
@@ -512,15 +539,15 @@ final class Tracking
             'order_dir'       => $order_dir,
             'colors'          => $colors,
             'show_legend'     => array_key_exists('show_legend', $cfg) ? (bool) $cfg['show_legend'] : true,
-            'legend_mode'     => 'text',
-            'legend_position' => 'bottom',
+            'legend_mode'     => in_array($cfg['legend_mode'] ?? '', ['text', 'icon'], true) ? $cfg['legend_mode'] : 'text',
+            'legend_position' => in_array($cfg['legend_position'] ?? '', ['bottom', 'top', 'left', 'right'], true) ? $cfg['legend_position'] : 'bottom',
             'show_timeline'   => false,
-            'show_toolbar'    => true,
-            'toolbar_options' => ['share', 'data', 'image', 'download'],
-            'chart_height'    => 400,
-            'y_axis_title'    => '',
-            'x_axis_title'    => '',
-            'number_format'   => 'colombiano',
+            'show_toolbar'    => array_key_exists('show_toolbar', $cfg) ? (bool) $cfg['show_toolbar'] : true,
+            'toolbar_options' => (!empty($cfg['toolbar_options']) && is_array($cfg['toolbar_options'])) ? array_values(array_intersect($cfg['toolbar_options'], ['detail', 'share', 'data', 'image', 'download'])) : ['share', 'data', 'image', 'download'],
+            'chart_height'    => (!empty($cfg['chart_height']) && (int) $cfg['chart_height'] > 0) ? (int) $cfg['chart_height'] : 400,
+            'y_axis_title'    => isset($cfg['y_axis_title']) ? (string) $cfg['y_axis_title'] : '',
+            'x_axis_title'    => isset($cfg['x_axis_title']) ? (string) $cfg['x_axis_title'] : '',
+            'number_format'   => in_array($cfg['number_format'] ?? '', ['colombiano', 'millones', 'internacional', 'sin_formato'], true) ? $cfg['number_format'] : 'colombiano',
             'custom_query'    => '',
         ];
     }
@@ -755,6 +782,56 @@ final class Tracking
         if ($legend === 'on')  $show_legend = true;
         if ($legend === 'off') $show_legend = false;
 
+        // v5.3.0: personalización del gráfico. Cada override se aplica sólo si el
+        // atributo se proporcionó (no vacío), validado contra su conjunto permitido.
+        // number_format.
+        $number_format = strtolower(sanitize_text_field($atts['numberformat'] ?? ''));
+        if (!in_array($number_format, ['colombiano', 'millones', 'internacional', 'sin_formato'], true)) {
+            $number_format = in_array($base['number_format'] ?? '', ['colombiano', 'millones', 'internacional', 'sin_formato'], true) ? $base['number_format'] : 'colombiano';
+        }
+
+        // chart_height: prioriza height (ya existente); el att height se aplica también
+        // en sc_chart sobre la config final, pero aquí lo fijamos para la config base.
+        $chart_height = (isset($atts['height']) && (int) $atts['height'] > 0)
+            ? (int) $atts['height']
+            : ((!empty($base['chart_height']) && (int) $base['chart_height'] > 0) ? (int) $base['chart_height'] : 400);
+
+        // x/y axis titles.
+        $x_axis_title = (isset($atts['xtitle']) && $atts['xtitle'] !== '')
+            ? sanitize_text_field($atts['xtitle'])
+            : (isset($base['x_axis_title']) ? (string) $base['x_axis_title'] : '');
+        $y_axis_title = (isset($atts['ytitle']) && $atts['ytitle'] !== '')
+            ? sanitize_text_field($atts['ytitle'])
+            : (isset($base['y_axis_title']) ? (string) $base['y_axis_title'] : '');
+
+        // legend_mode / legend_position.
+        $legend_mode = strtolower(sanitize_text_field($atts['legendmode'] ?? ''));
+        if (!in_array($legend_mode, ['text', 'icon'], true)) {
+            $legend_mode = in_array($base['legend_mode'] ?? '', ['text', 'icon'], true) ? $base['legend_mode'] : 'text';
+        }
+        $legend_position = strtolower(sanitize_text_field($atts['legendpos'] ?? ''));
+        if (!in_array($legend_position, ['bottom', 'top', 'left', 'right'], true)) {
+            $legend_position = in_array($base['legend_position'] ?? '', ['bottom', 'top', 'left', 'right'], true) ? $base['legend_position'] : 'bottom';
+        }
+
+        // toolbar: on→true / off→false. Sólo se fija si se pasó el att.
+        $toolbar = strtolower(sanitize_text_field($atts['toolbar'] ?? ''));
+        $show_toolbar = array_key_exists('show_toolbar', $base) ? (bool) $base['show_toolbar'] : true;
+        if ($toolbar === 'on')  $show_toolbar = true;
+        if ($toolbar === 'off') $show_toolbar = false;
+
+        // toolbar_options: lista separada por comas, validada.
+        $toolbar_options = (!empty($base['toolbar_options']) && is_array($base['toolbar_options']))
+            ? array_values(array_intersect($base['toolbar_options'], ['detail', 'share', 'data', 'image', 'download']))
+            : ['share', 'data', 'image', 'download'];
+        if (isset($atts['toolbaropts']) && $atts['toolbaropts'] !== '') {
+            $parsed = array_values(array_intersect(
+                array_map('trim', explode(',', strtolower(sanitize_text_field($atts['toolbaropts'])))),
+                ['detail', 'share', 'data', 'image', 'download']
+            ));
+            $toolbar_options = $parsed; // permitir vaciar la barra explícitamente.
+        }
+
         return [
             'dimension'   => $dimension,
             'chart_type'  => $type,
@@ -765,6 +842,15 @@ final class Tracking
             'limit'       => $limit,
             'colors'      => $colors,
             'show_legend' => $show_legend,
+            // v5.3.0: personalización del gráfico.
+            'number_format'   => $number_format,
+            'chart_height'    => $chart_height,
+            'x_axis_title'    => $x_axis_title,
+            'y_axis_title'    => $y_axis_title,
+            'legend_mode'     => $legend_mode,
+            'legend_position' => $legend_position,
+            'show_toolbar'    => $show_toolbar,
+            'toolbar_options' => $toolbar_options,
         ];
     }
 
@@ -777,6 +863,9 @@ final class Tracking
                 // v5.1.8: parámetros de personalización del shortcode.
                 'metric' => '', 'order' => '', 'orderdir' => '', 'limit' => '',
                 'colors' => '', 'legend' => '',
+                // v5.3.0: personalización del gráfico (mirror del editor).
+                'numberformat' => '', 'xtitle' => '', 'ytitle' => '',
+                'legendmode' => '', 'legendpos' => '', 'toolbar' => '', 'toolbaropts' => '',
                 // v5.1.9: click-to-drill (popup con contratos de la categoría).
                 'drill' => '',
             ],
@@ -809,7 +898,8 @@ final class Tracking
         // OPTIMIZATION: card="N" (or preset="x") without any override attribute →
         // render the canonical card/preset post directly (no hash post created).
         // Keeps existing [secop_dep_chart card=N] / preset=x cheap and clutter-free.
-        $override_atts = ['tipo', 'metric', 'order', 'orderdir', 'limit', 'colors', 'dependencia', 'legend'];
+        $override_atts = ['tipo', 'metric', 'order', 'orderdir', 'limit', 'colors', 'dependencia', 'legend',
+            'numberformat', 'xtitle', 'ytitle', 'legendmode', 'legendpos', 'toolbar', 'toolbaropts'];
         $has_override  = false;
         foreach ($override_atts as $k) {
             if (isset($atts[$k]) && $atts[$k] !== '') { $has_override = true; break; }

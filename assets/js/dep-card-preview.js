@@ -22,7 +22,17 @@
         order:       '[name="dep_order"]',
         orderDir:    '[name="dep_order_dir"]',
         colors:      '[name="dep_colors"]',
-        limit:       '[name="dep_limit"]'
+        limit:       '[name="dep_limit"]',
+        // v5.3.0: personalización del gráfico.
+        numberFormat:   '[name="dep_number_format"]',
+        chartHeight:    '[name="dep_chart_height"]',
+        xTitle:         '[name="dep_x_title"]',
+        yTitle:         '[name="dep_y_title"]',
+        showLegend:     '[name="dep_show_legend"]',
+        legendMode:     '[name="dep_legend_mode"]',
+        legendPosition: '[name="dep_legend_position"]',
+        showToolbar:    '[name="dep_show_toolbar"]',
+        toolbarOptions: '[name="dep_toolbar_options"]'
     };
 
     /**
@@ -53,7 +63,19 @@
             order:       $(SEL.order).val()        || 'valor',
             order_dir:   $(SEL.orderDir).val()     || 'DESC',
             limit:       parseInt($(SEL.limit).val(), 10) || 0,
-            colors:      $(SEL.colors).val()       || ''
+            colors:      $(SEL.colors).val()       || '',
+            // v5.3.0: personalización del gráfico.
+            number_format:   $(SEL.numberFormat).val() || 'colombiano',
+            chart_height:    parseInt($(SEL.chartHeight).val(), 10) || 400,
+            x_axis_title:    $(SEL.xTitle).val() || '',
+            y_axis_title:    $(SEL.yTitle).val() || '',
+            show_legend:     $(SEL.showLegend).is(':checked') ? '1' : '0',
+            legend_mode:     $(SEL.legendMode).val() || 'text',
+            legend_position: $(SEL.legendPosition).val() || 'bottom',
+            show_toolbar:    $(SEL.showToolbar).is(':checked') ? '1' : '0',
+            toolbar_options: $(SEL.toolbarOptions + ':checked').map(function () {
+                return this.value;
+            }).get().join(',')
         };
     }
 
@@ -130,6 +152,11 @@
                 // Gráfica
                 var $render = $('#ss-dep-preview-render');
                 $render.empty();
+                // v5.3.0: reflejar la altura configurada en el contenedor de la vista previa.
+                var h = parseInt(res.config && res.config.chart_height, 10);
+                if (h && h > 0) {
+                    $render.css({ height: h + 'px', minHeight: h + 'px' });
+                }
                 if (typeof window.SSChartRender !== 'function' || typeof window.d3plus === 'undefined') {
                     $render.append($('<p>').text(
                         'No se cargó el motor de gráficas (d3plus). Revise que el plugin esté actualizado y recargue con Ctrl+F5. Los datos y la consulta SQL se muestran abajo.'
@@ -170,7 +197,10 @@
 
         var watch = [
             SEL.dimension, SEL.chartType, SEL.metric, SEL.dependencia,
-            SEL.order, SEL.orderDir, SEL.colors, SEL.limit
+            SEL.order, SEL.orderDir, SEL.colors, SEL.limit,
+            SEL.numberFormat, SEL.chartHeight, SEL.xTitle, SEL.yTitle,
+            SEL.showLegend, SEL.legendMode, SEL.legendPosition,
+            SEL.showToolbar, SEL.toolbarOptions
         ].join(', ');
         $(document).on('change', watch, debouncedRefresh);
         // Refresco inicial.
