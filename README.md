@@ -69,6 +69,9 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.4.0 — Red de contratación `[secop_dep_red]`
+- Nuevo gráfico de red de contratación (`[secop_dep_red]`): las dependencias son los nodos centrales, conectadas a sus contratistas, tipos de contrato y modalidades de contratación. Layout de fuerza con d3 v5 (`forceSimulation`/`forceLink`/`forceManyBody`/`forceCollide`), nodos arrastrables y tooltip con nº de contratos, valor y dependencia del contratista. Datos deduplicados por contrato (`GROUP BY numero_del_contrato`) y servidos por AJAX (`secop_dep_network`) con nonce `secop_dep_frontend` + rate-limit por IP. La densidad se acota con Top-N de contratistas (`limit`) y el filtro por dependencia. Atributos: `dependencia`, `limit`, `height`, `selector`.
+
 ### v5.3.2 — Tooltip configurable en Contratación
 - Tooltip configurable: elegir qué se muestra (categoría, valor, nº de contratos por categoría) en el editor, shortcode (`tooltip="categoria,valor,conteo"`) y vista previa. El conteo se calcula con `COUNT(DISTINCT numero_del_contrato)` solo cuando se solicita, sin afectar a `[secop_chart]`.
 

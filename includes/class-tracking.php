@@ -128,6 +128,10 @@ final class Tracking
         // Drill-down: contratos asociados al valor de una dimensión (click en gráfica).
         add_action('wp_ajax_secop_dep_drill',            [$this, 'ajax_drill']);
         add_action('wp_ajax_nopriv_secop_dep_drill',     [$this, 'ajax_drill']);
+        // v5.4.0: red de contratación (grafo de fuerza dependencias↔contratistas/tipos/modalidades).
+        add_shortcode('secop_dep_red',                   [$this, 'sc_red']);
+        add_action('wp_ajax_secop_dep_network',          [$this, 'ajax_network']);
+        add_action('wp_ajax_nopriv_secop_dep_network',   [$this, 'ajax_network']);
         // Vista previa en vivo del editor de cards (solo admin, sin nopriv).
         add_action('wp_ajax_secop_dep_preview',          [$this, 'ajax_dep_preview']);
         add_shortcode('secop_consulta',                  [$this, 'sc_consulta']);
@@ -1114,7 +1118,7 @@ final class Tracking
         global $post;
         if (!is_a($post, 'WP_Post')) return;
         $has = false;
-        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta'] as $sc) {
+        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red'] as $sc) {
             if (has_shortcode($post->post_content, $sc)) { $has = true; break; }
         }
         if (!$has) return;
@@ -1225,6 +1229,213 @@ final class Tracking
         $dep = sanitize_text_field($_POST['dependencia'] ?? '');
         if ($dep === '') wp_send_json_error(['message' => 'Dependencia requerida']);
         wp_send_json_success(['rows' => $this->contracts_by_dependency($dep)]);
+    }
+
+    // ── v5.4.0: Red de contratación (grafo de fuerza) ─────────────
+
+    /**
+     * Construye el modelo de nodos/enlaces de la red de contratación de la
+     * vigencia actual: las dependencias son los nodos centrales, conectadas a
+     * sus contratistas, tipos de contrato y modalidades de contratación.
+     *
+     * Los datos se deduplican por contrato (GROUP BY numero_del_contrato) para
+     * que cada contrato cuente una sola vez con su valor_contrato. Sólo se usan
+     * columnas de la vista y se prepara el año + la dependencia con $wpdb->prepare.
+     *
+     * @param string|null $dependencia        Filtra por una dependencia concreta (null = todas).
+     * @param int         $limit_contratistas Top-N contratistas por valor cuando no hay filtro.
+     * @return array{nodes:array<int,array<string,mixed>>,links:array<int,array<string,string>>}
+     */
+    public function network_data(?string $dependencia = null, int $limit_contratistas = 80): array
+    {
+        global $wpdb;
+
+        $limit_contratistas = max(10, min(300, $limit_contratistas));
+        $dep = ($dependencia !== null && $dependencia !== '') ? $dependencia : null;
+
+        $cache_key = 'secop_trk_' . md5('network_data|' . ($dep ?? '') . '|' . $limit_contratistas . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
+        $view = $this->db->get_view_name();
+
+        // WHERE de la subconsulta deduplicadora (año + dependencia opcional).
+        $where  = ['anio = %d'];
+        $params = [$this->current_vigencia()];
+        if ($dep !== null) {
+            $where[]  = 'nombredependencia = %s';
+            $params[] = $dep;
+        }
+        $where_sql = implode(' AND ', $where);
+
+        // Subconsulta: un registro por contrato (MAX por columna textual para
+        // colapsar las múltiples filas presupuestales de un mismo contrato).
+        $sub = "SELECT numero_del_contrato,
+                       MAX(nombredependencia)         AS nombredependencia,
+                       MAX(nombretercero)             AS nombretercero,
+                       MAX(tipo_de_contrato)          AS tipo_de_contrato,
+                       MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
+                       MAX(valor_contrato)            AS valor_contrato
+                FROM `{$view}` WHERE {$where_sql}
+                GROUP BY numero_del_contrato";
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare($sub, ...$params), ARRAY_A);
+        $rows = $rows ?: [];
+
+        // Agregados.
+        $deps_agg = [];   // nombredependencia => [valor, count]
+        $cons_agg = [];   // nombretercero => [valor, count, deps => [dep => count|valor]]
+        $tipos    = [];   // dep => [tipo => true]
+        $mods     = [];   // dep => [mod => true]
+
+        foreach ($rows as $r) {
+            $depName = (string) ($r['nombredependencia'] ?? '');
+            $conName = (string) ($r['nombretercero'] ?? '');
+            $tipo    = (string) ($r['tipo_de_contrato'] ?? '');
+            $mod     = (string) ($r['modalidad_de_contratacion'] ?? '');
+            $val     = (float) ($r['valor_contrato'] ?? 0);
+            if ($depName === '') continue;
+
+            if (!isset($deps_agg[$depName])) $deps_agg[$depName] = ['valor' => 0.0, 'count' => 0];
+            $deps_agg[$depName]['valor'] += $val;
+            $deps_agg[$depName]['count'] += 1;
+
+            if ($tipo !== '') $tipos[$depName][$tipo] = true;
+            if ($mod !== '')  $mods[$depName][$mod]   = true;
+
+            if ($conName !== '') {
+                if (!isset($cons_agg[$conName])) {
+                    $cons_agg[$conName] = ['valor' => 0.0, 'count' => 0, 'deps' => []];
+                }
+                $cons_agg[$conName]['valor'] += $val;
+                $cons_agg[$conName]['count'] += 1;
+                // Acumula el valor por dependencia para elegir luego la principal (MAX valor).
+                $cons_agg[$conName]['deps'][$depName] = ($cons_agg[$conName]['deps'][$depName] ?? 0.0) + $val;
+            }
+        }
+
+        // Top-N contratistas por valor cuando NO hay filtro de dependencia.
+        if ($dep === null && count($cons_agg) > $limit_contratistas) {
+            uasort($cons_agg, static fn($a, $b) => $b['valor'] <=> $a['valor']);
+            $cons_agg = array_slice($cons_agg, 0, $limit_contratistas, true);
+        }
+
+        $nodes    = [];
+        $node_ids = [];
+        $add_node = static function (array $node) use (&$nodes, &$node_ids): void {
+            if (!isset($node_ids[$node['id']])) {
+                $node_ids[$node['id']] = true;
+                $nodes[] = $node;
+            }
+        };
+
+        // Nodos dependencia.
+        foreach ($deps_agg as $name => $a) {
+            $add_node([
+                'id'    => 'dep::' . $name,
+                'label' => $name,
+                'type'  => 'dependencia',
+                'value' => $a['valor'],
+                'count' => $a['count'],
+            ]);
+        }
+
+        // Nodos contratista (con su dependencia principal = la de MAX valor).
+        foreach ($cons_agg as $name => $a) {
+            $depName = '';
+            $best = -1.0;
+            foreach ($a['deps'] as $dName => $dVal) {
+                if ($dVal > $best) { $best = $dVal; $depName = $dName; }
+            }
+            $add_node([
+                'id'          => 'con::' . $name,
+                'label'       => $name,
+                'type'        => 'contratista',
+                'value'       => $a['valor'],
+                'count'       => $a['count'],
+                'dependencia' => $depName,
+            ]);
+        }
+
+        // Nodos tipo y modalidad (distintos, asociados a la dependencia que los usa).
+        foreach ($tipos as $depName => $set) {
+            foreach (array_keys($set) as $t) {
+                $add_node(['id' => 'tipo::' . $t, 'label' => $t, 'type' => 'tipo']);
+            }
+        }
+        foreach ($mods as $depName => $set) {
+            foreach (array_keys($set) as $m) {
+                $add_node(['id' => 'mod::' . $m, 'label' => $m, 'type' => 'modalidad']);
+            }
+        }
+
+        // Enlaces — sólo si ambos extremos están en el conjunto de nodos.
+        $links     = [];
+        $link_seen = [];
+        $add_link = static function (string $source, string $target) use (&$links, &$link_seen, $node_ids): void {
+            if (!isset($node_ids[$source]) || !isset($node_ids[$target])) return;
+            $key = $source . '|' . $target;
+            if (isset($link_seen[$key])) return;
+            $link_seen[$key] = true;
+            $links[] = ['source' => $source, 'target' => $target];
+        };
+
+        // contratista → su dependencia principal.
+        foreach ($cons_agg as $name => $a) {
+            $depName = '';
+            $best = -1.0;
+            foreach ($a['deps'] as $dName => $dVal) {
+                if ($dVal > $best) { $best = $dVal; $depName = $dName; }
+            }
+            if ($depName !== '') $add_link('con::' . $name, 'dep::' . $depName);
+        }
+        // tipo → dependencia.
+        foreach ($tipos as $depName => $set) {
+            foreach (array_keys($set) as $t) {
+                $add_link('tipo::' . $t, 'dep::' . $depName);
+            }
+        }
+        // modalidad → dependencia.
+        foreach ($mods as $depName => $set) {
+            foreach (array_keys($set) as $m) {
+                $add_link('mod::' . $m, 'dep::' . $depName);
+            }
+        }
+
+        $result = ['nodes' => $nodes, 'links' => $links];
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
+        return $result;
+    }
+
+    /** AJAX — datos de la red de contratación. */
+    public function ajax_network(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
+
+        $dep   = sanitize_text_field(wp_unslash($_POST['dependencia'] ?? ''));
+        $limit = max(10, min(300, (int) ($_POST['limit'] ?? 80)));
+        wp_send_json_success($this->network_data($dep !== '' ? $dep : null, $limit));
+    }
+
+    /** Shortcode [secop_dep_red] — red de contratación (grafo de fuerza d3). */
+    public function sc_red(array $atts): string
+    {
+        $atts = shortcode_atts(['dependencia' => '', 'limit' => 80, 'height' => 560, 'selector' => 'on'], $atts, 'secop_dep_red');
+
+        $this->enqueue_module_stack(); // d3 + d3plus + secopDep (ajaxUrl + nonce).
+        wp_enqueue_script('secop-dep-network', SECOP_SUITE_URL . 'assets/js/dep-network.js',
+            ['jquery', 'd3', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+
+        $deps = ($atts['selector'] === 'on') ? $this->list_dependencies() : [];
+        $uid  = 'ss-red-' . wp_unique_id();
+
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/red.php';
+        return ob_get_clean();
     }
 
     /** Dependencias disponibles en la vigencia actual (para el selector). */

@@ -1234,3 +1234,40 @@
 .ss-drill-modal .ss-modal-content { max-width: 1000px; }
 .ss-drill-modal .ss-modal-body { max-height: 70vh; overflow: auto; }
 .ss-drill-empty { color: var(--ss-gray-500, #666); text-align: center; padding: 1.5rem 0; margin: 0; }
+
+/* ==========================================================================
+   Red de contratación (v5.4.0) — grafo de fuerza [secop_dep_red]
+   ========================================================================== */
+.ss-red-module { margin: 1.5rem 0; }
+.ss-red-controls { margin-bottom: .75rem; }
+.ss-red-controls select { margin-left: .4rem; }
+.ss-red-wrapper { position: relative; width: 100%; }
+.ss-red-svg svg { width: 100%; height: auto; display: block; }
+.ss-red-link { stroke: #d6d8db; stroke-opacity: .8; stroke-width: 1px; }
+.ss-red-node { stroke: #fff; stroke-width: 1px; cursor: pointer; }
+.ss-red-label { font-size: 11px; font-weight: 600; fill: #1d2327; pointer-events: none; }
+.ss-red-hover-label { font-size: 11px; fill: #1d2327; pointer-events: none; }
+.ss-red-tooltip {
+    position: absolute;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 6px 9px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #1d2327;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .15);
+    pointer-events: none;
+    z-index: 20;
+    max-width: 280px;
+}
+.ss-red-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: .6rem;
+    font-size: 12px;
+    color: #50575e;
+}
+.ss-red-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.ss-red-legend-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
