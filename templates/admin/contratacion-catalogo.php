@@ -2,10 +2,13 @@
 /**
  * Template: Contratación — Catálogo de gráficas prediseñadas (admin).
  *
- * Lista cada preset de \SecopSuite\Tracking::presets() como una tarjeta con:
- *  - Vista previa de la gráfica (shortcode [secop_dep_chart preset="…"]).
- *  - Los 4 análisis (descripción, cualitativo, cuantitativo, predicción).
+ * Lista cada preset de \SecopSuite\Tracking::presets() como una tarjeta ligera con:
+ *  - Título y descripción.
  *  - Shortcodes listos para copiar.
+ *
+ * La vista previa de la gráfica y los 4 análisis NO se renderizan aquí (para que
+ * el catálogo cargue al instante): aparecen solo al editar la card individual o
+ * al insertar el shortcode en una página.
  *
  * Variables disponibles:
  * - $tracking: instancia de \SecopSuite\Tracking.
@@ -19,19 +22,13 @@ if (!defined('ABSPATH')) {
 
 /** @var \SecopSuite\Tracking $tracking */
 $presets = $tracking->presets();
-$tipos   = [
-    'descripcion'  => __('Descripción', 'secop-suite'),
-    'cualitativo'  => __('Análisis cualitativo', 'secop-suite'),
-    'cuantitativo' => __('Análisis cuantitativo', 'secop-suite'),
-    'prediccion'   => __('Predicción', 'secop-suite'),
-];
 ?>
 <div class="wrap secop-suite-catalogo">
     <h1><?php esc_html_e('Contratación — Gráficas prediseñadas', 'secop-suite'); ?></h1>
 
     <p class="description">
         <?php esc_html_e(
-            'Catálogo de gráficas listas para usar. Cada tarjeta muestra una vista previa, sus cuatro textos de análisis generados automáticamente y los shortcodes que puede copiar y pegar en cualquier página o entrada. Las gráficas no se crean a mano: ya están definidas en el código y se actualizan con la vigencia en curso.',
+            'Catálogo de gráficas listas para usar. Cada tarjeta muestra su descripción y los shortcodes que puede copiar y pegar en cualquier página o entrada. Las gráficas no se crean a mano: ya están definidas en el código y se actualizan con la vigencia en curso.',
             'secop-suite'
         ); ?>
     </p>
@@ -93,8 +90,6 @@ $tipos   = [
     <div class="ss-cat-grid">
         <?php foreach ($presets as $key => $p) :
             $key = (string) $key;
-            // Dataset (una sola vez por preset) para los 4 análisis server-side.
-            $ds = $tracking->build_dataset($p['dimension']);
 
             // Shortcodes copiables para este preset.
             $shortcodes = [
@@ -109,28 +104,9 @@ $tipos   = [
                 <h2 class="ss-cat-title"><?php echo esc_html($p['titulo']); ?></h2>
                 <p class="ss-cat-desc"><?php echo esc_html($p['descripcion']); ?></p>
 
-                <div class="ss-cat-chart">
-                    <?php
-                    // Vista previa renderizada por el motor del Visualizer.
-                    // El shortcode es una cadena estática del preset (segura).
-                    echo do_shortcode('[secop_dep_chart preset="' . esc_attr($key) . '"]');
-                    ?>
-                </div>
                 <p class="ss-cat-note description">
-                    <em><?php esc_html_e('La gráfica se actualiza con la vigencia actual.', 'secop-suite'); ?></em>
+                    <em><?php esc_html_e('Vista previa y análisis disponibles al editar la card o al insertar el shortcode en una página.', 'secop-suite'); ?></em>
                 </p>
-
-                <div class="ss-cat-analisis">
-                    <h3><?php esc_html_e('Análisis', 'secop-suite'); ?></h3>
-                    <?php foreach ($tipos as $tipo => $label) :
-                        $metodo = 'analisis_' . $tipo;
-                        ?>
-                        <div class="ss-cat-analisis-item">
-                            <h4><?php echo esc_html($label); ?></h4>
-                            <p><?php echo esc_html(\SecopSuite\Stats::$metodo($ds)); ?></p>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
 
                 <div class="ss-cat-shortcodes">
                     <h3><?php esc_html_e('Shortcodes', 'secop-suite'); ?></h3>
@@ -169,11 +145,7 @@ $tipos   = [
         box-shadow: 0 1px 1px rgba(0, 0, 0, .04);
     }
     .secop-suite-catalogo .ss-cat-title { margin-top: 0; }
-    .secop-suite-catalogo .ss-cat-chart { margin: 12px 0 4px; min-height: 200px; }
     .secop-suite-catalogo .ss-cat-note { margin: 0 0 12px; }
-    .secop-suite-catalogo .ss-cat-analisis-item { margin-bottom: 10px; }
-    .secop-suite-catalogo .ss-cat-analisis-item h4 { margin: 0 0 2px; }
-    .secop-suite-catalogo .ss-cat-analisis-item p { margin: 0; color: #50575e; }
     .secop-suite-catalogo .ss-cat-sc-row {
         display: flex;
         gap: 6px;

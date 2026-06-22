@@ -69,6 +69,10 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.2.2 — Catálogo de Contratación más rápido
+- El catálogo ya no renderiza gráficas ni análisis (carga instantánea): cada tarjeta muestra solo título, descripción y los shortcodes copiables, sin ejecutar `build_dataset()` ni `do_shortcode()` al cargar la página.
+- La vista previa y los cuatro análisis (descripción, cualitativo, cuantitativo, predicción) se ven solo en el editor individual de la card, cargados en vivo por AJAX (`secop_dep_preview`), sin consultas pesadas al renderizar el metabox.
+
 ### v5.2.0 — Nuevo origen `vista_secop_sysman`, `valor_contrato` como valor principal y fix de rendimiento
 - **Nuevo origen de datos**: el módulo de Contratación usa la vista `{prefix}vista_secop_sysman` (creada por el usuario) como única fuente. `get_view_name()` y la definición de `create_view()` se alinean exactamente con esa vista para que una instalación nueva la reproduzca.
 - **`valor_contrato` como valor principal**: es la primera métrica por defecto del módulo; las agregaciones de análisis y las gráficas usan `SUM(valor_contrato)`. (Caveat documentado: un contrato puede aparecer en varias filas presupuestales, por lo que `SUM(valor_contrato)` sobrecuenta levemente los contratos multi-comprobante.)

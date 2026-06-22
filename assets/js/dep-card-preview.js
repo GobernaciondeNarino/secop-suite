@@ -84,6 +84,29 @@
         $wrap.append($table);
     }
 
+    function renderAnalisis(analisis) {
+        var $wrap = $('#ss-dep-preview-analisis');
+        $wrap.empty();
+        if (!analisis) {
+            return;
+        }
+        var blocks = [
+            ['descripcion',  'Descripción'],
+            ['cualitativo',  'Análisis cualitativo'],
+            ['cuantitativo', 'Análisis cuantitativo'],
+            ['prediccion',   'Predicción']
+        ];
+        blocks.forEach(function(b) {
+            var key = b[0];
+            var label = b[1];
+            var $item = $('<div class="ss-dep-analisis-item" style="margin-bottom:10px;">');
+            $item.append($('<h5 style="margin:0 0 2px;">').text(label));
+            // Siempre .text() — nunca innerHTML.
+            $item.append($('<p style="margin:0;color:#50575e;">').text(analisis[key] || ''));
+            $wrap.append($item);
+        });
+    }
+
     function refresh() {
         var payload = collect();
         payload.action = 'secop_dep_preview';
@@ -126,6 +149,9 @@
 
                 // SQL (escapado vía .text())
                 $sql.text(res.sql || '');
+
+                // Análisis en vivo (escapado vía .text())
+                renderAnalisis(res.analisis);
             },
             error: function() {
                 $sql.text(secopDepPreview.strings.error);
