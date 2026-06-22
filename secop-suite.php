@@ -3,7 +3,7 @@
  * Plugin Name: SECOP Suite
  * Plugin URI: https://github.com/GobernaciondeNarino/secop-suite
  * Description: Plugin integral para la importación, almacenamiento y visualización interactiva de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia. Combina importación automatizada desde datos.gov.co con gráficas D3plus configurables mediante shortcodes.
- * Version: 5.8.0
+ * Version: 5.9.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Jonnathan Bucheli Galindo - Gobernación de Nariño
@@ -25,8 +25,8 @@ if (!defined('ABSPATH')) {
 }
 
 // ─── Constantes ────────────────────────────────────────────────
-define('SECOP_SUITE_VERSION', '5.8.0');
-define('SECOP_SUITE_DB_VERSION', '5.2.0');
+define('SECOP_SUITE_VERSION', '5.9.0');
+define('SECOP_SUITE_DB_VERSION', '5.9.0');
 define('SECOP_SUITE_DIR', plugin_dir_path(__FILE__));
 define('SECOP_SUITE_URL', plugin_dir_url(__FILE__));
 define('SECOP_SUITE_BASENAME', plugin_basename(__FILE__));
@@ -159,6 +159,13 @@ final class Plugin
             // v5.2.0: eliminar la vista huérfana antigua (renombrada a vista_secop_sysman).
             // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $wpdb->query("DROP VIEW IF EXISTS `" . $wpdb->prefix . "dat_seguimiento_dependencias`");
+
+            // v5.9.0: la definición de vista_secop_sysman cambió estructuralmente
+            // (LEFT JOIN desde secop_contracts, vigencia por fecha_de_firma, columnas
+            // *_asiento/rubro_*). DROP explícito antes de recrearla para refrescar la
+            // definición en la actualización (CREATE OR REPLACE también basta).
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->query("DROP VIEW IF EXISTS `" . $this->database->get_view_name() . "`");
 
             // v5.1.0: crear VIEW del módulo de seguimiento (si hay tablas Sysman).
             $this->database->create_view();
@@ -424,8 +431,12 @@ final class Plugin
         if ($tab === 'consulta') {
             if ($this->database->view_exists()) {
                 $view = $this->database->get_view_name();
+                // v5.9.0: vista con LEFT JOIN; vigencia por año de firma; columnas del
+                // asiento renombradas a *_asiento. Se conservan los alias `anio`/`mes`
+                // para la plantilla (anio = año de firma; mes = mes del asiento Sysman).
+                // Contratos sin cruce Sysman → "No Registra SYSMAN".
                 $consulta_rows = $wpdb->get_results($wpdb->prepare(
-                    "SELECT nombredependencia, numero_de_proceso, numero_del_contrato, nombretercero, valordebito, valorcredito, saldoporejecutaresp, valor_contrato, anio, mes FROM `{$view}` WHERE anio = %d ORDER BY valordebito DESC LIMIT 200",
+                    "SELECT COALESCE(NULLIF(`nombredependencia`,''),'No Registra SYSMAN') AS nombredependencia, numero_de_proceso, numero_del_contrato, COALESCE(NULLIF(`nombretercero`,''), NULLIF(`nom_raz_social_contratista`,''),'No Registra SYSMAN') AS nombretercero, valordebito, valorcredito, saldoporejecutaresp, valor_contrato, YEAR(`fecha_de_firma_del_contrato`) AS anio, mes_asiento AS mes FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d ORDER BY valordebito DESC LIMIT 200",
                     (int) current_time('Y')
                 ), ARRAY_A) ?: [];
             }

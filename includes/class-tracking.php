@@ -103,14 +103,17 @@ final class Tracking
     public function explora_fields(): array
     {
         return [
-            'numero_del_contrato'       => __('Nº contrato', 'secop-suite'),
-            'valor_contrato'            => __('Valor', 'secop-suite'),
-            'fecha_inicio_ejecucion'    => __('Inicio', 'secop-suite'),
-            'fecha_fin_ejecucion'       => __('Fin', 'secop-suite'),
-            'modalidad_de_contratacion' => __('Modalidad', 'secop-suite'),
-            'tipo_de_contrato'          => __('Tipo', 'secop-suite'),
-            'nombretercero'             => __('Contratista', 'secop-suite'),
-            'documento_proveedor'       => __('Documento', 'secop-suite'),
+            'numero_del_contrato'         => __('Nº contrato', 'secop-suite'),
+            'valor_contrato'              => __('Valor', 'secop-suite'),
+            'fecha_de_firma_del_contrato' => __('Firma', 'secop-suite'),
+            'fecha_inicio_ejecucion'      => __('Inicio', 'secop-suite'),
+            'fecha_fin_ejecucion'         => __('Fin', 'secop-suite'),
+            'modalidad_de_contratacion'   => __('Modalidad', 'secop-suite'),
+            'tipo_de_contrato'            => __('Tipo', 'secop-suite'),
+            'nombretercero'               => __('Contratista', 'secop-suite'),
+            'nom_raz_social_contratista'  => __('Contratista (SECOP)', 'secop-suite'),
+            'documento_proveedor'         => __('Documento', 'secop-suite'),
+            'rubro_nombre'                => __('Rubro', 'secop-suite'),
         ];
     }
 
@@ -208,6 +211,24 @@ final class Tracking
         return (int) current_time('Y');
     }
 
+    /**
+     * v5.9.0: Expresión SQL etiquetadora para columnas que pueden venir NULL por el
+     * LEFT JOIN de la vista (contratos sin cruce Sysman). Devuelve una expresión
+     * segura (la columna procede de una whitelist interna, nunca del usuario):
+     *  - nombredependencia → "No Registra SYSMAN" cuando es NULL/''.
+     *  - nombretercero     → cae al contratista del SECOP (nom_raz_social_contratista)
+     *                        y, si tampoco hay, a "No Registra SYSMAN".
+     *  - cualquier otra    → la columna entre backticks, sin envolver.
+     */
+    private function sysman_label_expr(string $col): string
+    {
+        return match ($col) {
+            'nombredependencia' => "COALESCE(NULLIF(`nombredependencia`,''), 'No Registra SYSMAN')",
+            'nombretercero'     => "COALESCE(NULLIF(`nombretercero`,''), NULLIF(`nom_raz_social_contratista`,''), 'No Registra SYSMAN')",
+            default             => "`{$col}`",
+        };
+    }
+
     /** Agrupación por dimensión para la vigencia actual. */
     public function group_by_dimension(string $dimension, ?string $dependencia = null): array
     {
@@ -223,10 +244,10 @@ final class Tracking
         $cols   = $this->db->get_table_columns($view);
         if (!isset($cols[$col])) return [];
 
-        $where  = ['anio = %d'];
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
         $params = [$this->current_vigencia()];
         if ($dependencia !== null && $dependencia !== '') {
-            $where[]  = 'nombredependencia = %s';
+            $where[]  = $this->sysman_label_expr('nombredependencia') . ' = %s';
             $params[] = $dependencia;
         }
         $where_sql = implode(' AND ', $where);
@@ -234,11 +255,14 @@ final class Tracking
         // Métrica de valor: valor_contrato (valor principal) y conteo de contratos distintos.
         // NOTA: un contrato puede repetirse en varias filas presupuestales, por lo que
         // SUM(valor_contrato) sobrecuenta ligeramente los contratos multi-comprobante.
-        $sql = "SELECT `{$col}` AS label,
+        // v5.9.0: los contratos sin cruce Sysman (NULL por el LEFT JOIN) se agrupan bajo
+        // "No Registra SYSMAN" (dependencia) o caen al contratista del SECOP (tercero).
+        $label_expr = $this->sysman_label_expr($col);
+        $sql = "SELECT {$label_expr} AS label,
                        SUM(valor_contrato) AS valor,
                        COUNT(DISTINCT numero_del_contrato) AS conteo
                 FROM `{$view}` WHERE {$where_sql}
-                GROUP BY `{$col}` ORDER BY valor DESC";
+                GROUP BY {$label_expr} ORDER BY valor DESC";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
 
@@ -262,25 +286,22 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view = $this->db->get_view_name();
-        $where  = ['anio = %d'];
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
         $params = [$this->current_vigencia()];
         if ($dependencia !== null && $dependencia !== '') {
-            $where[]  = 'nombredependencia = %s';
+            $where[]  = $this->sysman_label_expr('nombredependencia') . ' = %s';
             $params[] = $dependencia;
         }
         $where_sql = implode(' AND ', $where);
 
-        // v5.7.0: el mes proviene del MES DEL CONTRATO (columna varchar `fecha`,
-        // formato DD/MM/YYYY), NO de `mes` (mes de actualización de Sysman, que es
-        // ~constante → serie degenerada). El literal de formato '%d/%m/%Y' se escribe
-        // con porcentajes DOBLES ('%%d/%%m/%%Y') para que $wpdb->prepare lo emita como
-        // '%d/%m/%Y' (un solo %) en lugar de tratarlo como placeholders: sólo
-        // anio (%d) y la dependencia (%s) son placeholders preparados. Las filas cuya
-        // `fecha` no parsea devuelven NULL y se excluyen del agregado.
-        $expr = "MONTH(STR_TO_DATE(`fecha`, '%%d/%%m/%%Y'))";
+        // v5.9.0: el mes proviene del MES DE FIRMA DEL CONTRATO. En la nueva vista
+        // fecha_de_firma_del_contrato es un DATETIME real, así que basta
+        // MONTH(`fecha_de_firma_del_contrato`) (sin STR_TO_DATE ni escapado de %%).
+        // Sólo la vigencia (%d) y la dependencia (%s) son placeholders preparados.
+        $expr = "MONTH(`fecha_de_firma_del_contrato`)";
         $sql = "SELECT {$expr} AS mes, SUM(valor_contrato) AS valor
                 FROM `{$view}`
-                WHERE {$where_sql} AND STR_TO_DATE(`fecha`, '%%d/%%m/%%Y') IS NOT NULL
+                WHERE {$where_sql} AND `fecha_de_firma_del_contrato` IS NOT NULL
                 GROUP BY {$expr} ORDER BY mes ASC";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
@@ -363,9 +384,9 @@ final class Tracking
         $serie = $this->monthly_series($dependencia);
         $view  = $this->db->get_view_name();
 
-        $where  = ['anio = %d'];
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
         $params = [$this->current_vigencia()];
-        if ($dependencia) { $where[] = 'nombredependencia = %s'; $params[] = $dependencia; }
+        if ($dependencia) { $where[] = $this->sysman_label_expr('nombredependencia') . ' = %s'; $params[] = $dependencia; }
         $where_sql = implode(' AND ', $where);
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $tot = $wpdb->get_row($wpdb->prepare(
@@ -717,7 +738,12 @@ final class Tracking
         $tf = array_values(array_intersect((array) ($cfg['tooltip_fields'] ?? ['categoria', 'valor']), ['categoria', 'valor', 'conteo']));
         if (empty($tf)) $tf = ['categoria', 'valor'];
 
-        $filters = [['field' => 'anio', 'operator' => '=', 'value' => (string) $this->current_vigencia()]];
+        // v5.9.0: la vista ya está acotada a la vigencia actual por su propio WHERE
+        // (YEAR(fecha_de_firma_del_contrato) = YEAR(CURDATE())), por lo que NO se añade
+        // un filtro de `anio` (columna que ya no existe en la vista; build_chart_query
+        // lo descartaría por no validar contra columnas reales). Toda consulta sobre la
+        // vista es intrínsecamente de la vigencia en curso.
+        $filters = [];
         $dep = ($dependencia !== null && $dependencia !== '') ? $dependencia : ($cfg['dependencia'] ?? '');
         if ($dep !== '') {
             $filters[] = ['field' => 'nombredependencia', 'operator' => '=', 'value' => $dep];
@@ -1309,9 +1335,13 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view = $this->db->get_view_name();
+        // v5.9.0: vigencia por año de firma; la dependencia se compara contra la
+        // expresión etiquetada para que "No Registra SYSMAN" encuentre los contratos
+        // con dependencia NULL (sin cruce Sysman).
+        $dep_expr = $this->sysman_label_expr('nombredependencia');
         $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
                        fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_a_contratar
-                FROM `{$view}` WHERE anio = %d AND nombredependencia = %s
+                FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d AND {$dep_expr} = %s
                 GROUP BY numero_del_contrato
                 ORDER BY valor_contrato DESC LIMIT %d";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
@@ -1332,9 +1362,13 @@ final class Tracking
         $view = $this->db->get_view_name();
         $cols = $this->db->get_table_columns($view);
         if (!isset($cols[$column])) return [];
+        // v5.9.0: vigencia por año de firma; el valor de la dimensión se compara contra
+        // la expresión etiquetada (para que "No Registra SYSMAN" / el contratista del
+        // SECOP localicen los contratos sin cruce Sysman).
+        $col_expr = $this->sysman_label_expr($column);
         $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
                        fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_a_contratar
-                FROM `{$view}` WHERE anio = %d AND `{$column}` = %s
+                FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d AND {$col_expr} = %s
                 GROUP BY numero_del_contrato ORDER BY valor_contrato DESC LIMIT %d";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, $this->current_vigencia(), $value, $limit), ARRAY_A);
@@ -1400,20 +1434,22 @@ final class Tracking
 
         $view = $this->db->get_view_name();
 
-        // WHERE de la subconsulta deduplicadora (año + dependencia opcional).
-        $where  = ['anio = %d'];
+        // WHERE de la subconsulta deduplicadora (año de firma + dependencia opcional).
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
         $params = [$this->current_vigencia()];
         if ($dep !== null) {
-            $where[]  = 'nombredependencia = %s';
+            $where[]  = $this->sysman_label_expr('nombredependencia') . ' = %s';
             $params[] = $dep;
         }
         $where_sql = implode(' AND ', $where);
 
         // Subconsulta: un registro por contrato (MAX por columna textual para
         // colapsar las múltiples filas presupuestales de un mismo contrato).
+        // v5.9.0: las columnas de dependencia/tercero se etiquetan vía COALESCE para
+        // que los contratos sin cruce Sysman tengan un nodo nombrado en la red.
         $sub = "SELECT numero_del_contrato,
-                       MAX(nombredependencia)         AS nombredependencia,
-                       MAX(nombretercero)             AS nombretercero,
+                       MAX(" . $this->sysman_label_expr('nombredependencia') . ") AS nombredependencia,
+                       MAX(" . $this->sysman_label_expr('nombretercero') . ")     AS nombretercero,
                        MAX(tipo_de_contrato)          AS tipo_de_contrato,
                        MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
                        MAX(valor_contrato)            AS valor_contrato
@@ -1650,9 +1686,12 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view = $this->db->get_view_name();
+        // v5.9.0: valores distintos de la dependencia etiquetada (incluye "No Registra
+        // SYSMAN" para los contratos sin cruce Sysman) en la vigencia (año de firma).
+        $dep_expr = $this->sysman_label_expr('nombredependencia');
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $result = $wpdb->get_col($wpdb->prepare(
-            "SELECT DISTINCT nombredependencia FROM `{$view}` WHERE anio = %d AND nombredependencia <> '' ORDER BY nombredependencia",
+            "SELECT DISTINCT {$dep_expr} AS d FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d ORDER BY d",
             $this->current_vigencia()
         )) ?: [];
 
@@ -1743,12 +1782,13 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view = $this->db->get_view_name();
+        $dep_expr = $this->sysman_label_expr('nombredependencia');
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT modalidad_de_contratacion AS label,
                     COUNT(DISTINCT numero_del_contrato) AS conteo,
                     SUM(valor_contrato) AS valor
-             FROM `{$view}` WHERE anio = %d AND nombredependencia = %s
+             FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d AND {$dep_expr} = %s
              GROUP BY modalidad_de_contratacion ORDER BY valor DESC",
             $this->current_vigencia(), $dep
         ), ARRAY_A);
@@ -1788,7 +1828,7 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view = $this->db->get_view_name();
-        $where  = ['anio = %d', 'nombredependencia = %s'];
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d', $this->sysman_label_expr('nombredependencia') . ' = %s'];
         $params = [$this->current_vigencia(), $dep];
         if ($modalidad !== null && $modalidad !== '') {
             $where[]  = 'modalidad_de_contratacion = %s';
@@ -1797,9 +1837,10 @@ final class Tracking
         $where_sql = implode(' AND ', $where);
 
         // Un registro por contrato (MAX por columna textual). Sólo columnas de la
-        // vista; ningún nombre de columna proviene del usuario.
+        // vista; ningún nombre de columna proviene del usuario. v5.9.0: el nombre del
+        // contratista cae al del SECOP cuando Sysman no tiene cruce (LEFT JOIN → NULL).
         $sql = "SELECT numero_del_contrato,
-                       MAX(nombretercero)             AS nombretercero,
+                       MAX(" . $this->sysman_label_expr('nombretercero') . ") AS nombretercero,
                        MAX(valor_contrato)            AS valor_contrato,
                        MAX(fecha_inicio_ejecucion)    AS fecha_inicio_ejecucion,
                        MAX(fecha_fin_ejecucion)       AS fecha_fin_ejecucion,
@@ -1954,7 +1995,9 @@ final class Tracking
         foreach ($map as $key => $col) {
             $val = isset($filtros[$key]) ? sanitize_text_field((string) $filtros[$key]) : '';
             if ($val === '') continue;
-            $where[]  = "`{$col}` = %s";
+            // v5.9.0: compara contra la expresión etiquetada (COALESCE) para que el
+            // filtro "No Registra SYSMAN" alcance los contratos con dependencia NULL.
+            $where[]  = $this->sysman_label_expr($col) . " = %s";
             $params[] = $val;
         }
         return [implode(' AND ', $where), $params];
@@ -1985,7 +2028,7 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view   = $this->db->get_view_name();
-        $where  = ['anio = %d'];
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
         $params = [$this->current_vigencia()];
         if ($where_extra !== '') {
             $where[] = $where_extra;
@@ -1993,11 +2036,14 @@ final class Tracking
         }
         $where_sql = implode(' AND ', $where);
 
-        $sql = "SELECT `{$column}` AS label,
+        // v5.9.0: agrupa por la columna etiquetada (COALESCE) → los contratos sin cruce
+        // Sysman caen bajo "No Registra SYSMAN" (dependencia) o el contratista del SECOP.
+        $label_expr = $this->sysman_label_expr($column);
+        $sql = "SELECT {$label_expr} AS label,
                        SUM(valor_contrato) AS valor,
                        COUNT(DISTINCT numero_del_contrato) AS conteo
                 FROM `{$view}` WHERE {$where_sql}
-                GROUP BY `{$column}` ORDER BY valor DESC";
+                GROUP BY {$label_expr} ORDER BY valor DESC";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
 
@@ -2037,7 +2083,7 @@ final class Tracking
         if (is_array($cached)) return $cached;
 
         $view   = $this->db->get_view_name();
-        $where  = ['anio = %d'];
+        $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
         $params = [$this->current_vigencia()];
         if ($where_extra !== '') {
             $where[] = $where_extra;
@@ -2046,9 +2092,10 @@ final class Tracking
         $where_sql = implode(' AND ', $where);
 
         // Un registro por contrato (MAX por columna textual). Ningún nombre de
-        // columna proviene del usuario.
+        // columna proviene del usuario. v5.9.0: el nombre del contratista cae al del
+        // SECOP cuando Sysman no tiene cruce (LEFT JOIN → NULL).
         $sql = "SELECT numero_del_contrato,
-                       MAX(nombretercero)             AS nombretercero,
+                       MAX(" . $this->sysman_label_expr('nombretercero') . ") AS nombretercero,
                        MAX(valor_contrato)            AS valor_contrato,
                        MAX(fecha_inicio_ejecucion)    AS fecha_inicio_ejecucion,
                        MAX(fecha_fin_ejecucion)       AS fecha_fin_ejecucion,
