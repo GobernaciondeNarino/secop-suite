@@ -590,6 +590,22 @@ final class Visualizer
     }
 
     /**
+     * Ejecuta la query de la gráfica SIN caché y devuelve los datos junto con
+     * el SQL realmente ejecutado (vía $wpdb->last_query). Reutiliza exactamente
+     * el mismo constructor de query (build_chart_query), de modo que el SQL
+     * mostrado es el real. Pensado para la vista previa en vivo del editor.
+     *
+     * @param array $config Configuración de gráfica (formato _secop_chart_config).
+     * @return array{data: array, sql: string}
+     */
+    public function get_chart_data_with_sql(array $config): array
+    {
+        global $wpdb;
+        $data = $this->build_chart_query($config); // private, misma clase — OK llamarla
+        return ['data' => $data, 'sql' => $wpdb->last_query];
+    }
+
+    /**
      * Construir y ejecutar la query para datos de gráfica.
      */
     private function build_chart_query(array $config): array

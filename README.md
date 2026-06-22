@@ -69,6 +69,12 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.1.6 — Vista previa EN VIVO del editor de Contratación
+- **Vista previa en vivo**: el metabox de vista previa de la card ya no renderiza el shortcode guardado; ahora reacciona al instante a los cambios del formulario (tipo de gráfica, colores, dimensión, métrica, orden, dependencia y límite) mediante un endpoint AJAX admin (`secop_dep_preview`, protegido con nonce + capacidad `edit_posts`). La gráfica se redibuja reutilizando el motor del Visualizer expuesto como `window.SSChartRender` en `frontend.js` (sin cambiar el comportamiento de `[secop_chart]`/`[secop_dep_chart]`).
+- **Sección de Datos**: tabla con las filas devueltas por la consulta (`x_value`, `y_value`, `group_value`), construida con `.text()` por celda (sin `innerHTML` de valores de BD).
+- **Sección de Consulta SQL generada**: muestra el SQL realmente ejecutado, obtenido SIN caché vía `Visualizer::get_chart_data_with_sql()` (`$wpdb->last_query`), reutilizando exactamente el mismo `build_chart_query`.
+- **Campo «Límite de filas»**: nuevo control `dep_limit` (persistido en la config de la card) para acotar el número de categorías mostradas.
+
 ### v5.1.5 — Editor avanzado de Contratación (Fase 2)
 - **Dimensiones ampliadas**: además de dependencia, tipo de contrato y modalidad, el módulo de Contratación ahora permite agrupar por **estado del proceso**, **tipo de documento del proveedor**, **programa presupuestal**, **rubro presupuestal** y **contratista**. El desplegable de dimensión muestra etiquetas amigables.
 - **Métricas configurables**: nuevo selector de métrica con **Valor ejecutado** (`SUM(valordebito)`), **Saldo por ejecutar** (`SUM(saldoporejecutaresp)`), **Nº de contratos** (`COUNT(DISTINCT numero_del_contrato)`) y **Nº de registros** (`COUNT(numero_de_proceso)`). `valor_contrato` se omite a propósito porque se duplica por fila.

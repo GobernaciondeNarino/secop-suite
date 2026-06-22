@@ -41,6 +41,14 @@
     </td>
   </tr>
   <tr>
+    <th><label for="dep_limit"><?php esc_html_e('Límite de filas', 'secop-suite'); ?></label></th>
+    <td>
+      <input type="number" name="dep_limit" id="dep_limit" min="0" step="1"
+        value="<?php echo esc_attr((string) (int) ($config['limit'] ?? 0)); ?>" class="small-text">
+      <p class="description"><?php esc_html_e('Número máximo de categorías a mostrar. 0 = sin límite (por defecto se aplican 50, excepto en «Mensual»).', 'secop-suite'); ?></p>
+    </td>
+  </tr>
+  <tr>
     <th><label for="dep_chart_type"><?php esc_html_e('Tipo de gráfica', 'secop-suite'); ?></label></th>
     <td>
       <select name="dep_chart_type" id="dep_chart_type">

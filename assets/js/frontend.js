@@ -54,6 +54,197 @@
     }
 
     /**
+     * Standalone chart renderer (module-level, reusable).
+     *
+     * Contains the data-mapping logic plus the d3plus chart-creation switch,
+     * so the same engine can render both the AJAX-by-id frontend charts and
+     * inline-data previews (e.g. the Contratación card editor live preview).
+     *
+     * @param {string} renderTarget CSS selector of the container to render into.
+     * @param {string} chartType    Chart type (bar, line, pie, …).
+     * @param {Array}  rows         Array of {x_value, y_value, group_value} objects.
+     * @param {Object} config       Chart config (colors, numberFormat, showLegend, …).
+     * @returns {Object|null} The d3plus chart instance, or null if there is no data.
+     */
+    function renderChartInto(renderTarget, chartType, rows, config) {
+        config = config || {};
+        if (!rows || rows.length === 0) {
+            return null;
+        }
+
+        const colors = config.colors || ['#844e80', '#ff7300', '#ffc53b', '#3eba6a', '#0080c3'];
+        const numberFormat = config.numberFormat || 'colombiano';
+        const isMultiY = config.multiY || false;
+
+        // Prepare data — force x to string so d3plus won't parse years as dates
+        const chartData = rows.map(function(d) {
+            var xVal = (d.x_value !== null && d.x_value !== undefined) ? String(d.x_value) : '';
+            return { x: xVal, y: parseFloat(d.y_value) || 0, group: d.group_value || xVal };
+        });
+
+        if (isMultiY) config.showLegend = true;
+
+        const groups = [...new Set(chartData.map(function(d) { return d.group; }))];
+        const colorScale = d3.scaleOrdinal().domain(groups).range(colors);
+
+        const tooltipConfig = {
+            tbody: [
+                [config.xAxisTitle || 'Categoría', function(d) { return d.x; }],
+                [config.yAxisTitle || 'Valor', function(d) { return NumberFormatter.fullFormat(d.y); }]
+            ]
+        };
+        const yConfig = {
+            title: config.yAxisTitle || 'Valor',
+            tickFormat: function(d) { return NumberFormatter.format(d, numberFormat); }
+        };
+        const showLegend = config.showLegend || false;
+        const legendPosition = config.legendPosition || 'bottom';
+        const legendMode = config.legendMode || 'text';
+
+        const chart = createChartInstance(chartType, chartData, renderTarget, colorScale, tooltipConfig, yConfig, showLegend, config);
+
+        if (chart) {
+            // Apply legend position and mode
+            if (showLegend && typeof chart.legendPosition === 'function') {
+                chart.legendPosition(legendPosition);
+            }
+            if (showLegend && legendMode === 'icon' && typeof chart.legendConfig === 'function') {
+                chart.legendConfig({ label: function() { return ''; } });
+            }
+            chart.render();
+        }
+        return chart;
+    }
+
+    /**
+     * d3plus chart-creation switch (module-level).
+     * Moved verbatim from ChartManager._createChart so it can be reused by
+     * renderChartInto() and by the ChartManager instance method.
+     */
+    function createChartInstance(type, data, target, colorScale, tooltipConfig, yConfig, legend, config) {
+        var Cls;
+
+        switch (type) {
+            case 'bar':
+            case 'stacked_bar':
+            case 'grouped_bar':
+                Cls = getD3PlusClass('BarChart');
+                if (!Cls) throw new Error('d3plus.BarChart not available');
+                var chart = new Cls()
+                    .data(data).groupBy('group').x('x').y('y')
+                    .select(target)
+                    .color(function(d) { return colorScale(d.group || d.x); })
+                    .tooltipConfig(tooltipConfig).yConfig(yConfig)
+                    .legend(legend).locale('es_ES');
+                if (type === 'stacked_bar') chart.stacked(true);
+                if (type === 'grouped_bar') chart.stacked(false).barPadding(2).groupPadding(10);
+                if (config.showTimeline && typeof chart.time === 'function') {
+                    chart.time('x');
+                    if (typeof chart.timeline === 'function') chart.timeline(true);
+                }
+                return chart;
+
+            case 'line':
+                Cls = getD3PlusClass('LinePlot');
+                if (!Cls) throw new Error('d3plus.LinePlot not available');
+                var lc = new Cls()
+                    .data(data).groupBy('group').x('x').y('y')
+                    .select(target)
+                    .color(function(d) { return colorScale(d.group); })
+                    .tooltipConfig(tooltipConfig).yConfig(yConfig)
+                    .legend(legend).locale('es_ES');
+                if (config.showTimeline && typeof lc.time === 'function') {
+                    lc.time('x');
+                    if (typeof lc.timeline === 'function') lc.timeline(true);
+                }
+                return lc;
+
+            case 'area':
+                Cls = getD3PlusClass('AreaPlot') || getD3PlusClass('StackedArea');
+                if (!Cls) throw new Error('d3plus.AreaPlot not available');
+                return new Cls()
+                    .data(data).groupBy('group').x('x').y('y')
+                    .select(target)
+                    .color(function(d) { return colorScale(d.group); })
+                    .tooltipConfig(tooltipConfig).yConfig(yConfig)
+                    .legend(legend).locale('es_ES');
+
+            case 'pie':
+                Cls = getD3PlusClass('Pie');
+                if (!Cls) throw new Error('d3plus.Pie not available');
+                return new Cls()
+                    .data(data).groupBy('x').value('y')
+                    .select(target)
+                    .color(function(d) { return colorScale(d.x); })
+                    .tooltipConfig(tooltipConfig)
+                    .legend(true).locale('es_ES');
+
+            case 'donut':
+                Cls = getD3PlusClass('Donut');
+                if (!Cls) throw new Error('d3plus.Donut not available');
+                return new Cls()
+                    .data(data).groupBy('x').value('y')
+                    .select(target)
+                    .color(function(d) { return colorScale(d.x); })
+                    .tooltipConfig(tooltipConfig)
+                    .legend(true).locale('es_ES');
+
+            case 'treemap':
+                Cls = getD3PlusClass('Treemap');
+                if (!Cls) throw new Error('d3plus.Treemap not available');
+                return new Cls()
+                    .data(data).groupBy('x').sum('y')
+                    .select(target)
+                    .color(function(d) { return colorScale(d.x); })
+                    .tooltipConfig(tooltipConfig).locale('es_ES');
+
+            case 'tree':
+                Cls = getD3PlusClass('Tree');
+                if (!Cls) throw new Error('d3plus.Tree not available');
+                var treeData = data.map(function(d) { return { id: d.x, value: d.y, parent: d.group !== d.x ? d.group : null }; });
+                var ids = treeData.map(function(d) { return d.id; });
+                var parents = [...new Set(treeData.filter(function(d) { return d.parent; }).map(function(d) { return d.parent; }))];
+                parents.forEach(function(p) { if (ids.indexOf(p) === -1) treeData.push({ id: p, value: 0, parent: null }); });
+                return new Cls().data(treeData).groupBy('id').select(target)
+                    .color(function(d) { return colorScale(d.id); })
+                    .legend(legend).locale('es_ES');
+
+            case 'pack':
+                Cls = getD3PlusClass('Pack');
+                if (!Cls) throw new Error('d3plus.Pack not available');
+                var packData = data.map(function(d) { return { id: d.x, value: d.y, group: d.group }; });
+                return new Cls().data(packData).groupBy('id').sum('value')
+                    .select(target)
+                    .color(function(d) { return colorScale(d.group || d.id); })
+                    .legend(legend).locale('es_ES');
+
+            case 'network':
+                Cls = getD3PlusClass('Network');
+                if (!Cls) throw new Error('d3plus.Network not available');
+                var nodes = [], links = [], nodeIds = {};
+                data.forEach(function(d) {
+                    if (!nodeIds[d.x]) { nodeIds[d.x] = true; nodes.push({ id: d.x, value: d.y }); }
+                    if (d.group && d.group !== d.x) {
+                        if (!nodeIds[d.group]) { nodeIds[d.group] = true; nodes.push({ id: d.group, value: 0 }); }
+                        links.push({ source: d.group, target: d.x });
+                    }
+                });
+                return new Cls().data(nodes).links(links).groupBy('id')
+                    .select(target)
+                    .color(function(d) { return colorScale(d.id); })
+                    .locale('es_ES');
+
+            default:
+                Cls = getD3PlusClass('BarChart');
+                if (!Cls) throw new Error('d3plus library not loaded');
+                return new Cls().data(data).groupBy('x').x('x').y('y')
+                    .select(target)
+                    .color(function(d) { return colorScale(d.x); })
+                    .tooltipConfig(tooltipConfig).yConfig(yConfig).locale('es_ES');
+        }
+    }
+
+    /**
      * Chart Manager
      */
     class ChartManager {
@@ -140,38 +331,9 @@
             }
 
             const renderTarget = '#' + this.uniqueId + '-render';
-            const config = this.config;
-            const colors = config.colors || ['#844e80', '#ff7300', '#ffc53b', '#3eba6a', '#0080c3'];
-            const numberFormat = config.numberFormat || 'colombiano';
-            const isMultiY = config.multiY || false;
-
-            // Prepare data — force x to string so d3plus won't parse years as dates
-            const chartData = this.data.map(function(d) {
-                var xVal = (d.x_value !== null && d.x_value !== undefined) ? String(d.x_value) : '';
-                return { x: xVal, y: parseFloat(d.y_value) || 0, group: d.group_value || xVal };
-            });
-
-            if (isMultiY) config.showLegend = true;
-
-            const groups = [...new Set(chartData.map(function(d) { return d.group; }))];
-            const colorScale = d3.scaleOrdinal().domain(groups).range(colors);
-
-            const tooltipConfig = {
-                tbody: [
-                    [config.xAxisTitle || 'Categoría', function(d) { return d.x; }],
-                    [config.yAxisTitle || 'Valor', function(d) { return NumberFormatter.fullFormat(d.y); }]
-                ]
-            };
-            const yConfig = {
-                title: config.yAxisTitle || 'Valor',
-                tickFormat: function(d) { return NumberFormatter.format(d, numberFormat); }
-            };
-            const showLegend = config.showLegend || false;
-            const legendPosition = config.legendPosition || 'bottom';
-            const legendMode = config.legendMode || 'text';
 
             try {
-                this.chart = this._createChart(this.chartType, chartData, renderTarget, colorScale, tooltipConfig, yConfig, showLegend, config);
+                this.chart = renderChartInto(renderTarget, this.chartType, this.data, this.config);
             } catch (e) {
                 console.error('SECOP Chart render error:', e);
                 this.showError('Error: ' + e.message);
@@ -179,138 +341,7 @@
             }
 
             if (this.chart) {
-                // Apply legend position and mode
-                if (showLegend && typeof this.chart.legendPosition === 'function') {
-                    this.chart.legendPosition(legendPosition);
-                }
-                if (showLegend && legendMode === 'icon' && typeof this.chart.legendConfig === 'function') {
-                    this.chart.legendConfig({ label: function() { return ''; } });
-                }
-                this.chart.render();
                 this._waitForRender(renderTarget);
-            }
-        }
-
-        _createChart(type, data, target, colorScale, tooltipConfig, yConfig, legend, config) {
-            var Cls;
-
-            switch (type) {
-                case 'bar':
-                case 'stacked_bar':
-                case 'grouped_bar':
-                    Cls = getD3PlusClass('BarChart');
-                    if (!Cls) throw new Error('d3plus.BarChart not available');
-                    var chart = new Cls()
-                        .data(data).groupBy('group').x('x').y('y')
-                        .select(target)
-                        .color(function(d) { return colorScale(d.group || d.x); })
-                        .tooltipConfig(tooltipConfig).yConfig(yConfig)
-                        .legend(legend).locale('es_ES');
-                    if (type === 'stacked_bar') chart.stacked(true);
-                    if (type === 'grouped_bar') chart.stacked(false).barPadding(2).groupPadding(10);
-                    if (config.showTimeline && typeof chart.time === 'function') {
-                        chart.time('x');
-                        if (typeof chart.timeline === 'function') chart.timeline(true);
-                    }
-                    return chart;
-
-                case 'line':
-                    Cls = getD3PlusClass('LinePlot');
-                    if (!Cls) throw new Error('d3plus.LinePlot not available');
-                    var lc = new Cls()
-                        .data(data).groupBy('group').x('x').y('y')
-                        .select(target)
-                        .color(function(d) { return colorScale(d.group); })
-                        .tooltipConfig(tooltipConfig).yConfig(yConfig)
-                        .legend(legend).locale('es_ES');
-                    if (config.showTimeline && typeof lc.time === 'function') {
-                        lc.time('x');
-                        if (typeof lc.timeline === 'function') lc.timeline(true);
-                    }
-                    return lc;
-
-                case 'area':
-                    Cls = getD3PlusClass('AreaPlot') || getD3PlusClass('StackedArea');
-                    if (!Cls) throw new Error('d3plus.AreaPlot not available');
-                    return new Cls()
-                        .data(data).groupBy('group').x('x').y('y')
-                        .select(target)
-                        .color(function(d) { return colorScale(d.group); })
-                        .tooltipConfig(tooltipConfig).yConfig(yConfig)
-                        .legend(legend).locale('es_ES');
-
-                case 'pie':
-                    Cls = getD3PlusClass('Pie');
-                    if (!Cls) throw new Error('d3plus.Pie not available');
-                    return new Cls()
-                        .data(data).groupBy('x').value('y')
-                        .select(target)
-                        .color(function(d) { return colorScale(d.x); })
-                        .tooltipConfig(tooltipConfig)
-                        .legend(true).locale('es_ES');
-
-                case 'donut':
-                    Cls = getD3PlusClass('Donut');
-                    if (!Cls) throw new Error('d3plus.Donut not available');
-                    return new Cls()
-                        .data(data).groupBy('x').value('y')
-                        .select(target)
-                        .color(function(d) { return colorScale(d.x); })
-                        .tooltipConfig(tooltipConfig)
-                        .legend(true).locale('es_ES');
-
-                case 'treemap':
-                    Cls = getD3PlusClass('Treemap');
-                    if (!Cls) throw new Error('d3plus.Treemap not available');
-                    return new Cls()
-                        .data(data).groupBy('x').sum('y')
-                        .select(target)
-                        .color(function(d) { return colorScale(d.x); })
-                        .tooltipConfig(tooltipConfig).locale('es_ES');
-
-                case 'tree':
-                    Cls = getD3PlusClass('Tree');
-                    if (!Cls) throw new Error('d3plus.Tree not available');
-                    var treeData = data.map(function(d) { return { id: d.x, value: d.y, parent: d.group !== d.x ? d.group : null }; });
-                    var ids = treeData.map(function(d) { return d.id; });
-                    var parents = [...new Set(treeData.filter(function(d) { return d.parent; }).map(function(d) { return d.parent; }))];
-                    parents.forEach(function(p) { if (ids.indexOf(p) === -1) treeData.push({ id: p, value: 0, parent: null }); });
-                    return new Cls().data(treeData).groupBy('id').select(target)
-                        .color(function(d) { return colorScale(d.id); })
-                        .legend(legend).locale('es_ES');
-
-                case 'pack':
-                    Cls = getD3PlusClass('Pack');
-                    if (!Cls) throw new Error('d3plus.Pack not available');
-                    var packData = data.map(function(d) { return { id: d.x, value: d.y, group: d.group }; });
-                    return new Cls().data(packData).groupBy('id').sum('value')
-                        .select(target)
-                        .color(function(d) { return colorScale(d.group || d.id); })
-                        .legend(legend).locale('es_ES');
-
-                case 'network':
-                    Cls = getD3PlusClass('Network');
-                    if (!Cls) throw new Error('d3plus.Network not available');
-                    var nodes = [], links = [], nodeIds = {};
-                    data.forEach(function(d) {
-                        if (!nodeIds[d.x]) { nodeIds[d.x] = true; nodes.push({ id: d.x, value: d.y }); }
-                        if (d.group && d.group !== d.x) {
-                            if (!nodeIds[d.group]) { nodeIds[d.group] = true; nodes.push({ id: d.group, value: 0 }); }
-                            links.push({ source: d.group, target: d.x });
-                        }
-                    });
-                    return new Cls().data(nodes).links(links).groupBy('id')
-                        .select(target)
-                        .color(function(d) { return colorScale(d.id); })
-                        .locale('es_ES');
-
-                default:
-                    Cls = getD3PlusClass('BarChart');
-                    if (!Cls) throw new Error('d3plus library not loaded');
-                    return new Cls().data(data).groupBy('x').x('x').y('y')
-                        .select(target)
-                        .color(function(d) { return colorScale(d.x); })
-                        .tooltipConfig(tooltipConfig).yConfig(yConfig).locale('es_ES');
             }
         }
 
@@ -416,5 +447,6 @@
 
     window.SSChartManager = ChartManager;
     window.SSNumberFormatter = NumberFormatter;
+    window.SSChartRender = renderChartInto;
 
 })(jQuery);
