@@ -111,6 +111,15 @@ $dep_toolbar_options = [
 $dep_sel_toolbar = (!empty($config['toolbar_options']) && is_array($config['toolbar_options']))
     ? $config['toolbar_options']
     : ['share', 'data', 'image', 'download'];
+// v5.3.2: campos del tooltip (categoría / valor / nº de contratos).
+$dep_tooltip_options = [
+    'categoria' => __('Categoría', 'secop-suite'),
+    'valor'     => __('Valor', 'secop-suite'),
+    'conteo'    => __('Nº de contratos', 'secop-suite'),
+];
+$dep_sel_tooltip = (!empty($config['tooltip_fields']) && is_array($config['tooltip_fields']))
+    ? $config['tooltip_fields']
+    : ['categoria', 'valor'];
 ?>
 <table class="form-table">
   <tr>
@@ -191,6 +200,21 @@ $dep_sel_toolbar = (!empty($config['toolbar_options']) && is_array($config['tool
           </label>
         <?php endforeach; ?>
       </p>
+    </td>
+  </tr>
+  <tr>
+    <th><?php esc_html_e('Campos del tooltip', 'secop-suite'); ?></th>
+    <td>
+      <p style="margin:0 0 4px;">
+        <?php foreach ($dep_tooltip_options as $opt => $label) : ?>
+          <label style="margin-right:14px; display:inline-block;">
+            <input type="checkbox" name="dep_tooltip_fields[]" value="<?php echo esc_attr($opt); ?>"
+              <?php checked(in_array($opt, $dep_sel_tooltip, true)); ?>>
+            <?php echo esc_html($label); ?>
+          </label>
+        <?php endforeach; ?>
+      </p>
+      <p class="description"><?php esc_html_e('Datos que aparecen al pasar el cursor sobre cada barra/sección. «Nº de contratos» muestra los contratos distintos de la categoría.', 'secop-suite'); ?></p>
     </td>
   </tr>
 </table>

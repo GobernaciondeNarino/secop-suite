@@ -32,7 +32,9 @@
         legendMode:     '[name="dep_legend_mode"]',
         legendPosition: '[name="dep_legend_position"]',
         showToolbar:    '[name="dep_show_toolbar"]',
-        toolbarOptions: '[name="dep_toolbar_options"]'
+        toolbarOptions: '[name="dep_toolbar_options"]',
+        // v5.3.2: campos del tooltip.
+        tooltipFields:  '[name="dep_tooltip_fields"]'
     };
 
     /**
@@ -50,6 +52,8 @@
             yAxisTitle:     cfg.y_axis_title || '',
             xAxisTitle:     cfg.x_axis_title || '',
             numberFormat:   cfg.number_format || 'colombiano',
+            // v5.3.2: campos del tooltip (array desde PHP) → se pasa tal cual.
+            tooltipFields:  (cfg.tooltip_fields && cfg.tooltip_fields.length) ? cfg.tooltip_fields : ['categoria', 'valor'],
             multiY:         !!(cfg.y_fields && cfg.y_fields.length)
         };
     }
@@ -74,6 +78,10 @@
             legend_position: $(SEL.legendPosition).val() || 'bottom',
             show_toolbar:    $(SEL.showToolbar).is(':checked') ? '1' : '0',
             toolbar_options: $(SEL.toolbarOptions + ':checked').map(function () {
+                return this.value;
+            }).get().join(','),
+            // v5.3.2: campos del tooltip (lista separada por comas).
+            tooltip_fields: $(SEL.tooltipFields + ':checked').map(function () {
                 return this.value;
             }).get().join(','),
             // v5.3.1: filtros configurables (columna/operador/valor). Se envían como
@@ -222,7 +230,7 @@
             SEL.order, SEL.orderDir, SEL.colors, SEL.limit,
             SEL.numberFormat, SEL.chartHeight, SEL.xTitle, SEL.yTitle,
             SEL.showLegend, SEL.legendMode, SEL.legendPosition,
-            SEL.showToolbar, SEL.toolbarOptions
+            SEL.showToolbar, SEL.toolbarOptions, SEL.tooltipFields
         ].join(', ');
         $(document).on('change', watch, debouncedRefresh);
 

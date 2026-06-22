@@ -385,6 +385,8 @@ final class Tracking
                     : explode(',', sanitize_text_field(wp_unslash($_POST['toolbar_options'] ?? '')))),
                 ['detail', 'share', 'data', 'image', 'download']
             )),
+            // v5.3.2: campos del tooltip (array o cadena separada por comas).
+            'tooltip_fields'  => $this->sanitize_tooltip_fields(wp_unslash($_POST['tooltip_fields'] ?? ['categoria', 'valor'])),
             // v5.3.1: filtros configurables enviados por la vista previa.
             'filters'         => $this->sanitize_filter_rows($_POST['filters'] ?? []),
         ];
@@ -452,6 +454,8 @@ final class Tracking
             'legend_position' => in_array($_POST['dep_legend_position'] ?? '', ['bottom', 'top', 'left', 'right'], true) ? $_POST['dep_legend_position'] : 'bottom',
             'show_toolbar'    => isset($_POST['dep_show_toolbar']),
             'toolbar_options' => array_values(array_intersect((array) ($_POST['dep_toolbar_options'] ?? []), ['detail', 'share', 'data', 'image', 'download'])),
+            // v5.3.2: campos del tooltip (categoría / valor / nº de contratos).
+            'tooltip_fields'  => $this->sanitize_tooltip_fields($_POST['dep_tooltip_fields'] ?? ['categoria', 'valor']),
             // v5.3.1: filtros configurables (columna/operador/valor).
             // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce verificado arriba.
             'filters'         => $this->sanitize_filter_rows($_POST['dep_filters'] ?? []),
@@ -486,6 +490,30 @@ final class Tracking
             $clean[] = ['field' => $field, 'operator' => $op, 'value' => $val];
         }
         return array_values($clean);
+    }
+
+    /**
+     * v5.3.2: Sanea los campos del tooltip provenientes del formulario, de la
+     * vista previa AJAX o del atributo del shortcode. Acepta un array o una
+     * cadena separada por comas. Devuelve un subconjunto validado de
+     * ['categoria','valor','conteo']; por defecto ['categoria','valor'].
+     *
+     * @param mixed $raw Array o string (lista separada por comas).
+     * @return array<int,string>
+     */
+    private function sanitize_tooltip_fields($raw): array
+    {
+        if (is_string($raw)) {
+            $raw = explode(',', $raw);
+        }
+        if (!is_array($raw)) {
+            $raw = [];
+        }
+        $clean = array_values(array_intersect(
+            array_map(static fn($v) => sanitize_text_field((string) $v), $raw),
+            ['categoria', 'valor', 'conteo']
+        ));
+        return empty($clean) ? ['categoria', 'valor'] : $clean;
     }
 
     public function enqueue_admin_assets(string $hook): void
@@ -573,6 +601,11 @@ final class Tracking
         $default_palette = ['#844e80', '#ff7300', '#ffc53b', '#3eba6a', '#0080c3', '#e74c3c', '#9b59b6', '#1abc9c'];
         $colors = (!empty($cfg['colors']) && is_array($cfg['colors'])) ? $cfg['colors'] : $default_palette;
 
+        // v5.3.2: campos del tooltip configurables (categoría / valor / nº de contratos).
+        // Subconjunto validado; por defecto categoría + valor (comportamiento previo).
+        $tf = array_values(array_intersect((array) ($cfg['tooltip_fields'] ?? ['categoria', 'valor']), ['categoria', 'valor', 'conteo']));
+        if (empty($tf)) $tf = ['categoria', 'valor'];
+
         $filters = [['field' => 'anio', 'operator' => '=', 'value' => (string) $this->current_vigencia()]];
         $dep = ($dependencia !== null && $dependencia !== '') ? $dependencia : ($cfg['dependencia'] ?? '');
         if ($dep !== '') {
@@ -618,6 +651,10 @@ final class Tracking
             'y_axis_title'    => isset($cfg['y_axis_title']) ? (string) $cfg['y_axis_title'] : '',
             'x_axis_title'    => isset($cfg['x_axis_title']) ? (string) $cfg['x_axis_title'] : '',
             'number_format'   => in_array($cfg['number_format'] ?? '', ['colombiano', 'millones', 'internacional', 'sin_formato'], true) ? $cfg['number_format'] : 'colombiano',
+            // v5.3.2: tooltip configurable. tooltip_count activa la columna de conteo
+            // en build_chart_query solo cuando se pide «conteo».
+            'tooltip_fields'  => $tf,
+            'tooltip_count'   => in_array('conteo', $tf, true),
             'custom_query'    => '',
         ];
     }
@@ -902,6 +939,12 @@ final class Tracking
             $toolbar_options = $parsed; // permitir vaciar la barra explícitamente.
         }
 
+        // v5.3.2: campos del tooltip. Override sólo si se proporciona el atributo.
+        $tooltip_fields = $this->sanitize_tooltip_fields($base['tooltip_fields'] ?? ['categoria', 'valor']);
+        if (isset($atts['tooltip']) && $atts['tooltip'] !== '') {
+            $tooltip_fields = $this->sanitize_tooltip_fields(strtolower(sanitize_text_field($atts['tooltip'])));
+        }
+
         return [
             'dimension'   => $dimension,
             'chart_type'  => $type,
@@ -921,6 +964,8 @@ final class Tracking
             'legend_position' => $legend_position,
             'show_toolbar'    => $show_toolbar,
             'toolbar_options' => $toolbar_options,
+            // v5.3.2: campos del tooltip.
+            'tooltip_fields'  => $tooltip_fields,
         ];
     }
 
@@ -936,6 +981,8 @@ final class Tracking
                 // v5.3.0: personalización del gráfico (mirror del editor).
                 'numberformat' => '', 'xtitle' => '', 'ytitle' => '',
                 'legendmode' => '', 'legendpos' => '', 'toolbar' => '', 'toolbaropts' => '',
+                // v5.3.2: campos del tooltip (lista separada por comas: categoria,valor,conteo).
+                'tooltip' => '',
                 // v5.1.9: click-to-drill (popup con contratos de la categoría).
                 'drill' => '',
             ],
@@ -969,7 +1016,7 @@ final class Tracking
         // render the canonical card/preset post directly (no hash post created).
         // Keeps existing [secop_dep_chart card=N] / preset=x cheap and clutter-free.
         $override_atts = ['tipo', 'metric', 'order', 'orderdir', 'limit', 'colors', 'dependencia', 'legend',
-            'numberformat', 'xtitle', 'ytitle', 'legendmode', 'legendpos', 'toolbar', 'toolbaropts'];
+            'numberformat', 'xtitle', 'ytitle', 'legendmode', 'legendpos', 'toolbar', 'toolbaropts', 'tooltip'];
         $has_override  = false;
         foreach ($override_atts as $k) {
             if (isset($atts[$k]) && $atts[$k] !== '') { $has_override = true; break; }

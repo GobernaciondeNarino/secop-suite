@@ -69,6 +69,9 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.3.2 — Tooltip configurable en Contratación
+- Tooltip configurable: elegir qué se muestra (categoría, valor, nº de contratos por categoría) en el editor, shortcode (`tooltip="categoria,valor,conteo"`) y vista previa. El conteo se calcula con `COUNT(DISTINCT numero_del_contrato)` solo cuando se solicita, sin afectar a `[secop_chart]`.
+
 ### v5.3.1 — Filtros configurables en Contratación
 - Filtros configurables (columna/operador/valor) en el editor de cards de Contratación, reflejados en la vista previa y la consulta SQL. Columna validada contra una whitelist (`filter_columns()`), operador contra la lista permitida y valor preparado por `build_chart_query` (`$wpdb->prepare`).
 
