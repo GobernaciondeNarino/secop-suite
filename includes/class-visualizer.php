@@ -25,7 +25,7 @@ final class Visualizer
     private const POST_TYPE = 'secop_chart';
 
     /** Funciones de agregación permitidas */
-    private const ALLOWED_AGGREGATES = ['SUM', 'COUNT', 'AVG', 'MAX', 'MIN'];
+    private const ALLOWED_AGGREGATES = ['SUM', 'COUNT', 'COUNT_DISTINCT', 'AVG', 'MAX', 'MIN'];
 
     /** Operadores de filtro permitidos */
     private const ALLOWED_OPERATORS = ['=', '!=', '>', '<', '>=', '<=', 'LIKE'];
@@ -655,7 +655,10 @@ final class Visualizer
             $select_parts[] = "`{$group_by}` AS group_value";
         }
         if ($y_field) {
-            $select_parts[] = "{$aggregate}(`{$y_field}`) AS y_value";
+            // COUNT_DISTINCT no es una función SQL real: se emite como COUNT(DISTINCT col).
+            $select_parts[] = ($aggregate === 'COUNT_DISTINCT')
+                ? "COUNT(DISTINCT `{$y_field}`) AS y_value"
+                : "{$aggregate}(`{$y_field}`) AS y_value";
         }
 
         if (empty($select_parts)) return [];
@@ -708,7 +711,11 @@ final class Visualizer
 
         // ORDER BY
         $order_sql = '';
-        if (!empty($config['order_by']) && isset($valid_columns[$config['order_by']])) {
+        if (($config['order_by'] ?? '') === '__value__') {
+            // Sentinela: ordenar por la métrica agregada (alias y_value).
+            $dir = ($config['order_dir'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
+            $order_sql = "ORDER BY y_value {$dir}";
+        } elseif (!empty($config['order_by']) && isset($valid_columns[$config['order_by']])) {
             $dir = ($config['order_dir'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
             $order_field = ($config['order_by'] === $x_field && $x_date_grouping)
                 ? $x_expression
