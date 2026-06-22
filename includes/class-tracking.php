@@ -92,6 +92,28 @@ final class Tracking
         ];
     }
 
+    /**
+     * v5.6.0: Whitelist de campos seleccionables para la fila 1 de cada contrato
+     * en el explorador. Sólo columnas reales de vista_secop_sysman. El valor es la
+     * etiqueta amigable mostrada en la tabla del acordeón. objeto_a_contratar NO
+     * está aquí: siempre es la segunda fila (ancho completo) de cada contrato.
+     *
+     * @return array<string,string> [columna => etiqueta].
+     */
+    public function explora_fields(): array
+    {
+        return [
+            'numero_del_contrato'       => __('Nº contrato', 'secop-suite'),
+            'valor_contrato'            => __('Valor', 'secop-suite'),
+            'fecha_inicio_ejecucion'    => __('Inicio', 'secop-suite'),
+            'fecha_fin_ejecucion'       => __('Fin', 'secop-suite'),
+            'modalidad_de_contratacion' => __('Modalidad', 'secop-suite'),
+            'tipo_de_contrato'          => __('Tipo', 'secop-suite'),
+            'nombretercero'             => __('Contratista', 'secop-suite'),
+            'documento_proveedor'       => __('Documento', 'secop-suite'),
+        ];
+    }
+
     public static function is_compatible(string $dimension, string $type): bool
     {
         return in_array($type, self::COMPAT[$dimension] ?? [], true);
@@ -134,6 +156,14 @@ final class Tracking
         add_action('wp_ajax_nopriv_secop_dep_network',   [$this, 'ajax_network']);
         // v5.4.1: red ego (Rings) centrada en una dependencia (d3plus.Rings).
         add_shortcode('secop_dep_rings',                 [$this, 'sc_rings']);
+        // v5.6.0: explorador interactivo (treemap de dependencias + panel modalidades/contratistas).
+        add_shortcode('secop_dep_explora',                       [$this, 'sc_explora']);
+        add_action('wp_ajax_secop_dep_explora_tree',             [$this, 'ajax_explora_tree']);
+        add_action('wp_ajax_nopriv_secop_dep_explora_tree',      [$this, 'ajax_explora_tree']);
+        add_action('wp_ajax_secop_dep_explora_modalidades',        [$this, 'ajax_explora_modalidades']);
+        add_action('wp_ajax_nopriv_secop_dep_explora_modalidades', [$this, 'ajax_explora_modalidades']);
+        add_action('wp_ajax_secop_dep_explora_contratistas',        [$this, 'ajax_explora_contratistas']);
+        add_action('wp_ajax_nopriv_secop_dep_explora_contratistas', [$this, 'ajax_explora_contratistas']);
         // Vista previa en vivo del editor de cards (solo admin, sin nopriv).
         add_action('wp_ajax_secop_dep_preview',          [$this, 'ajax_dep_preview']);
         add_shortcode('secop_consulta',                  [$this, 'sc_consulta']);
@@ -1162,7 +1192,7 @@ final class Tracking
         global $post;
         if (!is_a($post, 'WP_Post')) return;
         $has = false;
-        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings'] as $sc) {
+        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings','secop_dep_explora'] as $sc) {
             if (has_shortcode($post->post_content, $sc)) { $has = true; break; }
         }
         if (!$has) return;
@@ -1585,6 +1615,213 @@ final class Tracking
         $vig     = $this->current_vigencia();
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/consulta.php';
+        return ob_get_clean();
+    }
+
+    // ── v5.6.0: Explorador interactivo [secop_dep_explora] ────────
+
+    /**
+     * Árbol de dependencias para el treemap (vigencia actual). Reutiliza la
+     * agregación existente group_by_dimension('dependencia') → [label, valor, conteo].
+     *
+     * @return array<int,array{label:string,valor:float,conteo:int}>
+     */
+    public function explora_tree(): array
+    {
+        return $this->group_by_dimension('dependencia');
+    }
+
+    /**
+     * Modalidades de contratación de una dependencia (vigencia actual), con nº de
+     * contratos distintos y valor agregado. Preparada y cacheada 15 min.
+     *
+     * @return array<int,array{label:string,conteo:int,valor:float}>
+     */
+    public function explora_modalidades(string $dep): array
+    {
+        global $wpdb;
+        if ($dep === '') return [];
+
+        $cache_key = 'secop_trk_' . md5('explora_modalidades|' . $dep . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
+        $view = $this->db->get_view_name();
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT modalidad_de_contratacion AS label,
+                    COUNT(DISTINCT numero_del_contrato) AS conteo,
+                    SUM(valor_contrato) AS valor
+             FROM `{$view}` WHERE anio = %d AND nombredependencia = %s
+             GROUP BY modalidad_de_contratacion ORDER BY valor DESC",
+            $this->current_vigencia(), $dep
+        ), ARRAY_A);
+
+        $result = array_map(static fn($r) => [
+            'label'  => (string) ($r['label'] ?? 'N/D'),
+            'conteo' => (int) ($r['conteo'] ?? 0),
+            'valor'  => (float) ($r['valor'] ?? 0),
+        ], $rows ?: []);
+
+        set_transient($cache_key, $result, 15 * MINUTE_IN_SECONDS);
+        return $result;
+    }
+
+    /**
+     * Contratistas (con sus contratos) de una dependencia, opcionalmente filtrada
+     * por modalidad (vigencia actual). Los contratos se deduplican por
+     * numero_del_contrato (MAX sobre las columnas textuales para colapsar las
+     * múltiples filas presupuestales) y luego se agrupan EN PHP por nombretercero.
+     *
+     * @param string      $dep       Dependencia (requerida).
+     * @param string|null $modalidad Modalidad opcional (null = todas).
+     * @param array       $campos    Campos de fila 1 validados (sólo para el caché key; el JS elige columnas).
+     * @return array<int,array{contratista:string,conteo:int,valor:float,contratos:array<int,array<string,mixed>>}>
+     */
+    public function explora_contratistas(string $dep, ?string $modalidad, array $campos): array
+    {
+        global $wpdb;
+        if ($dep === '') return [];
+
+        // Valida los campos contra la whitelist (defensa adicional; no se interpolan en SQL).
+        $allowed = $this->explora_fields();
+        $campos  = array_values(array_filter($campos, static fn($c) => isset($allowed[$c])));
+
+        $cache_key = 'secop_trk_' . md5('explora_contratistas|' . $dep . '|' . ($modalidad ?? '') . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
+        $view = $this->db->get_view_name();
+        $where  = ['anio = %d', 'nombredependencia = %s'];
+        $params = [$this->current_vigencia(), $dep];
+        if ($modalidad !== null && $modalidad !== '') {
+            $where[]  = 'modalidad_de_contratacion = %s';
+            $params[] = $modalidad;
+        }
+        $where_sql = implode(' AND ', $where);
+
+        // Un registro por contrato (MAX por columna textual). Sólo columnas de la
+        // vista; ningún nombre de columna proviene del usuario.
+        $sql = "SELECT numero_del_contrato,
+                       MAX(nombretercero)             AS nombretercero,
+                       MAX(valor_contrato)            AS valor_contrato,
+                       MAX(fecha_inicio_ejecucion)    AS fecha_inicio_ejecucion,
+                       MAX(fecha_fin_ejecucion)       AS fecha_fin_ejecucion,
+                       MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
+                       MAX(tipo_de_contrato)          AS tipo_de_contrato,
+                       MAX(documento_proveedor)       AS documento_proveedor,
+                       MAX(url_contrato)              AS url_contrato,
+                       MAX(objeto_a_contratar)        AS objeto_a_contratar
+                FROM `{$view}` WHERE {$where_sql}
+                GROUP BY numero_del_contrato";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
+        $rows = $rows ?: [];
+
+        // Agrupar EN PHP por contratista.
+        $by = []; // name => ['valor','conteo','contratos']
+        foreach ($rows as $r) {
+            $name = (string) ($r['nombretercero'] ?? '');
+            if ($name === '') $name = 'N/D';
+            if (!isset($by[$name])) {
+                $by[$name] = ['contratista' => $name, 'conteo' => 0, 'valor' => 0.0, 'contratos' => []];
+            }
+            $by[$name]['conteo'] += 1;
+            $by[$name]['valor']  += (float) ($r['valor_contrato'] ?? 0);
+            $by[$name]['contratos'][] = [
+                'numero_del_contrato'       => (string) ($r['numero_del_contrato'] ?? ''),
+                'valor_contrato'            => (float) ($r['valor_contrato'] ?? 0),
+                'fecha_inicio_ejecucion'    => (string) ($r['fecha_inicio_ejecucion'] ?? ''),
+                'fecha_fin_ejecucion'       => (string) ($r['fecha_fin_ejecucion'] ?? ''),
+                'modalidad_de_contratacion' => (string) ($r['modalidad_de_contratacion'] ?? ''),
+                'tipo_de_contrato'          => (string) ($r['tipo_de_contrato'] ?? ''),
+                'documento_proveedor'       => (string) ($r['documento_proveedor'] ?? ''),
+                'url_contrato'              => (string) ($r['url_contrato'] ?? ''),
+                'objeto_a_contratar'        => (string) ($r['objeto_a_contratar'] ?? ''),
+            ];
+        }
+
+        // Ordenar por valor DESC.
+        usort($by, static fn($a, $b) => $b['valor'] <=> $a['valor']);
+        $result = array_values($by);
+
+        set_transient($cache_key, $result, 15 * MINUTE_IN_SECONDS);
+        return $result;
+    }
+
+    /** Rate-limit por IP compartido por los endpoints del explorador. */
+    private function explora_rate_limit(): bool
+    {
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) return true;
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
+        return false;
+    }
+
+    /** AJAX — árbol de dependencias para el treemap. */
+    public function ajax_explora_tree(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        if ($this->explora_rate_limit()) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        wp_send_json_success(['nodes' => $this->explora_tree()]);
+    }
+
+    /** AJAX — modalidades de una dependencia. */
+    public function ajax_explora_modalidades(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        if ($this->explora_rate_limit()) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        $dep = sanitize_text_field(wp_unslash($_POST['dependencia'] ?? ''));
+        if ($dep === '') wp_send_json_error(['message' => 'Dependencia requerida']);
+        wp_send_json_success(['rows' => $this->explora_modalidades($dep)]);
+    }
+
+    /** AJAX — contratistas (acordeón) de una dependencia y modalidad opcional. */
+    public function ajax_explora_contratistas(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        if ($this->explora_rate_limit()) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        $dep = sanitize_text_field(wp_unslash($_POST['dependencia'] ?? ''));
+        if ($dep === '') wp_send_json_error(['message' => 'Dependencia requerida']);
+        $mod = sanitize_text_field(wp_unslash($_POST['modalidad'] ?? ''));
+        $allowed = $this->explora_fields();
+        $campos = array_values(array_filter(
+            array_map('trim', explode(',', sanitize_text_field(wp_unslash($_POST['campos'] ?? '')))),
+            static fn($c) => isset($allowed[$c])
+        ));
+        if (empty($campos)) $campos = ['numero_del_contrato', 'valor_contrato', 'fecha_inicio_ejecucion', 'fecha_fin_ejecucion', 'modalidad_de_contratacion'];
+        wp_send_json_success([
+            'rows'   => $this->explora_contratistas($dep, $mod !== '' ? $mod : null, $campos),
+            'campos' => $campos,
+        ]);
+    }
+
+    /** Shortcode [secop_dep_explora] — treemap de dependencias + panel drill. */
+    public function sc_explora(array $atts): string
+    {
+        $atts = shortcode_atts([
+            'campos' => 'numero_del_contrato,valor_contrato,fecha_inicio_ejecucion,fecha_fin_ejecucion,modalidad_de_contratacion',
+            'height' => 460,
+        ], $atts, 'secop_dep_explora');
+
+        $campos = array_values(array_filter(
+            array_map('trim', explode(',', $atts['campos'])),
+            fn($c) => isset($this->explora_fields()[$c])
+        ));
+        if (empty($campos)) {
+            $campos = ['numero_del_contrato', 'valor_contrato', 'fecha_inicio_ejecucion', 'fecha_fin_ejecucion', 'modalidad_de_contratacion'];
+        }
+
+        $this->enqueue_module_stack();
+        wp_enqueue_script('secop-dep-explora', SECOP_SUITE_URL . 'assets/js/dep-explora.js',
+            ['jquery', 'd3plus', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+
+        $field_labels = $this->explora_fields();
+        $csv_url = rest_url('secop-suite/v1/consulta/csv'); // descarga de TODA la vista (vigencia actual).
+        $uid = 'ss-explora-' . wp_unique_id();
+
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/explora.php';
         return ob_get_clean();
     }
 }

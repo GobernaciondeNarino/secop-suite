@@ -246,6 +246,58 @@ $presets = $tracking->presets();
             <?php endforeach; ?>
         </div>
     </div>
+
+    <?php
+    // v5.6.0: Explorador interactivo [secop_dep_explora].
+    $explora_params = [
+        ['campos', __('Campos de la fila 1 de cada contrato, separados por comas (orden de columnas). Disponibles: numero_del_contrato, valor_contrato, fecha_inicio_ejecucion, fecha_fin_ejecucion, modalidad_de_contratacion, tipo_de_contrato, nombretercero, documento_proveedor. El objeto del contrato siempre se muestra en una segunda fila a ancho completo.', 'secop-suite')],
+        ['height', __('Altura mínima del treemap en píxeles (por defecto 460).', 'secop-suite')],
+    ];
+    $explora_shortcodes = [
+        '[secop_dep_explora]',
+        '[secop_dep_explora height="560"]',
+        '[secop_dep_explora campos="numero_del_contrato,valor_contrato,nombretercero,tipo_de_contrato"]',
+    ];
+    ?>
+    <div class="ss-cat-card ss-cat-card-explora" style="margin-top:20px;">
+        <h2 class="ss-cat-title"><?php esc_html_e('Explorador interactivo', 'secop-suite'); ?></h2>
+        <p class="ss-cat-desc">
+            <?php esc_html_e('Explorador interactivo (treemap de dependencias): al hacer clic en una celda se despliega un panel inferior con dos secciones — la lista de modalidades (clicable) y un acordeón de contratistas cuyos elementos se expanden para mostrar los contratos del contratista (con campos de fila configurables y el objeto del contrato). Todo se actualiza dinámicamente por AJAX; al hacer clic en una modalidad se recarga la lista de contratistas. Incluye un botón para descargar TODA la vista (vigencia actual) en CSV.', 'secop-suite'); ?>
+        </p>
+        <details class="ss-cat-params">
+            <summary><strong><?php esc_html_e('Parámetros del shortcode [secop_dep_explora]', 'secop-suite'); ?></strong></summary>
+            <table class="widefat striped" style="max-width:760px;">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Parámetro', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Descripción', 'secop-suite'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($explora_params as $param) : ?>
+                        <tr>
+                            <td><code><?php echo esc_html($param[0]); ?></code></td>
+                            <td><?php echo esc_html($param[1]); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </details>
+        <div class="ss-cat-shortcodes">
+            <h3><?php esc_html_e('Shortcodes', 'secop-suite'); ?></h3>
+            <?php foreach ($explora_shortcodes as $sc) : ?>
+                <div class="ss-cat-sc-row">
+                    <input type="text" class="ss-cat-sc-input" readonly
+                           value="<?php echo esc_attr($sc); ?>"
+                           onclick="this.select();" />
+                    <button type="button" class="button ss-cat-copy"
+                            data-clipboard="<?php echo esc_attr($sc); ?>">
+                        <?php esc_html_e('Copiar', 'secop-suite'); ?>
+                    </button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
 </div>
 
 <style>

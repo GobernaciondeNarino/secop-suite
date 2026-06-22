@@ -69,6 +69,9 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.6.0 — Explorador interactivo `[secop_dep_explora]`
+- Nuevo **explorador interactivo** (`[secop_dep_explora]`): treemap de dependencias (vigencia actual) con un **panel inferior** que se despliega al hacer clic en una celda — a la izquierda la **lista de modalidades** (clicable) y a la derecha un **acordeón de contratistas** cuyos elementos se expanden para mostrar los contratos del contratista. Todo dinámico por **AJAX** (`secop_dep_explora_tree`/`_modalidades`/`_contratistas`, nonce `secop_dep_frontend` + rate-limit por IP). Al hacer clic en una modalidad se recarga sólo la lista de contratistas por AJAX. Cada contrato muestra dos filas: una con los **campos de fila configurables** (atributo `campos`) y otra a ancho completo con el `objeto_a_contratar`. Incluye un botón de **descarga de TODA la vista** (vigencia actual) reutilizando la ruta REST `consulta/csv`. Atributos: `campos`, `height`. Todas las cadenas de BD se renderizan con nodos de texto (sin innerHTML).
+
 ### v5.5.0 — Galería de gráficas prediseñadas (Contratación)
 - Los presets de **Contratación** se amplían a una **galería** con un card por tipo de gráfica aplicado a los datos de contratación: barras (`por_dependencia`, `top_contratistas`), treemap (`tipos_treemap`), donut (`modalidad_donut`), pie (`modalidad_pie`), burbujas/pack (`contratistas_pack`), línea + predicción (`evolucion_mensual`) y área (`evolucion_area`). Cada card incluye su análisis automático (descripción, cualitativo, cuantitativo y predicción).
 - `pack` (burbujas) habilitado para las dimensiones categóricas (`dependencia`, `tipo_contrato`, `modalidad`, `tercero`).
