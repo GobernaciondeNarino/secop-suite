@@ -19,6 +19,10 @@ if (!defined('ABSPATH')) {
 // Normal [secop_chart] renders leave this unset → no attribute → no filter override.
 $dependencia_filter = $dependencia_filter ?? '';
 
+// v5.1.9: click-to-drill (popup con contratos de la categoría). Off por defecto.
+$drill_enabled = $drill_enabled ?? false;
+$drill_column  = $drill_column ?? '';
+
 $chart_title = get_the_title($chart_id);
 $show_toolbar = $config['show_toolbar'] ?? true;
 $toolbar_options = $config['toolbar_options'] ?? ['detail', 'share', 'data', 'image', 'download'];
@@ -250,5 +254,7 @@ $chart_height = $config['chart_height'] ?? 400;
     'multiY' => !empty($config['y_fields']),
     'title' => $chart_title,
     'chartNonce' => wp_create_nonce('secop_suite_chart_' . $chart_id),
+    'drill' => (bool) $drill_enabled,
+    'drillColumn' => (string) $drill_column,
 ]); ?>
 </script>

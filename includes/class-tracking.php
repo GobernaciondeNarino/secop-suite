@@ -106,6 +106,9 @@ final class Tracking
         add_shortcode('secop_dep_contratos',             [$this, 'sc_contratos']);
         add_action('wp_ajax_secop_dep_contratos',        [$this, 'ajax_contratos']);
         add_action('wp_ajax_nopriv_secop_dep_contratos', [$this, 'ajax_contratos']);
+        // Drill-down: contratos asociados al valor de una dimensión (click en gráfica).
+        add_action('wp_ajax_secop_dep_drill',            [$this, 'ajax_drill']);
+        add_action('wp_ajax_nopriv_secop_dep_drill',     [$this, 'ajax_drill']);
         // Vista previa en vivo del editor de cards (solo admin, sin nopriv).
         add_action('wp_ajax_secop_dep_preview',          [$this, 'ajax_dep_preview']);
         add_shortcode('secop_consulta',                  [$this, 'sc_consulta']);
@@ -769,6 +772,8 @@ final class Tracking
                 // v5.1.8: parámetros de personalización del shortcode.
                 'metric' => '', 'order' => '', 'orderdir' => '', 'limit' => '',
                 'colors' => '', 'legend' => '',
+                // v5.1.9: click-to-drill (popup con contratos de la categoría).
+                'drill' => '',
             ],
             $atts, 'secop_dep_chart'
         );
@@ -850,6 +855,10 @@ final class Tracking
         $unique_id   = 'ss-dep-' . wp_unique_id();
         $extra_class = ' ss-dep-chart';
 
+        // v5.1.9: click-to-drill. La columna de drill es la dimensión X efectiva.
+        $drill_enabled = in_array(strtolower((string) $atts['drill']), ['on', '1', 'true', 'yes'], true);
+        $drill_column  = $drill_enabled ? (string) ($config['x_field'] ?? '') : '';
+
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/chart.php';
         return ob_get_clean();
@@ -902,6 +911,10 @@ final class Tracking
         // Depends only on jquery (contracts table) + secop-suite-frontend (for SSChartManager).
         wp_enqueue_script('secop-dep-tracking', SECOP_SUITE_URL . 'assets/js/dep-tracking.js',
             ['jquery', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+        // v5.1.9: click-to-drill — popup con los contratos de la categoría clicada.
+        // Reutiliza el objeto localizado secopDep (ajaxUrl + nonce secop_dep_frontend).
+        wp_enqueue_script('secop-dep-drill', SECOP_SUITE_URL . 'assets/js/dep-drill.js',
+            ['jquery'], SECOP_SUITE_VERSION, true);
         // FIX 6: cadenas i18n expuestas al JS para evitar literales hardcoded en el bundle
         wp_localize_script('secop-dep-tracking', 'secopDep', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
@@ -938,6 +951,39 @@ final class Tracking
         $result = $rows ?: [];
         set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
         return $result;
+    }
+
+    /** Contratos asociados a un valor de una columna del VIEW (vigencia actual), deduplicados. */
+    public function contracts_by_value(string $column, string $value, int $limit = 200): array
+    {
+        global $wpdb;
+        // SEGURIDAD: la columna debe ser una de las columnas de dimensión permitidas.
+        $allowed = array_values(self::DIM_COLUMN);
+        if (!in_array($column, $allowed, true)) return [];
+        $view = $this->db->get_view_name();
+        $cols = $this->db->get_table_columns($view);
+        if (!isset($cols[$column])) return [];
+        $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
+                       fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_del_proceso
+                FROM `{$view}` WHERE anio = %d AND `{$column}` = %s
+                GROUP BY numero_del_contrato ORDER BY valor_contrato DESC LIMIT %d";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare($sql, $this->current_vigencia(), $value, $limit), ARRAY_A);
+        return $rows ?: [];
+    }
+
+    public function ajax_drill(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        // rate limit por IP (igual patrón que ajax_contratos)
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
+
+        $column = sanitize_text_field(wp_unslash($_POST['column'] ?? ''));
+        $value  = sanitize_text_field(wp_unslash($_POST['value'] ?? ''));
+        if ($column === '' || $value === '') wp_send_json_error(['message' => 'Parámetros incompletos']);
+        wp_send_json_success(['rows' => $this->contracts_by_value($column, $value)]);
     }
 
     public function ajax_contratos(): void

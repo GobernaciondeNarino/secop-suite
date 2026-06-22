@@ -69,6 +69,12 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.1.9 — Click-to-drill en gráficas de Contratación
+- **Drill por click**: el click en una barra/sector/elemento de una gráfica de Contratación abre un popup con los contratos asociados a esa categoría (vigencia actual, deduplicados por contrato, hasta 200). Se activa por gráfica con `drill="on"` en `[secop_dep_chart]` (también `1`/`true`/`yes`). Reutiliza el motor de gráficas del Visualizer (handler `chart.on('click')`).
+- **Capa de datos genérica**: `contracts_by_value(column, value)` consulta contratos por cualquier dimensión, con la columna validada contra la lista blanca `DIM_COLUMN` y el valor parametrizado (`$wpdb->prepare`).
+- **Endpoint AJAX seguro**: `secop_dep_drill` (nonce `secop_dep_frontend` + rate-limit por IP). El modal se construye con `.text()` por celda y enlaza al `url_contrato` solo si tiene esquema `http(s)`.
+- `[secop_chart]` y `[secop_dep_chart]` sin `drill` no cambian su comportamiento.
+
 ### v5.1.8 — Parámetros de personalización en `[secop_dep_chart]`
 - **Configuración desde el shortcode**: `[secop_dep_chart]` ahora acepta parámetros de personalización (`metric`, `order`, `orderdir`, `limit`, `colors`, `legend`, `dimension`, `tipo`, `dependencia`, `height`) que se resuelven a una **card de respaldo automática**, reutilizando el motor del Visualizer sin cambios. Es posible configurar una gráfica completa sin crear una card manualmente.
 - **Card de respaldo por hash de configuración**: cada combinación de parámetros se mapea (find-or-create) a un único post `secop_dep_card` identificado por `_secop_cfg_hash`, evitando posts duplicados. `[secop_dep_chart card="N"]` y `preset="x"` sin overrides siguen renderizando el post canónico directamente (sin crear posts auxiliares).
