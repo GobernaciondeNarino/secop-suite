@@ -486,11 +486,9 @@ final class Rest_Api
         $view     = $this->db->get_view_name();
         $vigencia = (int) current_time('Y');
 
+        // Exporta TODA la información de la vista (todas las columnas) para la vigencia actual.
         $data = $wpdb->get_results($wpdb->prepare(
-            "SELECT nombredependencia, numero_de_proceso, numero_del_contrato,
-                    nombretercero, valordebito, valorcredito, saldoporejecutaresp,
-                    valor_contrato, anio, mes
-             FROM `{$view}` WHERE anio = %d ORDER BY valordebito DESC",
+            "SELECT * FROM `{$view}` WHERE anio = %d ORDER BY valor_contrato DESC",
             $vigencia
         ), ARRAY_A);
 
@@ -529,11 +527,9 @@ final class Rest_Api
         $view     = $this->db->get_view_name();
         $vigencia = (int) current_time('Y');
 
+        // Exporta TODA la información de la vista (todas las columnas) para la vigencia actual.
         $data = $wpdb->get_results($wpdb->prepare(
-            "SELECT nombredependencia, numero_de_proceso, numero_del_contrato,
-                    nombretercero, valordebito, valorcredito, saldoporejecutaresp,
-                    valor_contrato, anio, mes
-             FROM `{$view}` WHERE anio = %d ORDER BY valordebito DESC",
+            "SELECT * FROM `{$view}` WHERE anio = %d ORDER BY valor_contrato DESC",
             $vigencia
         ), ARRAY_A);
 
