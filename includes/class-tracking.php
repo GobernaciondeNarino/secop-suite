@@ -22,6 +22,10 @@ final class Tracking
         'dependencia'   => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
         'tipo_contrato' => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
         'modalidad'     => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
+        'estado'        => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
+        'tipo_documento'=> ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
+        'programa'      => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
+        'rubro'         => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
         'fuente'        => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
         'mensual'       => ['line', 'area'],
         'ejecucion'     => ['donut', 'bar'],
@@ -33,6 +37,10 @@ final class Tracking
         'dependencia'   => 'nombredependencia',
         'tipo_contrato' => 'tipo_de_contrato',
         'modalidad'     => 'modalidad_de_contratacion',
+        'estado'        => 'estado_del_proceso',
+        'tipo_documento'=> 'tipo_documento_proveedor',
+        'programa'      => 'nombreplan',
+        'rubro'         => 'rubro',
         'fuente'        => 'origen',
         'mensual'       => 'mes',
         'ejecucion'     => 'nombredependencia',
@@ -47,6 +55,23 @@ final class Tracking
 
     // ── Compatibilidad dimensión ↔ tipo (puro, testeable) ──────
     public static function dimensions(): array { return array_keys(self::COMPAT); }
+
+    /**
+     * Métricas configurables del módulo de Contratación.
+     * Cada entrada define la etiqueta visible, la función de agregación y la
+     * columna del VIEW a agregar. COUNT_DISTINCT lo traduce el Visualizer a
+     * COUNT(DISTINCT col); valor_contrato se omite a propósito porque se
+     * duplica por fila y daría sumas infladas.
+     */
+    public function metrics(): array
+    {
+        return [
+            'valordebito'         => ['label' => __('Valor ejecutado', 'secop-suite'),    'agg' => 'SUM',            'col' => 'valordebito'],
+            'saldoporejecutaresp' => ['label' => __('Saldo por ejecutar', 'secop-suite'), 'agg' => 'SUM',            'col' => 'saldoporejecutaresp'],
+            'contratos'           => ['label' => __('Nº de contratos', 'secop-suite'),     'agg' => 'COUNT_DISTINCT', 'col' => 'numero_del_contrato'],
+            'registros'           => ['label' => __('Nº de registros', 'secop-suite'),     'agg' => 'COUNT',          'col' => 'numero_de_proceso'],
+        ];
+    }
 
     public static function is_compatible(string $dimension, string $type): bool
     {
@@ -245,6 +270,20 @@ final class Tracking
         wp_nonce_field('secop_dep_card_config', 'secop_dep_card_nonce');
         $config = get_post_meta($post->ID, '_secop_dep_card_config', true) ?: [];
         $dimensions = self::COMPAT;
+        $metrics    = $this->metrics();
+        // Etiquetas amigables para el desplegable de dimensión. 'fuente' se excluye
+        // del menú (columna de valor único), pero se conserva en COMPAT por compatibilidad.
+        $dim_labels = [
+            'dependencia'    => __('Dependencia', 'secop-suite'),
+            'tipo_contrato'  => __('Tipo de contrato', 'secop-suite'),
+            'modalidad'      => __('Modalidad de contratación', 'secop-suite'),
+            'estado'         => __('Estado del proceso', 'secop-suite'),
+            'tipo_documento' => __('Tipo de documento del proveedor', 'secop-suite'),
+            'programa'       => __('Programa presupuestal', 'secop-suite'),
+            'rubro'          => __('Rubro presupuestal', 'secop-suite'),
+            'tercero'        => __('Contratista', 'secop-suite'),
+            'mensual'        => __('Mensual (evolución)', 'secop-suite'),
+        ];
         $dependencias = $this->list_dependencies();
         include SECOP_SUITE_DIR . 'templates/admin/dep-card-config.php';
     }
@@ -291,11 +330,20 @@ final class Tracking
         $colors_raw = sanitize_text_field(wp_unslash($_POST['dep_colors'] ?? ''));
         $colors = array_values(array_filter(array_map('trim', explode(',', $colors_raw)), static fn($c) => (bool) preg_match('/^#[0-9a-fA-F]{6}$/', $c)));
 
+        $metric = sanitize_text_field($_POST['dep_metric'] ?? 'valordebito');
+        if (!in_array($metric, array_keys($this->metrics()), true)) $metric = 'valordebito';
+        $order = sanitize_text_field($_POST['dep_order'] ?? 'valor');
+        if (!in_array($order, ['valor', 'etiqueta'], true)) $order = 'valor';
+        $order_dir = sanitize_text_field($_POST['dep_order_dir'] ?? 'DESC');
+        if (!in_array($order_dir, ['ASC', 'DESC'], true)) $order_dir = 'DESC';
+
         $config = [
             'dimension'   => $dimension,
             'chart_type'  => $type,
             'dependencia' => sanitize_text_field($_POST['dep_dependencia'] ?? ''),
-            'metric'      => sanitize_text_field($_POST['dep_metric'] ?? 'valordebito'),
+            'metric'      => $metric,
+            'order'       => $order,
+            'order_dir'   => $order_dir,
             'colors'      => $colors,
         ];
         update_post_meta($post_id, '_secop_dep_card_config', $config);
@@ -345,11 +393,24 @@ final class Tracking
         $type      = self::is_compatible($dimension, $cfg['chart_type'] ?? '')
             ? $cfg['chart_type']
             : self::default_type($dimension);
+        $metrics    = $this->metrics();
         $raw_metric = $cfg['metric'] ?? 'valordebito';
-        $metric     = in_array($raw_metric, ['valordebito', 'valorcredito', 'saldoporejecutaresp', 'valor_contrato'], true)
-            ? $raw_metric
-            : 'valordebito';
-        $x_field = self::DIM_COLUMN[$dimension] ?? 'nombredependencia';
+        $metric_key = isset($metrics[$raw_metric]) ? $raw_metric : 'valordebito';
+        $m          = $metrics[$metric_key];
+        $x_field    = self::DIM_COLUMN[$dimension] ?? 'nombredependencia';
+
+        // Ordenamiento de barras: por valor agregado (sentinela __value__) o por etiqueta.
+        $order     = in_array($cfg['order'] ?? '', ['valor', 'etiqueta'], true) ? $cfg['order'] : 'valor';
+        $order_dir = in_array($cfg['order_dir'] ?? '', ['ASC', 'DESC'], true) ? $cfg['order_dir'] : 'DESC';
+        if ($dimension === 'mensual') {
+            // La evolución mensual siempre es cronológica.
+            $order_by  = $x_field;
+            $order_dir = 'ASC';
+        } elseif ($order === 'etiqueta') {
+            $order_by = $x_field;
+        } else {
+            $order_by = '__value__';
+        }
 
         $default_palette = ['#844e80', '#ff7300', '#ffc53b', '#3eba6a', '#0080c3', '#e74c3c', '#9b59b6', '#1abc9c'];
         $colors = (!empty($cfg['colors']) && is_array($cfg['colors'])) ? $cfg['colors'] : $default_palette;
@@ -365,18 +426,18 @@ final class Tracking
             'table_name'      => $view,
             'x_field'         => $x_field,
             'x_date_grouping' => '',
-            'y_field'         => $metric,
+            'y_field'         => $m['col'],
             'y_fields'        => [],
             'group_by'        => '',
-            'aggregate'       => 'SUM',
+            'aggregate'       => $m['agg'],
             'color_field'     => '',
             'filters'         => $filters,
             'date_field'      => '',
             'date_from'       => '',
             'date_to'         => '',
             'limit'           => (!empty($cfg['limit']) && (int)$cfg['limit'] > 0) ? (int)$cfg['limit'] : ($dimension === 'mensual' ? 0 : 50),
-            'order_by'        => ($dimension === 'mensual') ? $x_field : $metric,
-            'order_dir'       => ($dimension === 'mensual') ? 'ASC' : 'DESC',
+            'order_by'        => $order_by,
+            'order_dir'       => $order_dir,
             'colors'          => $colors,
             'show_legend'     => true,
             'legend_mode'     => 'text',

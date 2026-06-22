@@ -170,13 +170,17 @@ final class Stats
     private static function dim_label(string $dim): string
     {
         return [
-            'dependencia'  => 'dependencia',
-            'tipo_contrato'=> 'tipo de contrato',
-            'modalidad'    => 'modalidad de contratación',
-            'fuente'       => 'fuente de financiación',
-            'mensual'      => 'mes',
-            'ejecucion'    => 'ejecución presupuestal',
-            'tercero'      => 'contratista',
+            'dependencia'   => 'dependencia',
+            'tipo_contrato' => 'tipo de contrato',
+            'modalidad'     => 'modalidad de contratación',
+            'estado'        => 'estado del proceso',
+            'tipo_documento'=> 'tipo de documento del proveedor',
+            'programa'      => 'programa presupuestal',
+            'rubro'         => 'rubro presupuestal',
+            'fuente'        => 'fuente de financiación',
+            'mensual'       => 'mes',
+            'ejecucion'     => 'ejecución presupuestal',
+            'tercero'       => 'contratista',
         ][$dim] ?? $dim;
     }
 

@@ -69,6 +69,12 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.1.5 — Editor avanzado de Contratación (Fase 2)
+- **Dimensiones ampliadas**: además de dependencia, tipo de contrato y modalidad, el módulo de Contratación ahora permite agrupar por **estado del proceso**, **tipo de documento del proveedor**, **programa presupuestal**, **rubro presupuestal** y **contratista**. El desplegable de dimensión muestra etiquetas amigables.
+- **Métricas configurables**: nuevo selector de métrica con **Valor ejecutado** (`SUM(valordebito)`), **Saldo por ejecutar** (`SUM(saldoporejecutaresp)`), **Nº de contratos** (`COUNT(DISTINCT numero_del_contrato)`) y **Nº de registros** (`COUNT(numero_de_proceso)`). `valor_contrato` se omite a propósito porque se duplica por fila.
+- **Ordenamiento de barras**: opción de ordenar por **valor** (métrica agregada) o por **etiqueta**, en dirección ascendente o descendente; la dimensión «Mensual» mantiene siempre el orden cronológico.
+- **Motor de gráficas (Visualizer)**: dos extensiones seguras y retrocompatibles — soporte de la agregación **`COUNT_DISTINCT`** (emitida como `COUNT(DISTINCT col)`) y ordenamiento por el valor agregado mediante el sentinela **`order_by = '__value__'`** (`ORDER BY y_value`). El comportamiento de `[secop_chart]` no cambia salvo que se activen explícitamente.
+
 ### v5.1.4 — Editor avanzado de Contratación (Fase 1)
 - **Vista previa del editor sin textos de análisis**: el metabox de vista previa de la tarjeta ya no imprime los párrafos `Stats::analisis_*`; ahora renderiza únicamente la gráfica (vía `[secop_dep_chart]`) cargando el stack de gráficas del frontend en la pantalla de edición. Si la tarjeta no está configurada, muestra una nota para guardarla.
 - **Paleta de 8 colores editable**: `card_to_chart_config` aplica una paleta por defecto de 8 colores (`#844e80, #ff7300, #ffc53b, #3eba6a, #0080c3, #e74c3c, #9b59b6, #1abc9c`) y un nuevo campo «Colores» permite sobrescribirla con una lista de hex `#rrggbb` separados por comas; si se deja vacía, se usa la paleta por defecto.

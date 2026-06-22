@@ -4,13 +4,40 @@
     <th><label for="dep_dimension"><?php esc_html_e('Dimensión', 'secop-suite'); ?></label></th>
     <td>
       <select name="dep_dimension" id="dep_dimension">
-        <?php foreach ($dimensions as $dim => $types) : ?>
+        <?php foreach ($dim_labels as $dim => $label) : if (!isset($dimensions[$dim])) continue; ?>
           <option value="<?php echo esc_attr($dim); ?>" <?php selected($config['dimension'] ?? '', $dim); ?>>
-            <?php echo esc_html($dim); ?>
+            <?php echo esc_html($label); ?>
           </option>
         <?php endforeach; ?>
       </select>
       <p class="description"><?php esc_html_e('Cada dimensión admite ciertos tipos de gráfica.', 'secop-suite'); ?></p>
+    </td>
+  </tr>
+  <tr>
+    <th><label for="dep_metric"><?php esc_html_e('Métrica', 'secop-suite'); ?></label></th>
+    <td>
+      <select name="dep_metric" id="dep_metric">
+        <?php foreach ($metrics as $key => $m) : ?>
+          <option value="<?php echo esc_attr($key); ?>" <?php selected($config['metric'] ?? 'valordebito', $key); ?>>
+            <?php echo esc_html($m['label']); ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+      <p class="description"><?php esc_html_e('Valor a medir en el eje de la gráfica.', 'secop-suite'); ?></p>
+    </td>
+  </tr>
+  <tr>
+    <th><label for="dep_order"><?php esc_html_e('Ordenar por', 'secop-suite'); ?></label></th>
+    <td>
+      <select name="dep_order" id="dep_order">
+        <option value="valor" <?php selected($config['order'] ?? 'valor', 'valor'); ?>><?php esc_html_e('Valor', 'secop-suite'); ?></option>
+        <option value="etiqueta" <?php selected($config['order'] ?? 'valor', 'etiqueta'); ?>><?php esc_html_e('Etiqueta', 'secop-suite'); ?></option>
+      </select>
+      <select name="dep_order_dir" id="dep_order_dir">
+        <option value="DESC" <?php selected($config['order_dir'] ?? 'DESC', 'DESC'); ?>><?php esc_html_e('Descendente', 'secop-suite'); ?></option>
+        <option value="ASC" <?php selected($config['order_dir'] ?? 'DESC', 'ASC'); ?>><?php esc_html_e('Ascendente', 'secop-suite'); ?></option>
+      </select>
+      <p class="description"><?php esc_html_e('En la dimensión «Mensual» el orden es siempre cronológico.', 'secop-suite'); ?></p>
     </td>
   </tr>
   <tr>
