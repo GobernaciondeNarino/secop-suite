@@ -77,8 +77,6 @@ final class Tracking
         add_shortcode('secop_dep_chart',    [$this, 'sc_chart']);
         add_shortcode('secop_dep_analisis', [$this, 'sc_analisis']);
         add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_assets']);
-        add_action('wp_ajax_secop_dep_chart_data',        [$this, 'ajax_chart_data']);
-        add_action('wp_ajax_nopriv_secop_dep_chart_data', [$this, 'ajax_chart_data']);
         add_shortcode('secop_seguimiento',               [$this, 'sc_seguimiento']);
         add_shortcode('secop_dep_contratos',             [$this, 'sc_contratos']);
         add_action('wp_ajax_secop_dep_contratos',        [$this, 'ajax_contratos']);
@@ -98,7 +96,10 @@ final class Tracking
             ],
             'public'             => false,
             'show_ui'            => true,
-            'show_in_menu'       => 'secop-suite',
+            // No se muestra como submenú propio para evitar duplicar "Contratación":
+            // la página catálogo es el acceso principal; las cards a medida se gestionan
+            // desde el enlace del catálogo (edit.php?post_type=secop_dep_card).
+            'show_in_menu'       => false,
             'capability_type'    => 'post',
             'supports'           => ['title'],
             'menu_icon'          => 'dashicons-analytics',
@@ -118,6 +119,11 @@ final class Tracking
     {
         global $wpdb;
         if (!isset(self::DIM_COLUMN[$dimension])) return [];
+
+        $cache_key = 'secop_trk_' . md5('group_by_dimension|' . $dimension . '|' . ($dependencia ?? '') . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
         $view   = $this->db->get_view_name();
         $col    = self::DIM_COLUMN[$dimension];
         $cols   = $this->db->get_table_columns($view);
@@ -140,17 +146,25 @@ final class Tracking
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
 
-        return array_map(fn($r) => [
+        $result = array_map(fn($r) => [
             'label'  => $r['label'] ?? 'N/D',
             'valor'  => (float) $r['valor'],
             'conteo' => (int) $r['conteo'],
         ], $rows ?: []);
+
+        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        return $result;
     }
 
     /** Serie mensual acumulada de ejecución (para predicción). */
     public function monthly_series(?string $dependencia = null): array
     {
         global $wpdb;
+
+        $cache_key = 'secop_trk_' . md5('monthly_series|' . ($dependencia ?? '') . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
         $view = $this->db->get_view_name();
         $where  = ['anio = %d'];
         $params = [$this->current_vigencia()];
@@ -169,6 +183,8 @@ final class Tracking
             $acc += (float) $r['valor'];
             $serie[] = [(int) $r['mes'], $acc];
         }
+
+        set_transient($cache_key, $serie, 10 * MINUTE_IN_SECONDS);
         return $serie;
     }
 
@@ -176,6 +192,11 @@ final class Tracking
     public function build_dataset(string $dimension, ?string $dependencia = null): array
     {
         global $wpdb;
+
+        $cache_key = 'secop_trk_' . md5('build_dataset|' . $dimension . '|' . ($dependencia ?? '') . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
         $cats  = $this->group_by_dimension($dimension, $dependencia);
         $serie = $this->monthly_series($dependencia);
         $view  = $this->db->get_view_name();
@@ -191,7 +212,7 @@ final class Tracking
                     SUM(valor_contrato) AS valc
              FROM `{$view}` WHERE {$where_sql}", ...$params), ARRAY_A);
 
-        return [
+        $result = [
             'dimension'     => $dimension,
             'vigencia'      => $this->current_vigencia(),
             'meses'         => count($serie),
@@ -202,6 +223,9 @@ final class Tracking
             'ejecutado'     => (float) ($tot['ejec'] ?? 0),
             'saldo'         => (float) ($tot['saldo'] ?? 0),
         ];
+
+        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        return $result;
     }
 
     // ── CPT metaboxes y guardado ──────────────────────────────────
@@ -404,36 +428,52 @@ final class Tracking
         if (!isset($presets[$presetId])) return 0;
         $p = $presets[$presetId];
 
-        $existing = get_posts([
+        $query = [
             'post_type'   => self::POST_TYPE,
             'post_status' => 'any',
             'meta_key'    => '_secop_preset_id',
             'meta_value'  => $presetId,
             'numberposts' => 1,
             'fields'      => 'ids',
-        ]);
+        ];
+        $existing = get_posts($query);
 
-        if (!empty($existing)) {
-            $id = (int) $existing[0];
-        } else {
-            $id = wp_insert_post([
-                'post_type'   => self::POST_TYPE,
-                'post_status' => 'publish',
-                'post_title'  => $p['titulo'],
-            ]);
-            if (!$id || is_wp_error($id)) return 0;
-            update_post_meta($id, '_secop_preset_id', $presetId);
+        $id = !empty($existing) ? (int) $existing[0] : 0;
+
+        if (empty($id)) {
+            // Lock para evitar creación duplicada bajo concurrencia.
+            $lock = SECOP_SUITE_PREFIX . 'preset_lock_' . $presetId;
+            if (get_transient($lock)) {
+                // Otra petición lo está creando; reintentar la búsqueda.
+                $again = get_posts($query);
+                if (!empty($again)) { $id = (int) $again[0]; }
+            }
+            if (empty($id)) {
+                set_transient($lock, 1, 30);
+                $id = wp_insert_post([
+                    'post_type'   => self::POST_TYPE,
+                    'post_status' => 'publish',
+                    'post_title'  => $p['titulo'],
+                ]);
+                if (!$id || is_wp_error($id)) { delete_transient($lock); return 0; }
+                update_post_meta($id, '_secop_preset_id', $presetId);
+                delete_transient($lock);
+            }
         }
 
-        $cardCfg = [
+        // Sólo reescribir la config si realmente cambió (evita writes por render).
+        $desired = [
             'dimension'   => $p['dimension'],
             'chart_type'  => $p['chart_type'],
             'metric'      => $p['metric'],
             'dependencia' => '',
             'limit'       => $p['limit'] ?? 0,
         ];
-        update_post_meta($id, '_secop_dep_card_config', $cardCfg);
-        update_post_meta($id, '_secop_chart_config', $this->card_to_chart_config($cardCfg));
+        $stored = get_post_meta($id, '_secop_dep_card_config', true);
+        if ($stored !== $desired) {
+            update_post_meta($id, '_secop_dep_card_config', $desired);
+            update_post_meta($id, '_secop_chart_config', $this->card_to_chart_config($desired));
+        }
         return (int) $id;
     }
 
@@ -533,20 +573,6 @@ final class Tracking
              . esc_html(Stats::$m($ds)) . '</p>';
     }
 
-    public function ajax_chart_data(): void
-    {
-        check_ajax_referer('secop_dep_frontend', 'nonce');
-        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
-        if ((int) get_transient($ip_key) > 60) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
-        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
-
-        $dimension = sanitize_text_field($_POST['dimension'] ?? 'dependencia');
-        if (!isset(self::COMPAT[$dimension])) wp_send_json_error(['message' => 'Dimensión inválida']);
-        $dep  = sanitize_text_field($_POST['dependencia'] ?? '');
-        $rows = $this->group_by_dimension($dimension, $dep ?: null);
-        wp_send_json_success(['data' => $rows]);
-    }
-
     public function enqueue_frontend_assets(): void
     {
         global $post;
@@ -585,6 +611,11 @@ final class Tracking
     public function contracts_by_dependency(string $dependencia, int $limit = 100): array
     {
         global $wpdb;
+
+        $cache_key = 'secop_trk_' . md5('contracts_by_dependency|' . $dependencia . '|' . $limit . '|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
         $view = $this->db->get_view_name();
         $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
                        fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_del_proceso
@@ -593,13 +624,16 @@ final class Tracking
                 ORDER BY valor_contrato DESC LIMIT %d";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, $this->current_vigencia(), $dependencia, $limit), ARRAY_A);
-        return $rows ?: [];
+
+        $result = $rows ?: [];
+        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        return $result;
     }
 
     public function ajax_contratos(): void
     {
         check_ajax_referer('secop_dep_frontend', 'nonce');
-        // FIX 4: mismo rate-limit por IP que ajax_chart_data() (60 req/min)
+        // FIX 4: rate-limit por IP (60 req/min)
         $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
         if ((int) get_transient($ip_key) > 60) {
             wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
@@ -615,12 +649,20 @@ final class Tracking
     public function list_dependencies(): array
     {
         global $wpdb;
+
+        $cache_key = 'secop_trk_' . md5('list_dependencies|' . $this->current_vigencia());
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
         $view = $this->db->get_view_name();
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-        return $wpdb->get_col($wpdb->prepare(
+        $result = $wpdb->get_col($wpdb->prepare(
             "SELECT DISTINCT nombredependencia FROM `{$view}` WHERE anio = %d AND nombredependencia <> '' ORDER BY nombredependencia",
             $this->current_vigencia()
         )) ?: [];
+
+        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        return $result;
     }
 
     public function sc_contratos(array $atts): string

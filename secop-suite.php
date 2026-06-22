@@ -3,7 +3,7 @@
  * Plugin Name: SECOP Suite
  * Plugin URI: https://github.com/GobernaciondeNarino/secop-suite
  * Description: Plugin integral para la importación, almacenamiento y visualización interactiva de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia. Combina importación automatizada desde datos.gov.co con gráficas D3plus configurables mediante shortcodes.
- * Version: 5.1.0
+ * Version: 5.1.3
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Jonnathan Bucheli Galindo - Gobernación de Nariño
@@ -25,7 +25,7 @@ if (!defined('ABSPATH')) {
 }
 
 // ─── Constantes ────────────────────────────────────────────────
-define('SECOP_SUITE_VERSION', '5.1.0');
+define('SECOP_SUITE_VERSION', '5.1.3');
 define('SECOP_SUITE_DB_VERSION', '5.1.0');
 define('SECOP_SUITE_DIR', plugin_dir_path(__FILE__));
 define('SECOP_SUITE_URL', plugin_dir_url(__FILE__));
@@ -553,11 +553,23 @@ final class Plugin
             return;
         }
 
-        $total = $this->database->count_view_rows();
-        $vig   = (int) current_time('Y');
-        $cur   = $this->database->count_view_rows($vig);
-        $raw   = $this->database->count_raw_join();
-        $years = $this->database->rows_by_year();
+        // Diagnóstico CACHEADO: estos conteos hacen JOINs pesados sobre las tablas Sysman.
+        // Se ejecutan a lo sumo una vez cada 10 min, NUNCA en cada carga del admin
+        // (correrlos por página colgaba el panel). El cruce crudo solo se calcula si el VIEW está vacío.
+        $vig  = (int) current_time('Y');
+        $diag = get_transient(SECOP_SUITE_PREFIX . 'diag');
+        if (!is_array($diag)) {
+            $total = $this->database->count_view_rows();
+            $cur   = $this->database->count_view_rows($vig);
+            $raw   = ($total === 0) ? $this->database->count_raw_join() : 0;
+            $years = ($total > 0 && $cur === 0) ? $this->database->rows_by_year() : [];
+            $diag  = compact('total', 'cur', 'raw', 'years');
+            set_transient(SECOP_SUITE_PREFIX . 'diag', $diag, 10 * MINUTE_IN_SECONDS);
+        }
+        $total = (int) ($diag['total'] ?? 0);
+        $cur   = (int) ($diag['cur'] ?? 0);
+        $raw   = (int) ($diag['raw'] ?? 0);
+        $years = is_array($diag['years'] ?? null) ? $diag['years'] : [];
 
         if ($total === 0) {
             $raw_msg = $raw >= 0

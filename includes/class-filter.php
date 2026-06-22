@@ -137,7 +137,7 @@ final class Filter
     public function save_filter_meta(int $post_id, \WP_Post $post): void
     {
         if (!isset($_POST['secop_suite_filter_nonce']) ||
-            !wp_verify_nonce($_POST['secop_suite_filter_nonce'], 'secop_suite_filter_config')) {
+            !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['secop_suite_filter_nonce'] ?? '')), 'secop_suite_filter_config')) {
             return;
         }
         if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;

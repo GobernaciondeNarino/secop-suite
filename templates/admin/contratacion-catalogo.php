@@ -36,6 +36,13 @@ $tipos   = [
         ); ?>
     </p>
 
+    <p>
+        <a href="<?php echo esc_url(admin_url('edit.php?post_type=secop_dep_card')); ?>" class="button">
+            <span class="dashicons dashicons-plus-alt2" style="vertical-align:middle;"></span>
+            <?php esc_html_e('Gestionar gráficas a medida (avanzado)', 'secop-suite'); ?>
+        </a>
+    </p>
+
     <?php if (empty($presets)) : ?>
         <div class="notice notice-warning inline"><p>
             <?php esc_html_e('No hay gráficas prediseñadas disponibles.', 'secop-suite'); ?>
