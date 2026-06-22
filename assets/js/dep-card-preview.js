@@ -48,7 +48,7 @@
         return {
             dimension:   $(SEL.dimension).val()   || 'dependencia',
             chart_type:  $(SEL.chartType).val()    || '',
-            metric:      $(SEL.metric).val()       || 'valordebito',
+            metric:      $(SEL.metric).val()       || 'valor_contrato',
             dependencia: $(SEL.dependencia).val()  || '',
             order:       $(SEL.order).val()        || 'valor',
             order_dir:   $(SEL.orderDir).val()     || 'DESC',

@@ -3,7 +3,7 @@
  * Plugin Name: SECOP Suite
  * Plugin URI: https://github.com/GobernaciondeNarino/secop-suite
  * Description: Plugin integral para la importación, almacenamiento y visualización interactiva de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia. Combina importación automatizada desde datos.gov.co con gráficas D3plus configurables mediante shortcodes.
- * Version: 5.2.2
+ * Version: 5.2.3
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Jonnathan Bucheli Galindo - Gobernación de Nariño
@@ -25,7 +25,7 @@ if (!defined('ABSPATH')) {
 }
 
 // ─── Constantes ────────────────────────────────────────────────
-define('SECOP_SUITE_VERSION', '5.2.2');
+define('SECOP_SUITE_VERSION', '5.2.3');
 define('SECOP_SUITE_DB_VERSION', '5.2.0');
 define('SECOP_SUITE_DIR', plugin_dir_path(__FILE__));
 define('SECOP_SUITE_URL', plugin_dir_url(__FILE__));
@@ -483,7 +483,8 @@ final class Plugin
         if (!str_contains($hook, 'secop-suite-contratacion')) {
             return;
         }
-        $this->visualizer()->enqueue_frontend_chart_stack();
+        // El catálogo NO renderiza gráficas (solo lista + shortcodes), así que NO se
+        // carga el stack d3plus (~1.6 MB) aquí — eso hacía lento abrir el módulo.
         wp_enqueue_style('secop-suite-admin', SECOP_SUITE_URL . 'assets/css/admin.css', [], SECOP_SUITE_VERSION);
     }
 

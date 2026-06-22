@@ -2,7 +2,7 @@
  * SECOP Suite - Frontend JavaScript
  *
  * @package SecopSuite
- * @version 4.1.2
+ * @version 5.2.3
  */
 
 (function($) {
