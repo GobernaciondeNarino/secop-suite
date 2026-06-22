@@ -25,6 +25,7 @@ final class Tracking
         'fuente'        => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
         'mensual'       => ['line', 'area'],
         'ejecucion'     => ['donut', 'bar'],
+        'tercero'       => ['bar', 'treemap', 'pie', 'donut', 'stacked_bar'],
     ];
 
     /** Columna del VIEW que agrupa cada dimensión. */
@@ -35,6 +36,7 @@ final class Tracking
         'fuente'        => 'origen',
         'mensual'       => 'mes',
         'ejecucion'     => 'nombredependencia',
+        'tercero'       => 'nombretercero',
     ];
 
     public function __construct(Database $db)
@@ -88,9 +90,9 @@ final class Tracking
     {
         register_post_type(self::POST_TYPE, [
             'labels' => [
-                'name'          => __('Contratación', 'secop-suite'),
+                'name'          => __('Contratación · a medida', 'secop-suite'),
                 'singular_name' => __('Card', 'secop-suite'),
-                'menu_name'     => __('Contratación', 'secop-suite'),
+                'menu_name'     => __('Contratación · a medida', 'secop-suite'),
                 'add_new_item'  => __('Nueva Card', 'secop-suite'),
                 'edit_item'     => __('Editar Card', 'secop-suite'),
             ],
@@ -338,7 +340,7 @@ final class Tracking
             'date_field'      => '',
             'date_from'       => '',
             'date_to'         => '',
-            'limit'           => ($dimension === 'mensual') ? 0 : 50,
+            'limit'           => (!empty($cfg['limit']) && (int)$cfg['limit'] > 0) ? (int)$cfg['limit'] : ($dimension === 'mensual' ? 0 : 50),
             'order_by'        => ($dimension === 'mensual') ? $x_field : $metric,
             'order_dir'       => ($dimension === 'mensual') ? 'ASC' : 'DESC',
             'colors'          => [],
@@ -356,12 +358,105 @@ final class Tracking
         ];
     }
 
+    // ── Presets prediseñados ──────────────────────────────────────
+
+    /** Definición estática de los presets de gráficas prediseñadas. */
+    public function presets(): array
+    {
+        return [
+            'por_dependencia' => [
+                'titulo'      => __('Ejecución por dependencia', 'secop-suite'),
+                'dimension'   => 'dependencia',
+                'chart_type'  => 'bar',
+                'metric'      => 'valordebito',
+                'limit'       => 15,
+                'descripcion' => __('Valor ejecutado (compromisos RES) y número de contratos por cada dependencia de la entidad en la vigencia actual.', 'secop-suite'),
+            ],
+            'top_contratistas' => [
+                'titulo'      => __('Top 10 contratistas', 'secop-suite'),
+                'dimension'   => 'tercero',
+                'chart_type'  => 'bar',
+                'metric'      => 'valordebito',
+                'limit'       => 10,
+                'descripcion' => __('Los diez contratistas (terceros) con mayor valor ejecutado en la vigencia actual.', 'secop-suite'),
+            ],
+            'evolucion_mensual' => [
+                'titulo'      => __('Evolución mensual y predicción', 'secop-suite'),
+                'dimension'   => 'mensual',
+                'chart_type'  => 'line',
+                'metric'      => 'valordebito',
+                'limit'       => 0,
+                'descripcion' => __('Ejecución acumulada mes a mes de la vigencia actual, con proyección de cierre por regresión lineal.', 'secop-suite'),
+            ],
+        ];
+    }
+
+    /**
+     * Resuelve (o crea) el post de tipo secop_dep_card que respalda un preset.
+     * Es idempotente: busca primero por meta _secop_preset_id; sólo crea si no existe.
+     *
+     * @param string $presetId Clave del preset (ya sanitizada con sanitize_key).
+     * @return int Post ID, o 0 si el preset no existe o falla la creación.
+     */
+    public function get_preset_post_id(string $presetId): int
+    {
+        $presets = $this->presets();
+        if (!isset($presets[$presetId])) return 0;
+        $p = $presets[$presetId];
+
+        $existing = get_posts([
+            'post_type'   => self::POST_TYPE,
+            'post_status' => 'any',
+            'meta_key'    => '_secop_preset_id',
+            'meta_value'  => $presetId,
+            'numberposts' => 1,
+            'fields'      => 'ids',
+        ]);
+
+        if (!empty($existing)) {
+            $id = (int) $existing[0];
+        } else {
+            $id = wp_insert_post([
+                'post_type'   => self::POST_TYPE,
+                'post_status' => 'publish',
+                'post_title'  => $p['titulo'],
+            ]);
+            if (!$id || is_wp_error($id)) return 0;
+            update_post_meta($id, '_secop_preset_id', $presetId);
+        }
+
+        $cardCfg = [
+            'dimension'   => $p['dimension'],
+            'chart_type'  => $p['chart_type'],
+            'metric'      => $p['metric'],
+            'dependencia' => '',
+            'limit'       => $p['limit'] ?? 0,
+        ];
+        update_post_meta($id, '_secop_dep_card_config', $cardCfg);
+        update_post_meta($id, '_secop_chart_config', $this->card_to_chart_config($cardCfg));
+        return (int) $id;
+    }
+
     public function sc_chart(array $atts): string
     {
         $atts = shortcode_atts(
-            ['card' => 0, 'dimension' => '', 'tipo' => '', 'dependencia' => '', 'height' => 400],
+            ['card' => 0, 'dimension' => '', 'tipo' => '', 'dependencia' => '', 'height' => 400, 'preset' => ''],
             $atts, 'secop_dep_chart'
         );
+
+        // Resolve preset → backing card post (find-or-create).
+        if (!empty($atts['preset'])) {
+            $presetKey = sanitize_key($atts['preset']);
+            $presets   = $this->presets();
+            if (!isset($presets[$presetKey])) {
+                return '<p class="ss-error">' . esc_html(sprintf(
+                    /* translators: %s: preset key */
+                    __('Preset desconocido: "%s". Presets disponibles: por_dependencia, top_contratistas, evolucion_mensual.', 'secop-suite'),
+                    $presetKey
+                )) . '</p>';
+            }
+            $atts['card'] = $this->get_preset_post_id($presetKey);
+        }
 
         $card_id = (int) $atts['card'];
         if (!$card_id) {
@@ -412,7 +507,22 @@ final class Tracking
 
     public function sc_analisis(array $atts): string
     {
-        $atts = shortcode_atts(['card' => 0, 'tipo' => 'descripcion'], $atts, 'secop_dep_analisis');
+        $atts = shortcode_atts(['card' => 0, 'tipo' => 'descripcion', 'preset' => ''], $atts, 'secop_dep_analisis');
+
+        // Resolve preset → backing card post (find-or-create).
+        if (!empty($atts['preset'])) {
+            $presetKey = sanitize_key($atts['preset']);
+            $presets   = $this->presets();
+            if (!isset($presets[$presetKey])) {
+                return '<p class="ss-error">' . esc_html(sprintf(
+                    /* translators: %s: preset key */
+                    __('Preset desconocido: "%s". Presets disponibles: por_dependencia, top_contratistas, evolucion_mensual.', 'secop-suite'),
+                    $presetKey
+                )) . '</p>';
+            }
+            $atts['card'] = $this->get_preset_post_id($presetKey);
+        }
+
         $cfg = get_post_meta((int) $atts['card'], '_secop_dep_card_config', true) ?: [];
         if (empty($cfg['dimension'])) return '';
         $tipo = in_array($atts['tipo'], ['descripcion','cualitativo','cuantitativo','prediccion'], true)

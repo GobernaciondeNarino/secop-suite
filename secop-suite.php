@@ -95,6 +95,7 @@ final class Plugin
         add_action('admin_menu', [$this, 'sort_submenus'], 9999);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_contratacion_assets']);
 
         add_filter('cron_schedules', [$this, 'add_cron_schedules']);
         add_action('secop_suite_scheduled_import', [$this->importer, 'run_scheduled']);
@@ -238,6 +239,15 @@ final class Plugin
             'manage_options',
             'secop-suite-datos-abiertos',
             [$this, 'render_datos_abiertos_page']
+        );
+
+        add_submenu_page(
+            'secop-suite',
+            __('Contratación', 'secop-suite'),
+            __('Contratación', 'secop-suite'),
+            'manage_options',
+            'secop-suite-contratacion',
+            [$this, 'render_contratacion_catalog']
         );
     }
 
@@ -448,6 +458,28 @@ final class Plugin
             wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
         }
         include SECOP_SUITE_DIR . 'templates/admin/datos-abiertos-page.php';
+    }
+
+    public function render_contratacion_catalog(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Sin permisos.', 'secop-suite'));
+        }
+        $tracking = $this->tracking();
+        include SECOP_SUITE_DIR . 'templates/admin/contratacion-catalogo.php';
+    }
+
+    /**
+     * Enqueue the frontend chart stack ONLY on the Contratación catalog page,
+     * so the preset chart previews render via the Visualizer engine in admin.
+     */
+    public function enqueue_contratacion_assets(string $hook): void
+    {
+        if (!str_contains($hook, 'secop-suite-contratacion')) {
+            return;
+        }
+        $this->visualizer()->enqueue_frontend_chart_stack();
+        wp_enqueue_style('secop-suite-admin', SECOP_SUITE_URL . 'assets/css/admin.css', [], SECOP_SUITE_VERSION);
     }
 
     // ── Cron ───────────────────────────────────────────────────
