@@ -783,6 +783,11 @@ final class Tracking
             $atts, 'secop_dep_chart'
         );
 
+        // ROBUSTEZ: encolar los assets del módulo AL RENDERIZAR el shortcode. El enqueue
+        // por has_shortcode($post->post_content) falla con page builders/bloques/plantillas
+        // → la gráfica no cargaba en el front. Encolar aquí lo garantiza (scripts en footer).
+        $this->enqueue_module_stack();
+
         // Validate preset early (give a friendly error if unknown).
         if (!empty($atts['preset'])) {
             $presetKey = sanitize_key($atts['preset']);
@@ -906,31 +911,40 @@ final class Tracking
             if (has_shortcode($post->post_content, $sc)) { $has = true; break; }
         }
         if (!$has) return;
+        $this->enqueue_module_stack();
+    }
 
-        // Reutilizar las librerías d3/d3plus del Visualizer.
-        Plugin::get_instance()->visualizer(); // asegura registro
-        do_action('secop_suite_enqueue_chart_libs');
+    /**
+     * Encola los assets del módulo (motor de gráficas + interactividad). Idempotente y
+     * autosuficiente: seguro llamarlo desde wp_enqueue_scripts (gated por has_shortcode)
+     * O durante el render de un shortcode — esto último cubre page builders, bloques,
+     * widgets y plantillas donde has_shortcode($post->post_content) no detecta el shortcode
+     * (por eso la gráfica no cargaba en el front).
+     */
+    public function enqueue_module_stack(): void
+    {
+        // Motor de gráficas (d3/d3plus + frontend.js + secopSuiteChart) del Visualizer.
+        Plugin::get_instance()->visualizer()->enqueue_frontend_chart_stack();
 
         wp_enqueue_style('secop-suite-frontend', SECOP_SUITE_URL . 'assets/css/frontend.css', [], SECOP_SUITE_VERSION);
-        // dep-tracking.js no longer renders charts directly; Visualizer/frontend.js handles them.
-        // Depends only on jquery (contracts table) + secop-suite-frontend (for SSChartManager).
+        // dep-tracking.js: tabla de contratos del seguimiento (depende de frontend.js para SSChartManager).
         wp_enqueue_script('secop-dep-tracking', SECOP_SUITE_URL . 'assets/js/dep-tracking.js',
             ['jquery', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
         // v5.1.9: click-to-drill — popup con los contratos de la categoría clicada.
-        // Reutiliza el objeto localizado secopDep (ajaxUrl + nonce secop_dep_frontend).
         wp_enqueue_script('secop-dep-drill', SECOP_SUITE_URL . 'assets/js/dep-drill.js',
             ['jquery'], SECOP_SUITE_VERSION, true);
-        // FIX 6: cadenas i18n expuestas al JS para evitar literales hardcoded en el bundle
-        wp_localize_script('secop-dep-tracking', 'secopDep', [
-            'ajaxUrl' => admin_url('admin-ajax.php'),
-            'nonce'   => wp_create_nonce('secop_dep_frontend'),
-            'strings' => [
-                'noData'      => __('No hay datos.', 'secop-suite'),
-                'noContracts' => __('Sin contratos.', 'secop-suite'),
-                'valueLabel'  => __('Valor ejecutado', 'secop-suite'),
-                'countLabel'  => __('Contratos', 'secop-suite'),
-            ],
-        ]);
+        if (!wp_script_is('secop-dep-tracking', 'done')) {
+            wp_localize_script('secop-dep-tracking', 'secopDep', [
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'nonce'   => wp_create_nonce('secop_dep_frontend'),
+                'strings' => [
+                    'noData'      => __('No hay datos.', 'secop-suite'),
+                    'noContracts' => __('Sin contratos.', 'secop-suite'),
+                    'valueLabel'  => __('Valor ejecutado', 'secop-suite'),
+                    'countLabel'  => __('Contratos', 'secop-suite'),
+                ],
+            ]);
+        }
     }
 
     // ── Task 12: contratos por dependencia ────────────────────────
@@ -1039,6 +1053,9 @@ final class Tracking
     public function sc_seguimiento(array $atts): string
     {
         $atts = shortcode_atts(['dependencia' => '', 'cards' => ''], $atts, 'secop_seguimiento');
+
+        // ROBUSTEZ: encolar los assets del módulo al renderizar (ver nota en sc_chart).
+        $this->enqueue_module_stack();
 
         // Resolve the list of card post IDs to display.
         if (!empty($atts['cards'])) {

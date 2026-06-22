@@ -436,6 +436,10 @@ final class Visualizer
         $unique_id   = 'ss-chart-' . $chart_id . '-' . wp_unique_id();
         $extra_class = !empty($atts['class']) ? ' ' . esc_attr($atts['class']) : '';
 
+        // ROBUSTEZ: encolar el motor al renderizar (cubre page builders/bloques/plantillas
+        // donde has_shortcode($post->post_content) no detecta el shortcode).
+        $this->enqueue_frontend_chart_stack();
+
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/chart.php';
         return ob_get_clean();
