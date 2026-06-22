@@ -69,6 +69,9 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.3.1 — Filtros configurables en Contratación
+- Filtros configurables (columna/operador/valor) en el editor de cards de Contratación, reflejados en la vista previa y la consulta SQL. Columna validada contra una whitelist (`filter_columns()`), operador contra la lista permitida y valor preparado por `build_chart_query` (`$wpdb->prepare`).
+
 ### v5.3.0 — Personalización del gráfico en Contratación
 - Personalización del gráfico en Contratación: formato de números, altura, títulos de ejes, leyenda (mostrar/ocultar, modo icono/texto, posición), barra de herramientas (mostrar/ocultar + botones); disponible en el editor, el shortcode y la vista previa en vivo.
 

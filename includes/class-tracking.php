@@ -67,6 +67,31 @@ final class Tracking
         ];
     }
 
+    /**
+     * Whitelist de columnas filtrables del módulo de Contratación.
+     * Sólo columnas que existen en la vista vista_secop_sysman. El valor es la
+     * etiqueta amigable mostrada en el editor. build_chart_query revalida la
+     * columna contra las columnas reales y prepara el valor con $wpdb->prepare,
+     * por lo que esta whitelist es la primera (no la única) línea de defensa.
+     *
+     * @return array<string,string> [columna => etiqueta].
+     */
+    public function filter_columns(): array
+    {
+        return [
+            'nombredependencia'         => __('Dependencia', 'secop-suite'),
+            'tipo_de_contrato'          => __('Tipo de contrato', 'secop-suite'),
+            'modalidad_de_contratacion' => __('Modalidad', 'secop-suite'),
+            'nombretercero'             => __('Contratista', 'secop-suite'),
+            'documento_proveedor'       => __('Documento proveedor', 'secop-suite'),
+            'mes'                       => __('Mes', 'secop-suite'),
+            'valor_contrato'            => __('Valor del contrato', 'secop-suite'),
+            'valordebito'               => __('Valor ejecutado', 'secop-suite'),
+            'saldoporejecutaresp'       => __('Saldo por ejecutar', 'secop-suite'),
+            'numero_del_contrato'       => __('Nº de contrato', 'secop-suite'),
+        ];
+    }
+
     public static function is_compatible(string $dimension, string $type): bool
     {
         return in_array($type, self::COMPAT[$dimension] ?? [], true);
@@ -282,6 +307,7 @@ final class Tracking
             'mensual'        => __('Mensual (evolución)', 'secop-suite'),
         ];
         $dependencias = $this->list_dependencies();
+        $filter_columns = $this->filter_columns();
         include SECOP_SUITE_DIR . 'templates/admin/dep-card-config.php';
     }
 
@@ -359,6 +385,8 @@ final class Tracking
                     : explode(',', sanitize_text_field(wp_unslash($_POST['toolbar_options'] ?? '')))),
                 ['detail', 'share', 'data', 'image', 'download']
             )),
+            // v5.3.1: filtros configurables enviados por la vista previa.
+            'filters'         => $this->sanitize_filter_rows($_POST['filters'] ?? []),
         ];
 
         $chart_config = $this->card_to_chart_config($cfg);
@@ -424,9 +452,40 @@ final class Tracking
             'legend_position' => in_array($_POST['dep_legend_position'] ?? '', ['bottom', 'top', 'left', 'right'], true) ? $_POST['dep_legend_position'] : 'bottom',
             'show_toolbar'    => isset($_POST['dep_show_toolbar']),
             'toolbar_options' => array_values(array_intersect((array) ($_POST['dep_toolbar_options'] ?? []), ['detail', 'share', 'data', 'image', 'download'])),
+            // v5.3.1: filtros configurables (columna/operador/valor).
+            // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce verificado arriba.
+            'filters'         => $this->sanitize_filter_rows($_POST['dep_filters'] ?? []),
         ];
         update_post_meta($post_id, '_secop_dep_card_config', $config);
         update_post_meta($post_id, '_secop_chart_config', $this->card_to_chart_config($config));
+    }
+
+    /**
+     * Sanea las filas de filtros personalizados provenientes del formulario o de
+     * la petición AJAX de vista previa. Cada fila es ['field','operator','value'].
+     * Descarta filas con columna no permitida, operador inválido (→ '=') o valor
+     * vacío. El valor se desliza+sanea; build_chart_query lo prepara después.
+     *
+     * @param mixed $raw Array de filas (potencialmente sucio) o no-array.
+     * @return array<int,array{field:string,operator:string,value:string}>
+     */
+    private function sanitize_filter_rows($raw): array
+    {
+        if (!is_array($raw)) return [];
+        $allowed_ops = ['=', '!=', '>', '<', '>=', '<=', 'LIKE'];
+        $cols = $this->filter_columns();
+        $clean = [];
+        foreach ($raw as $row) {
+            if (!is_array($row)) continue;
+            $field = sanitize_text_field(wp_unslash($row['field'] ?? ''));
+            if (!isset($cols[$field])) continue;
+            $op  = (string) ($row['operator'] ?? '=');
+            if (!in_array($op, $allowed_ops, true)) $op = '=';
+            $val = sanitize_text_field(wp_unslash($row['value'] ?? ''));
+            if ($val === '') continue;
+            $clean[] = ['field' => $field, 'operator' => $op, 'value' => $val];
+        }
+        return array_values($clean);
     }
 
     public function enqueue_admin_assets(string $hook): void
@@ -518,6 +577,17 @@ final class Tracking
         $dep = ($dependencia !== null && $dependencia !== '') ? $dependencia : ($cfg['dependencia'] ?? '');
         if ($dep !== '') {
             $filters[] = ['field' => 'nombredependencia', 'operator' => '=', 'value' => $dep];
+        }
+
+        // Filtros personalizados de la card (columna/operador/valor), validados
+        // contra la whitelist. build_chart_query revalida y prepara el valor.
+        foreach (($cfg['filters'] ?? []) as $f) {
+            $field = $f['field'] ?? '';
+            if (!isset($this->filter_columns()[$field])) continue;
+            $op = in_array($f['operator'] ?? '=', ['=', '!=', '>', '<', '>=', '<=', 'LIKE'], true) ? $f['operator'] : '=';
+            $val = (string) ($f['value'] ?? '');
+            if ($val === '') continue;
+            $filters[] = ['field' => $field, 'operator' => $op, 'value' => $val];
         }
 
         return [

@@ -194,3 +194,73 @@ $dep_sel_toolbar = (!empty($config['toolbar_options']) && is_array($config['tool
     </td>
   </tr>
 </table>
+
+<?php
+// v5.3.1: Filtros configurables (columna/operador/valor).
+$dep_filter_ops = [
+    '='    => __('Igual =', 'secop-suite'),
+    '!='   => __('Distinto !=', 'secop-suite'),
+    '>'    => __('Mayor >', 'secop-suite'),
+    '<'    => __('Menor <', 'secop-suite'),
+    '>='   => __('Mayor o igual >=', 'secop-suite'),
+    '<='   => __('Menor o igual <=', 'secop-suite'),
+    'LIKE' => __('Contiene LIKE', 'secop-suite'),
+];
+$dep_saved_filters = (!empty($config['filters']) && is_array($config['filters'])) ? array_values($config['filters']) : [];
+?>
+<h3 style="margin:1em 0 .5em;"><?php esc_html_e('Filtros', 'secop-suite'); ?></h3>
+<p class="description" style="margin-bottom:.5em;">
+  <?php esc_html_e('Restrinja los datos por columna, operador y valor. Se aplican además del año vigente y la dependencia.', 'secop-suite'); ?>
+</p>
+<div id="dep-filters-rows">
+  <?php
+  // Renderiza las filas guardadas más una fila vacía al final.
+  $dep_filter_render = $dep_saved_filters;
+  $dep_filter_render[] = ['field' => '', 'operator' => '=', 'value' => ''];
+  foreach ($dep_filter_render as $i => $f) :
+      $f_field = $f['field'] ?? '';
+      $f_op    = $f['operator'] ?? '=';
+      $f_val   = $f['value'] ?? '';
+  ?>
+    <div class="dep-filter-row" style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+      <select name="dep_filters[<?php echo (int) $i; ?>][field]" class="dep-filter-field">
+        <option value=""><?php esc_html_e('— Columna —', 'secop-suite'); ?></option>
+        <?php foreach ($filter_columns as $col => $label) : ?>
+          <option value="<?php echo esc_attr($col); ?>" <?php selected($f_field, $col); ?>><?php echo esc_html($label); ?></option>
+        <?php endforeach; ?>
+      </select>
+      <select name="dep_filters[<?php echo (int) $i; ?>][operator]" class="dep-filter-operator">
+        <?php foreach ($dep_filter_ops as $op => $op_label) : ?>
+          <option value="<?php echo esc_attr($op); ?>" <?php selected($f_op, $op); ?>><?php echo esc_html($op_label); ?></option>
+        <?php endforeach; ?>
+      </select>
+      <input type="text" name="dep_filters[<?php echo (int) $i; ?>][value]" class="dep-filter-value"
+        value="<?php echo esc_attr($f_val); ?>" placeholder="<?php esc_attr_e('Valor', 'secop-suite'); ?>">
+      <button type="button" class="button dep-filter-remove" title="<?php esc_attr_e('Quitar', 'secop-suite'); ?>"><?php esc_html_e('Quitar', 'secop-suite'); ?></button>
+    </div>
+  <?php endforeach; ?>
+</div>
+<p>
+  <button type="button" class="button" id="dep-filter-add">
+    <span class="dashicons dashicons-plus-alt2" style="vertical-align:text-bottom"></span>
+    <?php esc_html_e('Añadir filtro', 'secop-suite'); ?>
+  </button>
+</p>
+
+<script type="text/template" id="dep-filter-row-tpl">
+  <div class="dep-filter-row" style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+    <select name="dep_filters[{{i}}][field]" class="dep-filter-field">
+      <option value=""><?php esc_html_e('— Columna —', 'secop-suite'); ?></option>
+      <?php foreach ($filter_columns as $col => $label) : ?>
+        <option value="<?php echo esc_attr($col); ?>"><?php echo esc_html($label); ?></option>
+      <?php endforeach; ?>
+    </select>
+    <select name="dep_filters[{{i}}][operator]" class="dep-filter-operator">
+      <?php foreach ($dep_filter_ops as $op => $op_label) : ?>
+        <option value="<?php echo esc_attr($op); ?>"><?php echo esc_html($op_label); ?></option>
+      <?php endforeach; ?>
+    </select>
+    <input type="text" name="dep_filters[{{i}}][value]" class="dep-filter-value" placeholder="<?php esc_attr_e('Valor', 'secop-suite'); ?>">
+    <button type="button" class="button dep-filter-remove" title="<?php esc_attr_e('Quitar', 'secop-suite'); ?>"><?php esc_html_e('Quitar', 'secop-suite'); ?></button>
+  </div>
+</script>

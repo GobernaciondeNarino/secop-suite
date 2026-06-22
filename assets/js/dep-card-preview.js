@@ -75,8 +75,30 @@
             show_toolbar:    $(SEL.showToolbar).is(':checked') ? '1' : '0',
             toolbar_options: $(SEL.toolbarOptions + ':checked').map(function () {
                 return this.value;
-            }).get().join(',')
+            }).get().join(','),
+            // v5.3.1: filtros configurables (columna/operador/valor). Se envían como
+            // un array que jQuery serializa a filters[i][field|operator|value].
+            filters: collectFilters()
         };
+    }
+
+    /**
+     * Recolecta las filas de filtros del editor en un array de objetos. Descarta
+     * filas sin columna o sin valor (el servidor revalida igualmente).
+     */
+    function collectFilters() {
+        var out = [];
+        $('#dep-filters-rows .dep-filter-row').each(function () {
+            var $row = $(this);
+            var field = ($row.find('.dep-filter-field').val() || '').trim();
+            var operator = $row.find('.dep-filter-operator').val() || '=';
+            var value = ($row.find('.dep-filter-value').val() || '').trim();
+            if (field === '' || value === '') {
+                return;
+            }
+            out.push({ field: field, operator: operator, value: value });
+        });
+        return out;
     }
 
     function renderDataTable(rows) {
@@ -203,6 +225,22 @@
             SEL.showToolbar, SEL.toolbarOptions
         ].join(', ');
         $(document).on('change', watch, debouncedRefresh);
+
+        // v5.3.1: filtros configurables — añadir/quitar filas y refrescar.
+        var filterIndex = $('#dep-filters-rows .dep-filter-row').length;
+        $(document).on('click', '#dep-filter-add', function () {
+            var tpl = $('#dep-filter-row-tpl').html() || '';
+            $('#dep-filters-rows').append(tpl.replace(/\{\{i\}\}/g, filterIndex));
+            filterIndex++;
+            debouncedRefresh();
+        });
+        $(document).on('click', '.dep-filter-remove', function () {
+            $(this).closest('.dep-filter-row').remove();
+            debouncedRefresh();
+        });
+        // Editar columna/operador/valor de un filtro refresca la vista previa.
+        $(document).on('change keyup', '#dep-filters-rows .dep-filter-field, #dep-filters-rows .dep-filter-operator, #dep-filters-rows .dep-filter-value', debouncedRefresh);
+
         // Refresco inicial.
         refresh();
     });
