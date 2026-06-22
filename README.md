@@ -69,6 +69,11 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.10.0 — Treemap composable `[secop_dep_treemap]` con coordinación cruzada
+- Nuevo shortcode **`[secop_dep_treemap]`**: el treemap del explorador pasa a ser una **pieza independiente y componible** que se **coordina de forma cruzada con `[secop_dep_lista]`** (y con otros treemaps) compartiendo **un único estado de filtro a nivel de página** `{dependencia, modalidad, tipo_contrato}` mediante el coordinador `window.SecopCoord` (nuevo `assets/js/dep-coord.js`, bus de eventos `secop:coord:refresh`). Al hacer clic en una celda del treemap se conmuta ese filtro y se re-consultan automáticamente las listas y treemaps de la página; y viceversa. Así se pueden maquetar landings libremente con iconografía consistente.
+- **Configuración completa de visualización**: `colors` (paleta HEX), `legend` (mostrar/ocultar), `legendmode` (`icono` / `icono+texto` = `texto`), `toolbar` (barra de herramientas unificada con **descarga de datos** —CSV de la vista completa, vía la ruta REST `/consulta/csv`— **+ exportación de imagen PNG** con html2canvas + limpiar filtros), `dimension` (dependencias/modalidades/tipos/contratistas), `metric` (valor_contrato/contratos), `height` y `limit`. La descarga de datos se **unifica dentro de la barra de herramientas**.
+- `[secop_dep_lista]` se refactorizó para usar el coordinador compartido en lugar de su estado privado; el explorador todo-en-uno `[secop_dep_explora]` se mantiene pero queda **superado** por las piezas componibles. AJAX `secop_dep_treemap` (reusa `lista_aggregate`, mismo nonce + rate-limit); el treemap excluye su propio campo del filtro.
+
 ### v5.9.0 — Adaptación a la nueva vista `vista_secop_sysman`
 - La vista cambió estructuralmente: ahora la **base es `secop_contracts` con `LEFT JOIN`** a las tablas Sysman, por lo que **todos los contratos aparecen** (los que no tienen cruce presupuestal Sysman quedan con `dependencia`/`tercero`/`valordebito`/… en `NULL`).
 - La **vigencia** se determina por `YEAR(fecha_de_firma_del_contrato)` (año de **firma** del contrato), y la propia vista se auto-renueva cada año (`= YEAR(CURDATE())`). Todas las consultas del módulo cambiaron `anio = %d` por `YEAR(fecha_de_firma_del_contrato) = %d`.
