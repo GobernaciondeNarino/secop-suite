@@ -268,9 +268,10 @@ final class Rest_Api
         $output = fopen('php://output', 'w');
         // BOM para Excel
         fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
-        fputcsv($output, array_keys($data[0]));
+        // FIX I3: csv_safe on column headers and data cells
+        fputcsv($output, array_map([self::class, 'csv_safe'], array_keys($data[0])));
         foreach ($data as $row) {
-            fputcsv($output, $row);
+            fputcsv($output, array_map([self::class, 'csv_safe'], $row));
         }
         fclose($output);
         exit;
@@ -280,11 +281,25 @@ final class Rest_Api
 
     public function export_csv(\WP_REST_Request $request): void
     {
-        global $wpdb;
-        $table = $this->db->get_table_name();
-        $data = $wpdb->get_results("SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC", ARRAY_A);
+        // FIX C1: rate limit (reuse consulta_rate_limited — max 30 req/min per IP)
+        if ($this->consulta_rate_limited()) {
+            status_header(429);
+            echo 'Demasiadas solicitudes';
+            exit;
+        }
 
-        if (empty($data)) {
+        global $wpdb;
+        $table      = $this->db->get_table_name();
+        $batch_size = 2000;
+        $offset     = 0;
+
+        // First batch — needed to detect empty data and write CSV column headers
+        $first_batch = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC LIMIT %d OFFSET %d",
+            $batch_size, $offset
+        ), ARRAY_A);
+
+        if (empty($first_batch)) {
             status_header(404);
             echo 'No hay datos para exportar';
             exit;
@@ -293,13 +308,27 @@ final class Rest_Api
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="secop-contratos-' . date('Y-m-d') . '.csv"');
         header('Cache-Control: no-cache, no-store, must-revalidate');
-        header('X-Content-Type-Options', 'nosniff');
+        header('X-Content-Type-Options: nosniff');
 
         $output = fopen('php://output', 'w');
         fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
-        fputcsv($output, array_keys($data[0]));
-        foreach ($data as $row) {
-            fputcsv($output, $row);
+        // FIX I3: csv_safe on column headers
+        fputcsv($output, array_map([self::class, 'csv_safe'], array_keys($first_batch[0])));
+        // Stream all batches
+        $batch = $first_batch;
+        while (!empty($batch)) {
+            foreach ($batch as $row) {
+                // FIX I3: csv_safe on every data cell
+                fputcsv($output, array_map([self::class, 'csv_safe'], $row));
+            }
+            if (count($batch) < $batch_size) {
+                break;
+            }
+            $offset += $batch_size;
+            $batch = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC LIMIT %d OFFSET %d",
+                $batch_size, $offset
+            ), ARRAY_A);
         }
         fclose($output);
         exit;
@@ -307,11 +336,25 @@ final class Rest_Api
 
     public function export_txt(\WP_REST_Request $request): void
     {
-        global $wpdb;
-        $table = $this->db->get_table_name();
-        $data = $wpdb->get_results("SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC", ARRAY_A);
+        // FIX C1: rate limit (reuse consulta_rate_limited — max 30 req/min per IP)
+        if ($this->consulta_rate_limited()) {
+            status_header(429);
+            echo 'Demasiadas solicitudes';
+            exit;
+        }
 
-        if (empty($data)) {
+        global $wpdb;
+        $table      = $this->db->get_table_name();
+        $batch_size = 2000;
+        $offset     = 0;
+
+        // First batch — needed to check for data and compute column widths
+        $first_batch = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC LIMIT %d OFFSET %d",
+            $batch_size, $offset
+        ), ARRAY_A);
+
+        if (empty($first_batch)) {
             status_header(404);
             echo 'No hay datos para exportar';
             exit;
@@ -320,15 +363,16 @@ final class Rest_Api
         header('Content-Type: text/plain; charset=utf-8');
         header('Content-Disposition: attachment; filename="secop-contratos-' . date('Y-m-d') . '.txt"');
         header('Cache-Control: no-cache, no-store, must-revalidate');
-        header('X-Content-Type-Options', 'nosniff');
+        header('X-Content-Type-Options: nosniff');
 
-        $columns = array_keys($data[0]);
-        $widths = [];
+        // Compute column widths from first batch only (acceptable for fixed-width TXT)
+        $columns = array_keys($first_batch[0]);
+        $widths  = [];
         foreach ($columns as $col) {
             $widths[$col] = max(mb_strlen($col), 15);
         }
 
-        // Header
+        // Header row
         $line = '';
         foreach ($columns as $col) {
             $line .= str_pad($col, $widths[$col] + 2);
@@ -336,17 +380,28 @@ final class Rest_Api
         echo $line . "\n";
         echo str_repeat('=', mb_strlen($line)) . "\n";
 
-        // Data rows
-        foreach ($data as $row) {
-            $line = '';
-            foreach ($columns as $col) {
-                $val = $row[$col] ?? '';
-                if (mb_strlen($val) > $widths[$col]) {
-                    $val = mb_substr($val, 0, $widths[$col] - 2) . '..';
+        // Stream all batches
+        $batch = $first_batch;
+        while (!empty($batch)) {
+            foreach ($batch as $row) {
+                $line = '';
+                foreach ($columns as $col) {
+                    $val = (string) ($row[$col] ?? '');
+                    if (mb_strlen($val) > $widths[$col]) {
+                        $val = mb_substr($val, 0, $widths[$col] - 2) . '..';
+                    }
+                    $line .= str_pad($val, $widths[$col] + 2);
                 }
-                $line .= str_pad($val, $widths[$col] + 2);
+                echo $line . "\n";
             }
-            echo $line . "\n";
+            if (count($batch) < $batch_size) {
+                break;
+            }
+            $offset += $batch_size;
+            $batch = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC LIMIT %d OFFSET %d",
+                $batch_size, $offset
+            ), ARRAY_A);
         }
         exit;
     }

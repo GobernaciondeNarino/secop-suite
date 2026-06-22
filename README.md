@@ -69,6 +69,12 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.1.2 — Seguridad: exports públicos, CSV anti-fórmula, headers, nonce
+- **Rate-limit + streaming paginado en exports públicos** (`/export/csv` y `/export/txt`): comparten el limitador por IP de los endpoints `/consulta` (max 30 req/min); la tabla completa ya no se carga en memoria — se emite en lotes de 2 000 filas vía `LIMIT/OFFSET` (anti-DoS / memory exhaustion).
+- **CSV anti-fórmula** (`csv_safe`) aplicado a cabeceras y celdas en `get_chart_csv()` y en el nuevo `export_csv()` paginado (mitiga inyección de fórmulas Excel/LibreOffice).
+- **Header `X-Content-Type-Options` corregido** en `export_csv()` y `export_txt()`: se usaba la forma incorrecta `header('X-Content-Type-Options', 'nosniff')` (segundo argumento ignorado) → cambiado a `header('X-Content-Type-Options: nosniff')`.
+- **Nonce unslash/sanitize** antes de `wp_verify_nonce()` en `save_filter_meta()` y `save_chart_meta()`: se aplica `wp_unslash()` + `sanitize_text_field()` para cumplir las buenas prácticas de WordPress y evitar fallos con magic quotes activas.
+
 ### v5.1.0 — Módulo Seguimiento de Dependencias y Datos Abiertos
 - VIEW `dat_seguimiento_dependencias` (contratos × ejecución presupuestal por dependencia).
 - Gráficas prediseñadas + análisis autogenerados (regresión + R²), vigencia actual.
