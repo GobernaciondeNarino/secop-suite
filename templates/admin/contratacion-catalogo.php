@@ -33,6 +33,13 @@ $presets = $tracking->presets();
         ); ?>
     </p>
 
+    <p class="description">
+        <?php esc_html_e(
+            'La galería presenta los mismos datos de contratación en un tipo de gráfica distinto por tarjeta (barras, treemap, donut, pie, burbujas, línea y área), cada una acompañada de su análisis automático.',
+            'secop-suite'
+        ); ?>
+    </p>
+
     <p>
         <a href="<?php echo esc_url(admin_url('edit.php?post_type=secop_dep_card')); ?>" class="button">
             <span class="dashicons dashicons-plus-alt2" style="vertical-align:middle;"></span>
@@ -43,10 +50,10 @@ $presets = $tracking->presets();
     <?php
     // Parámetros de personalización del shortcode [secop_dep_chart] (v5.1.8).
     $sc_params = [
-        ['preset',      __('Clave de gráfica prediseñada (por_dependencia, top_contratistas, evolucion_mensual).', 'secop-suite')],
+        ['preset',      sprintf(__('Clave de gráfica prediseñada (%s).', 'secop-suite'), implode(', ', array_keys($presets)))],
         ['card',        __('ID de una card a medida que sirve de base.', 'secop-suite')],
         ['dimension',   __('Dimensión de agrupación: dependencia, tipo_contrato, modalidad, tercero, mensual.', 'secop-suite')],
-        ['tipo',        __('Tipo de gráfica (bar, stacked_bar, treemap, pie, donut, line, area). Se valida contra la dimensión.', 'secop-suite')],
+        ['tipo',        __('Tipo de gráfica (bar, stacked_bar, treemap, pie, donut, pack, line, area). Se valida contra la dimensión.', 'secop-suite')],
         ['metric',      __('Métrica: valor_contrato (valor del contrato), valordebito (valor ejecutado), saldoporejecutaresp (saldo por ejecutar), contratos (Nº de contratos), registros (Nº de registros).', 'secop-suite')],
         ['order',       __('Orden de las categorías: valor o etiqueta.', 'secop-suite')],
         ['orderdir',    __('Sentido del orden: ASC o DESC.', 'secop-suite')],
@@ -137,7 +144,7 @@ $presets = $tracking->presets();
     // v5.4.0: Red de contratación [secop_dep_red].
     $red_params = [
         ['dependencia', __('Filtra la red por una dependencia concreta (vacío = todas).', 'secop-suite')],
-        ['limit',       __('Top-N de contratistas por valor cuando no se filtra por dependencia (10–300, por defecto 80).', 'secop-suite')],
+        ['limit',       __('Top-N de contratistas por valor (0 = TODOS, por defecto). Sin filtro de dependencia, la red muestra todos los contratistas; cap de seguridad 5000.', 'secop-suite')],
         ['height',      __('Altura mínima del lienzo en píxeles (por defecto 560).', 'secop-suite')],
         ['selector',    __('Muestra el selector de dependencia: on u off (por defecto on).', 'secop-suite')],
     ];
@@ -150,7 +157,7 @@ $presets = $tracking->presets();
     <div class="ss-cat-card ss-cat-card-red" style="margin-top:20px;">
         <h2 class="ss-cat-title"><?php esc_html_e('Red de contratación', 'secop-suite'); ?></h2>
         <p class="ss-cat-desc">
-            <?php esc_html_e('Red de contratación: dependencias como nodos centrales conectadas a contratistas, tipos y modalidades; tooltip con nº de contratos, valor y dependencia.', 'secop-suite'); ?>
+            <?php esc_html_e('Red de contratación: dependencias como nodos centrales conectadas a contratistas, tipos y modalidades; tooltip con nº de contratos, valor y dependencia. Por defecto muestra TODOS los contratistas (magnitud completa) cuando no se filtra por dependencia.', 'secop-suite'); ?>
         </p>
         <details class="ss-cat-params">
             <summary><strong><?php esc_html_e('Parámetros del shortcode [secop_dep_red]', 'secop-suite'); ?></strong></summary>
@@ -174,6 +181,59 @@ $presets = $tracking->presets();
         <div class="ss-cat-shortcodes">
             <h3><?php esc_html_e('Shortcodes', 'secop-suite'); ?></h3>
             <?php foreach ($red_shortcodes as $sc) : ?>
+                <div class="ss-cat-sc-row">
+                    <input type="text" class="ss-cat-sc-input" readonly
+                           value="<?php echo esc_attr($sc); ?>"
+                           onclick="this.select();" />
+                    <button type="button" class="button ss-cat-copy"
+                            data-clipboard="<?php echo esc_attr($sc); ?>">
+                        <?php esc_html_e('Copiar', 'secop-suite'); ?>
+                    </button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <?php
+    // v5.4.1: Red ego (Rings) [secop_dep_rings].
+    $rings_params = [
+        ['dependencia', __('Dependencia central de la red ego (vacío = la de mayor valor).', 'secop-suite')],
+        ['height',      __('Altura del lienzo en píxeles (por defecto 560).', 'secop-suite')],
+        ['selector',    __('Muestra el selector de dependencia central: on u off (por defecto on).', 'secop-suite')],
+    ];
+    $rings_shortcodes = [
+        '[secop_dep_rings]',
+        '[secop_dep_rings height="640"]',
+        '[secop_dep_rings dependencia="Secretaría General" selector="off"]',
+    ];
+    ?>
+    <div class="ss-cat-card ss-cat-card-rings" style="margin-top:20px;">
+        <h2 class="ss-cat-title"><?php esc_html_e('Red ego (Rings)', 'secop-suite'); ?></h2>
+        <p class="ss-cat-desc">
+            <?php esc_html_e('Red ego centrada en una dependencia (d3plus.Rings): la dependencia elegida ocupa el centro y sus contratistas, tipos y modalidades se disponen en anillos concéntricos. Si no se elige dependencia, se centra en la de mayor valor.', 'secop-suite'); ?>
+        </p>
+        <details class="ss-cat-params">
+            <summary><strong><?php esc_html_e('Parámetros del shortcode [secop_dep_rings]', 'secop-suite'); ?></strong></summary>
+            <table class="widefat striped" style="max-width:760px;">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Parámetro', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Descripción', 'secop-suite'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($rings_params as $param) : ?>
+                        <tr>
+                            <td><code><?php echo esc_html($param[0]); ?></code></td>
+                            <td><?php echo esc_html($param[1]); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </details>
+        <div class="ss-cat-shortcodes">
+            <h3><?php esc_html_e('Shortcodes', 'secop-suite'); ?></h3>
+            <?php foreach ($rings_shortcodes as $sc) : ?>
                 <div class="ss-cat-sc-row">
                     <input type="text" class="ss-cat-sc-input" readonly
                            value="<?php echo esc_attr($sc); ?>"

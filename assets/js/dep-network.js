@@ -1,10 +1,13 @@
 (function ($) {
   'use strict';
 
-  // ── v5.4.0: Red de contratación — grafo de fuerza (d3 v5) ──────────────────
+  // ── v5.4.0/5.4.1: Red de contratación — grafo de fuerza (d3 v5) ────────────
   // Dependencias = nodos centrales, conectadas a contratistas, tipos de contrato
   // y modalidades de contratación. Datos vía AJAX (secop_dep_network). Todos los
   // textos de BD se insertan con d3 .text()/nodos de texto (nunca innerHTML).
+  // v5.4.1: muestra TODOS los contratistas por defecto (limit=0). Para grafos
+  // grandes (>400 nodos) la simulación se ejecuta un número acotado de ticks y
+  // luego se detiene (no animación abierta) para mantener la página responsiva.
 
   var COLORS = {
     dependencia: '#0080c3',
@@ -19,6 +22,9 @@
     ['tipo',        'Tipo de contrato'],
     ['modalidad',   'Modalidad']
   ];
+
+  // Umbral a partir del cual se considera "grafo grande" y se acota la simulación.
+  var BIG_GRAPH = 400;
 
   function money(v) {
     return '$' + Math.round(Number(v) || 0).toLocaleString('es-CO');
@@ -36,10 +42,18 @@
     }
 
     var dependencia = $wrap.attr('data-dependencia') || '';
-    var limit = parseInt($wrap.attr('data-limit'), 10) || 80;
+    // limit puede ser 0 (= todos los contratistas). No usar `|| 80`, que
+    // convertiría 0 en 80 — ese era el bug que impedía ver la magnitud completa.
+    var limitAttr = $wrap.attr('data-limit');
+    var limit = (limitAttr === undefined || limitAttr === '') ? 0 : parseInt(limitAttr, 10);
+    if (isNaN(limit) || limit < 0) limit = 0;
 
-    $svgBox.empty().text('Cargando red…');
+    // Indicador de carga mientras se obtienen y disponen los datos.
+    $svgBox.empty().append(
+      $('<div>', { 'class': 'ss-red-loading', text: 'Cargando red…' })
+    );
     $legend.empty();
+    $wrap.find('.ss-red-caption').remove();
 
     $.post(secopDep.ajaxUrl, {
       action: 'secop_dep_network',
@@ -63,11 +77,14 @@
 
     $svgBox.empty();
     $legend.empty();
+    $wrap.find('.ss-red-caption').remove();
 
     if (!nodes.length) {
       $svgBox.text((secopDep.strings && secopDep.strings.noData) || 'No hay datos.');
       return;
     }
+
+    var bigGraph = nodes.length > BIG_GRAPH;
 
     var width = $svgBox.width() || $wrap.width() || 800;
     var height = Math.max(360, parseInt($wrap.css('min-height'), 10) || 560);
@@ -99,7 +116,7 @@
       .selectAll('circle').data(nodes).enter().append('circle')
       .attr('class', 'ss-red-node')
       .attr('r', radius)
-      .attr('fill', function (d) { return COLORS[d.type] || '#999'; })
+      .attr('fill', function (d) { return d.color || COLORS[d.type] || '#999'; })
       .call(d3.drag()
         .on('start', dragstart)
         .on('drag', dragged)
@@ -137,13 +154,7 @@
       svg.selectAll('.ss-red-hover-label').remove();
     });
 
-    var sim = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id(function (d) { return d.id; }).distance(60))
-      .force('charge', d3.forceManyBody().strength(-120))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collide', d3.forceCollide().radius(function (d) { return radius(d) + 2; }));
-
-    sim.on('tick', function () {
+    function ticked() {
       link
         .attr('x1', function (d) { return d.source.x; })
         .attr('y1', function (d) { return d.source.y; })
@@ -155,7 +166,27 @@
       label
         .attr('x', function (d) { return d.x; })
         .attr('y', function (d) { return d.y; });
-    });
+    }
+
+    // En grafos grandes se reduce la magnitud de la repulsión y el alcance de los
+    // enlaces para abaratar cada tick.
+    var sim = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id(function (d) { return d.id; }).distance(bigGraph ? 36 : 60))
+      .force('charge', d3.forceManyBody().strength(bigGraph ? -40 : -120))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collide', d3.forceCollide().radius(function (d) { return radius(d) + 2; }));
+
+    // El handler queda registrado para que el arrastre (que reinicia la sim)
+    // siga redibujando aunque para grafos grandes la detengamos a continuación.
+    sim.on('tick', ticked);
+
+    if (bigGraph) {
+      // Layout acotado: ejecutar un nº fijo de ticks (síncrono) y detener — sin
+      // animación abierta. Mantiene responsivo incluso ~1700 nodos.
+      sim.stop();
+      for (var i = 0; i < 120; i++) sim.tick();
+      ticked();
+    }
 
     function dragstart(d) {
       if (!d3.event.active) sim.alphaTarget(0.3).restart();
@@ -174,6 +205,16 @@
       $('<span>').text(item[1]).appendTo($row);
       $legend.append($row);
     });
+
+    // Leyenda de magnitud: nº de contratistas y dependencias presentes.
+    var nCon = 0, nDep = 0;
+    nodes.forEach(function (d) {
+      if (d.type === 'contratista') nCon++;
+      else if (d.type === 'dependencia') nDep++;
+    });
+    $('<div>', { 'class': 'ss-red-caption' })
+      .text(nCon.toLocaleString('es-CO') + ' contratistas, ' + nDep.toLocaleString('es-CO') + ' dependencias')
+      .insertAfter($legend);
   }
 
   // Construye el tooltip con nodos de texto (seguro frente a XSS).

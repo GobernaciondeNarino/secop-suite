@@ -22,10 +22,10 @@ final class Tracking
      * Limitadas a columnas que existen en la vista vista_secop_sysman.
      */
     private const COMPAT = [
-        'dependencia'   => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'tipo_contrato' => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'modalidad'     => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'tercero'       => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
+        'dependencia'   => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'tipo_contrato' => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'modalidad'     => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'tercero'       => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
         'mensual'       => ['line', 'area'],
     ];
 
@@ -132,6 +132,8 @@ final class Tracking
         add_shortcode('secop_dep_red',                   [$this, 'sc_red']);
         add_action('wp_ajax_secop_dep_network',          [$this, 'ajax_network']);
         add_action('wp_ajax_nopriv_secop_dep_network',   [$this, 'ajax_network']);
+        // v5.4.1: red ego (Rings) centrada en una dependencia (d3plus.Rings).
+        add_shortcode('secop_dep_rings',                 [$this, 'sc_rings']);
         // Vista previa en vivo del editor de cards (solo admin, sin nopriv).
         add_action('wp_ajax_secop_dep_preview',          [$this, 'ajax_dep_preview']);
         add_shortcode('secop_consulta',                  [$this, 'sc_consulta']);
@@ -670,28 +672,68 @@ final class Tracking
     {
         return [
             'por_dependencia' => [
-                'titulo'      => __('Ejecución por dependencia', 'secop-suite'),
+                'titulo'      => __('Ejecución por dependencia (barras)', 'secop-suite'),
                 'dimension'   => 'dependencia',
                 'chart_type'  => 'bar',
-                'metric'      => 'valordebito',
+                'metric'      => 'valor_contrato',
                 'limit'       => 15,
-                'descripcion' => __('Valor ejecutado (compromisos RES) y número de contratos por cada dependencia de la entidad en la vigencia actual.', 'secop-suite'),
+                'descripcion' => __('Valor contratado por cada dependencia de la entidad en la vigencia actual.', 'secop-suite'),
             ],
             'top_contratistas' => [
-                'titulo'      => __('Top 10 contratistas', 'secop-suite'),
+                'titulo'      => __('Top 10 contratistas (barras)', 'secop-suite'),
                 'dimension'   => 'tercero',
                 'chart_type'  => 'bar',
-                'metric'      => 'valordebito',
+                'metric'      => 'valor_contrato',
                 'limit'       => 10,
-                'descripcion' => __('Los diez contratistas (terceros) con mayor valor ejecutado en la vigencia actual.', 'secop-suite'),
+                'descripcion' => __('Los diez contratistas con mayor valor contratado.', 'secop-suite'),
+            ],
+            'tipos_treemap' => [
+                'titulo'      => __('Tipos de contrato (treemap)', 'secop-suite'),
+                'dimension'   => 'tipo_contrato',
+                'chart_type'  => 'treemap',
+                'metric'      => 'valor_contrato',
+                'limit'       => 0,
+                'descripcion' => __('Distribución del valor contratado por tipo de contrato.', 'secop-suite'),
+            ],
+            'modalidad_donut' => [
+                'titulo'      => __('Modalidades (donut)', 'secop-suite'),
+                'dimension'   => 'modalidad',
+                'chart_type'  => 'donut',
+                'metric'      => 'valor_contrato',
+                'limit'       => 0,
+                'descripcion' => __('Participación de cada modalidad de contratación en el valor total.', 'secop-suite'),
+            ],
+            'modalidad_pie' => [
+                'titulo'      => __('Modalidades por nº de contratos (pie)', 'secop-suite'),
+                'dimension'   => 'modalidad',
+                'chart_type'  => 'pie',
+                'metric'      => 'contratos',
+                'limit'       => 0,
+                'descripcion' => __('Número de contratos por modalidad de contratación.', 'secop-suite'),
+            ],
+            'contratistas_pack' => [
+                'titulo'      => __('Contratistas por valor (burbujas)', 'secop-suite'),
+                'dimension'   => 'tercero',
+                'chart_type'  => 'pack',
+                'metric'      => 'valor_contrato',
+                'limit'       => 40,
+                'descripcion' => __('Los contratistas con mayor valor, representados como burbujas proporcionales.', 'secop-suite'),
             ],
             'evolucion_mensual' => [
-                'titulo'      => __('Evolución mensual y predicción', 'secop-suite'),
+                'titulo'      => __('Evolución mensual (línea + predicción)', 'secop-suite'),
                 'dimension'   => 'mensual',
                 'chart_type'  => 'line',
-                'metric'      => 'valordebito',
+                'metric'      => 'valor_contrato',
                 'limit'       => 0,
-                'descripcion' => __('Ejecución acumulada mes a mes de la vigencia actual, con proyección de cierre por regresión lineal.', 'secop-suite'),
+                'descripcion' => __('Valor contratado acumulado mes a mes, con proyección de cierre de vigencia.', 'secop-suite'),
+            ],
+            'evolucion_area' => [
+                'titulo'      => __('Evolución mensual (área)', 'secop-suite'),
+                'dimension'   => 'mensual',
+                'chart_type'  => 'area',
+                'metric'      => 'valor_contrato',
+                'limit'       => 0,
+                'descripcion' => __('Valor contratado acumulado mes a mes, en área.', 'secop-suite'),
             ],
         ];
     }
@@ -1004,9 +1046,10 @@ final class Tracking
             $presets   = $this->presets();
             if (!isset($presets[$presetKey])) {
                 return '<p class="ss-error">' . esc_html(sprintf(
-                    /* translators: %s: preset key */
-                    __('Preset desconocido: "%s". Presets disponibles: por_dependencia, top_contratistas, evolucion_mensual.', 'secop-suite'),
-                    $presetKey
+                    /* translators: 1: preset key, 2: comma-separated list of available preset keys */
+                    __('Preset desconocido: "%1$s". Presets disponibles: %2$s.', 'secop-suite'),
+                    $presetKey,
+                    implode(', ', array_keys($presets))
                 )) . '</p>';
             }
         }
@@ -1095,9 +1138,10 @@ final class Tracking
             $presets   = $this->presets();
             if (!isset($presets[$presetKey])) {
                 return '<p class="ss-error">' . esc_html(sprintf(
-                    /* translators: %s: preset key */
-                    __('Preset desconocido: "%s". Presets disponibles: por_dependencia, top_contratistas, evolucion_mensual.', 'secop-suite'),
-                    $presetKey
+                    /* translators: 1: preset key, 2: comma-separated list of available preset keys */
+                    __('Preset desconocido: "%1$s". Presets disponibles: %2$s.', 'secop-suite'),
+                    $presetKey,
+                    implode(', ', array_keys($presets))
                 )) . '</p>';
             }
             $atts['card'] = $this->get_preset_post_id($presetKey);
@@ -1118,7 +1162,7 @@ final class Tracking
         global $post;
         if (!is_a($post, 'WP_Post')) return;
         $has = false;
-        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red'] as $sc) {
+        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings'] as $sc) {
             if (has_shortcode($post->post_content, $sc)) { $has = true; break; }
         }
         if (!$has) return;
@@ -1243,14 +1287,16 @@ final class Tracking
      * columnas de la vista y se prepara el año + la dependencia con $wpdb->prepare.
      *
      * @param string|null $dependencia        Filtra por una dependencia concreta (null = todas).
-     * @param int         $limit_contratistas Top-N contratistas por valor cuando no hay filtro.
+     * @param int         $limit_contratistas Top-N contratistas por valor (<= 0 = TODOS, sin límite).
      * @return array{nodes:array<int,array<string,mixed>>,links:array<int,array<string,string>>}
      */
-    public function network_data(?string $dependencia = null, int $limit_contratistas = 80): array
+    public function network_data(?string $dependencia = null, int $limit_contratistas = 0): array
     {
         global $wpdb;
 
-        $limit_contratistas = max(10, min(300, $limit_contratistas));
+        // <= 0 → sin límite (TODOS los contratistas, magnitud completa); si es
+        // positivo, top-N por valor (acotado a 5000 por seguridad/rendimiento).
+        $limit_contratistas = ($limit_contratistas <= 0) ? 0 : min(5000, $limit_contratistas);
         $dep = ($dependencia !== null && $dependencia !== '') ? $dependencia : null;
 
         $cache_key = 'secop_trk_' . md5('network_data|' . ($dep ?? '') . '|' . $limit_contratistas . '|' . $this->current_vigencia());
@@ -1315,16 +1361,26 @@ final class Tracking
             }
         }
 
-        // Top-N contratistas por valor cuando NO hay filtro de dependencia.
-        if ($dep === null && count($cons_agg) > $limit_contratistas) {
+        // Top-N contratistas por valor cuando NO hay filtro de dependencia y se
+        // pasó un límite positivo. Con $limit_contratistas = 0 se incluyen TODOS.
+        if ($dep === null && $limit_contratistas > 0 && count($cons_agg) > $limit_contratistas) {
             uasort($cons_agg, static fn($a, $b) => $b['valor'] <=> $a['valor']);
             $cons_agg = array_slice($cons_agg, 0, $limit_contratistas, true);
         }
 
+        // Color por tipo de nodo (compartido por la red de fuerza y por Rings).
+        $type_colors = [
+            'dependencia' => '#0080c3',
+            'contratista' => '#844e80',
+            'tipo'        => '#3eba6a',
+            'modalidad'   => '#ff7300',
+        ];
+
         $nodes    = [];
         $node_ids = [];
-        $add_node = static function (array $node) use (&$nodes, &$node_ids): void {
+        $add_node = static function (array $node) use (&$nodes, &$node_ids, $type_colors): void {
             if (!isset($node_ids[$node['id']])) {
+                $node['color'] = $type_colors[$node['type'] ?? ''] ?? '#999999';
                 $node_ids[$node['id']] = true;
                 $nodes[] = $node;
             }
@@ -1417,14 +1473,16 @@ final class Tracking
         set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
 
         $dep   = sanitize_text_field(wp_unslash($_POST['dependencia'] ?? ''));
-        $limit = max(10, min(300, (int) ($_POST['limit'] ?? 80)));
+        // 0 = todos los contratistas; se acota a 5000 por seguridad/rendimiento.
+        $limit = (int) ($_POST['limit'] ?? 0);
+        $limit = ($limit < 0) ? 0 : min($limit, 5000);
         wp_send_json_success($this->network_data($dep !== '' ? $dep : null, $limit));
     }
 
     /** Shortcode [secop_dep_red] — red de contratación (grafo de fuerza d3). */
     public function sc_red(array $atts): string
     {
-        $atts = shortcode_atts(['dependencia' => '', 'limit' => 80, 'height' => 560, 'selector' => 'on'], $atts, 'secop_dep_red');
+        $atts = shortcode_atts(['dependencia' => '', 'limit' => 0, 'height' => 560, 'selector' => 'on'], $atts, 'secop_dep_red');
 
         $this->enqueue_module_stack(); // d3 + d3plus + secopDep (ajaxUrl + nonce).
         wp_enqueue_script('secop-dep-network', SECOP_SUITE_URL . 'assets/js/dep-network.js',
@@ -1435,6 +1493,24 @@ final class Tracking
 
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/red.php';
+        return ob_get_clean();
+    }
+
+    /**
+     * Shortcode [secop_dep_rings] — red ego (concéntrica) con d3plus.Rings.
+     * Centra el grafo en UNA dependencia y dispone sus conexiones en anillos
+     * concéntricos automáticamente. Reutiliza network_data + el endpoint AJAX
+     * secop_dep_network. La elección del nodo central la resuelve dep-rings.js.
+     */
+    public function sc_rings(array $atts): string
+    {
+        $atts = shortcode_atts(['dependencia' => '', 'height' => 560, 'selector' => 'on'], $atts, 'secop_dep_rings');
+        $this->enqueue_module_stack();
+        wp_enqueue_script('secop-dep-rings', SECOP_SUITE_URL . 'assets/js/dep-rings.js', ['jquery', 'd3plus', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+        $deps = ($atts['selector'] === 'on') ? $this->list_dependencies() : [];
+        $uid  = 'ss-rings-' . wp_unique_id();
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/rings.php';
         return ob_get_clean();
     }
 
