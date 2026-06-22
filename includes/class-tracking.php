@@ -176,6 +176,11 @@ final class Tracking
         add_shortcode('secop_dep_lista',                 [$this, 'sc_lista']);
         add_action('wp_ajax_secop_dep_lista',            [$this, 'ajax_lista']);
         add_action('wp_ajax_nopriv_secop_dep_lista',     [$this, 'ajax_lista']);
+        // v5.10.0: treemap composable [secop_dep_treemap] con coordinación cruzada
+        // (estado de filtro compartido vía SecopCoord) con [secop_dep_lista].
+        add_shortcode('secop_dep_treemap',               [$this, 'sc_treemap']);
+        add_action('wp_ajax_secop_dep_treemap',          [$this, 'ajax_dep_treemap']);
+        add_action('wp_ajax_nopriv_secop_dep_treemap',   [$this, 'ajax_dep_treemap']);
         // Vista previa en vivo del editor de cards (solo admin, sin nopriv).
         add_action('wp_ajax_secop_dep_preview',          [$this, 'ajax_dep_preview']);
         add_shortcode('secop_consulta',                  [$this, 'sc_consulta']);
@@ -1283,7 +1288,7 @@ final class Tracking
         global $post;
         if (!is_a($post, 'WP_Post')) return;
         $has = false;
-        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings','secop_dep_explora','secop_dep_prediccion','secop_dep_lista'] as $sc) {
+        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings','secop_dep_explora','secop_dep_prediccion','secop_dep_lista','secop_dep_treemap'] as $sc) {
             if (has_shortcode($post->post_content, $sc)) { $has = true; break; }
         }
         if (!$has) return;
@@ -2215,8 +2220,11 @@ final class Tracking
         }
 
         $this->enqueue_module_stack();
+        // v5.10.0: coordinador de filtros a nivel de página (estado compartido con el treemap).
+        wp_enqueue_script('secop-dep-coord', SECOP_SUITE_URL . 'assets/js/dep-coord.js',
+            ['jquery'], SECOP_SUITE_VERSION, true);
         wp_enqueue_script('secop-dep-lista', SECOP_SUITE_URL . 'assets/js/dep-lista.js',
-            ['jquery', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+            ['jquery', 'secop-suite-frontend', 'secop-dep-coord'], SECOP_SUITE_VERSION, true);
 
         $field_labels   = $this->explora_fields();
         $default_titles = [
@@ -2231,6 +2239,126 @@ final class Tracking
 
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/lista.php';
+        return ob_get_clean();
+    }
+
+    // ── v5.10.0: Treemap composable [secop_dep_treemap] ───────────────
+
+    /**
+     * Mapa de dimensiones del treemap → columna del VIEW a agregar y campo de
+     * estado del coordinador (SecopCoord) que conmuta al hacer clic. La dimensión
+     * «contratistas» se agrega por nombretercero pero NO participa como filtro
+     * cruzado (stateField vacío): el tercero no es una de las claves coordinadas.
+     *
+     * @return array<string,array{col:string,state:string}>
+     */
+    private function treemap_dim_map(): array
+    {
+        return [
+            'dependencias' => ['col' => 'nombredependencia',         'state' => 'dependencia'],
+            'modalidades'  => ['col' => 'modalidad_de_contratacion', 'state' => 'modalidad'],
+            'tipos'        => ['col' => 'tipo_de_contrato',          'state' => 'tipo_contrato'],
+            'contratistas' => ['col' => 'nombretercero',            'state' => ''],
+        ];
+    }
+
+    /**
+     * AJAX — datos del treemap composable. Mismo nonce + rate-limit que el resto
+     * del explorador. Reutiliza lista_aggregate() con el conjunto de filtros
+     * activos del coordinador EXCLUYENDO el propio campo de la dimensión (para que
+     * el treemap refleje las otras selecciones activas y muestre todas sus celdas).
+     */
+    public function ajax_dep_treemap(): void
+    {
+        check_ajax_referer('secop_dep_frontend', 'nonce');
+        if ($this->explora_rate_limit()) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+
+        $map       = $this->treemap_dim_map();
+        $dimension = sanitize_text_field(wp_unslash($_POST['dimension'] ?? 'dependencias'));
+        if (!isset($map[$dimension])) $dimension = 'dependencias';
+        $col   = $map[$dimension]['col'];
+        $state = $map[$dimension]['state'];
+
+        $filtros = [
+            'dependencia'   => sanitize_text_field(wp_unslash($_POST['dependencia'] ?? '')),
+            'modalidad'     => sanitize_text_field(wp_unslash($_POST['modalidad'] ?? '')),
+            'tipo_contrato' => sanitize_text_field(wp_unslash($_POST['tipo_contrato'] ?? '')),
+        ];
+        // Excluye el propio campo de la dimensión (defensa servidor: el cliente ya lo omite).
+        if ($state !== '' && isset($filtros[$state])) $filtros[$state] = '';
+
+        $rows = $this->lista_aggregate($col, $filtros);
+
+        // lista_aggregate ya ordena por valor DESC → array_slice da el top N.
+        $limit = max(0, (int) ($_POST['limit'] ?? 0));
+        if ($limit > 0) $rows = array_slice($rows, 0, $limit);
+
+        wp_send_json_success(['dimension' => $dimension, 'rows' => $rows]);
+    }
+
+    /**
+     * Shortcode [secop_dep_treemap] — treemap composable que comparte el estado de
+     * filtro a nivel de página con [secop_dep_lista] y otros treemaps (filtrado
+     * cruzado vía SecopCoord). Configuración completa: colores, leyenda
+     * (mostrar/ocultar, icono / icono+texto) y barra de herramientas (con la
+     * descarga de datos unificada + imagen).
+     */
+    public function sc_treemap(array $atts): string
+    {
+        $atts = shortcode_atts([
+            'dimension'  => 'dependencias',
+            'metric'     => 'valor_contrato',
+            'colors'     => '#844e80,#ff7300,#ffc53b,#3eba6a,#0080c3,#e74c3c,#9b59b6,#1abc9c',
+            'legend'     => 'on',
+            'legendmode' => 'texto',
+            'toolbar'    => 'on',
+            'height'     => 460,
+            'limit'      => 0,
+        ], $atts, 'secop_dep_treemap');
+
+        $map       = $this->treemap_dim_map();
+        $dimension = isset($map[$atts['dimension']]) ? $atts['dimension'] : 'dependencias';
+        $metric    = in_array($atts['metric'], ['valor_contrato', 'contratos'], true) ? $atts['metric'] : 'valor_contrato';
+
+        $colors = array_values(array_filter(
+            array_map('trim', explode(',', (string) $atts['colors'])),
+            static fn($c) => (bool) preg_match('/^#[0-9a-fA-F]{6}$/', $c)
+        ));
+        if (empty($colors)) {
+            $colors = ['#844e80', '#ff7300', '#ffc53b', '#3eba6a', '#0080c3', '#e74c3c', '#9b59b6', '#1abc9c'];
+        }
+
+        $legend     = ($atts['legend'] !== 'off');
+        $legendmode = ($atts['legendmode'] === 'icono') ? 'icono' : 'texto';
+        $toolbar    = ($atts['toolbar'] !== 'off');
+        $height     = max(160, (int) $atts['height']);
+        $limit      = max(0, (int) $atts['limit']);
+
+        $this->enqueue_module_stack();
+        wp_enqueue_script('secop-dep-coord', SECOP_SUITE_URL . 'assets/js/dep-coord.js',
+            ['jquery'], SECOP_SUITE_VERSION, true);
+        wp_enqueue_script('secop-dep-treemap', SECOP_SUITE_URL . 'assets/js/dep-treemap.js',
+            ['jquery', 'd3plus', 'secop-suite-frontend', 'secop-dep-coord'], SECOP_SUITE_VERSION, true);
+
+        $csv_url = rest_url('secop-suite/v1/consulta/csv'); // descarga de TODA la vista (vigencia actual).
+        $uid     = 'ss-ctree-' . wp_unique_id();
+
+        $cfg = [
+            'uid'        => $uid,
+            'dimension'  => $dimension,
+            'dimColumn'  => $map[$dimension]['col'],
+            'stateField' => $map[$dimension]['state'],
+            'metric'     => $metric,
+            'colors'     => $colors,
+            'legend'     => $legend,
+            'legendmode' => $legendmode,
+            'toolbar'    => $toolbar,
+            'csvUrl'     => $csv_url,
+            'limit'      => $limit,
+        ];
+
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/treemap.php';
         return ob_get_clean();
     }
 }

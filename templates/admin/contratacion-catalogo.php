@@ -406,6 +406,65 @@ $presets = $tracking->presets();
             <?php endforeach; ?>
         </div>
     </div>
+
+    <?php
+    // v5.10.0: Treemap composable [secop_dep_treemap].
+    $treemap_params = [
+        ['dimension',  __('Qué dimensión agrupa el treemap: dependencias, modalidades, tipos o contratistas (por defecto dependencias).', 'secop-suite')],
+        ['metric',     __('Métrica del tamaño de cada celda: valor_contrato (suma del valor, por defecto) o contratos (nº de contratos).', 'secop-suite')],
+        ['colors',     __('Lista de colores HEX separados por comas para la paleta de celdas/leyenda (por defecto 8 colores institucionales).', 'secop-suite')],
+        ['legend',     __('Mostrar (on, por defecto) u ocultar (off) la leyenda.', 'secop-suite')],
+        ['legendmode', __('Modo de la leyenda: texto (icono + nombre, por defecto) o icono (sólo el cuadro de color).', 'secop-suite')],
+        ['toolbar',    __('Mostrar (on, por defecto) u ocultar (off) la barra de herramientas (Limpiar filtros, Imagen PNG, Descargar datos).', 'secop-suite')],
+        ['height',     __('Altura mínima del treemap en píxeles (por defecto 460).', 'secop-suite')],
+        ['limit',      __('Número máximo de celdas (top N por valor). 0 = todas (por defecto).', 'secop-suite')],
+    ];
+    $treemap_shortcodes = [
+        '[secop_dep_treemap dimension="dependencias"]',
+        '[secop_dep_treemap dimension="modalidades" metric="contratos"]',
+        '[secop_dep_treemap dimension="tipos" legendmode="icono" limit="12"]',
+        '[secop_dep_treemap dimension="contratistas" legend="off" colors="#0080c3,#3eba6a,#ff7300"]',
+    ];
+    ?>
+    <div class="ss-cat-card ss-cat-card-treemap" style="margin-top:20px;">
+        <h2 class="ss-cat-title"><?php esc_html_e('Treemap composable (filtrado cruzado)', 'secop-suite'); ?></h2>
+        <p class="ss-cat-desc">
+            <?php esc_html_e('Treemap independiente que puede colocarse libremente en cualquier parte de una landing. Comparte el MISMO estado de filtro a nivel de página que las listas [secop_dep_lista] y otros treemaps: al hacer clic en una celda (p. ej. una dependencia) se conmuta ese filtro y se re-consultan automáticamente los demás elementos de la página (listas y treemaps), y viceversa al hacer clic en una lista. Así puede componer una landing con varias piezas (un treemap de dependencias + una lista de modalidades + una lista de contratistas) que se coordinan entre sí con iconografía consistente. La descarga de datos (CSV de la vista completa) y la exportación de imagen (PNG) viven en la barra de herramientas unificada. La dimensión «contratistas» se muestra pero no participa como filtro cruzado.', 'secop-suite'); ?>
+        </p>
+        <details class="ss-cat-params">
+            <summary><strong><?php esc_html_e('Parámetros del shortcode [secop_dep_treemap]', 'secop-suite'); ?></strong></summary>
+            <table class="widefat striped" style="max-width:760px;">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Parámetro', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Descripción', 'secop-suite'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($treemap_params as $param) : ?>
+                        <tr>
+                            <td><code><?php echo esc_html($param[0]); ?></code></td>
+                            <td><?php echo esc_html($param[1]); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </details>
+        <div class="ss-cat-shortcodes">
+            <h3><?php esc_html_e('Shortcodes', 'secop-suite'); ?></h3>
+            <?php foreach ($treemap_shortcodes as $sc) : ?>
+                <div class="ss-cat-sc-row">
+                    <input type="text" class="ss-cat-sc-input" readonly
+                           value="<?php echo esc_attr($sc); ?>"
+                           onclick="this.select();" />
+                    <button type="button" class="button ss-cat-copy"
+                            data-clipboard="<?php echo esc_attr($sc); ?>">
+                        <?php esc_html_e('Copiar', 'secop-suite'); ?>
+                    </button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
 </div>
 
 <style>

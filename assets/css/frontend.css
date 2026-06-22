@@ -1525,4 +1525,34 @@
 .ss-rings-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 12px; align-items: center; }
 .ss-rings-leg-item { display: inline-flex; align-items: center; gap: 4px; }
 .ss-rings-leg-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+
+/* ==========================================================================
+   v5.10.0: Treemap composable [secop_dep_treemap] (filtrado cruzado + toolbar)
+   Reutiliza .ss-toolbar / .ss-toolbar-btn del stack de gráficas (chart.php).
+   ========================================================================== */
+.ss-ctree-wrapper { margin: 1.5rem 0; }
+.ss-ctree-chart { width: 100%; position: relative; }
+.ss-ctree-chart svg { width: 100%; height: auto; display: block; }
+.ss-ctree-loading {
+    color: #50575e;
+    text-align: center;
+    padding: 1.5rem 0;
+}
+.ss-ctree-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-top: .6rem;
+    font-size: 12px;
+    align-items: center;
+}
+.ss-ctree-leg-item { display: inline-flex; align-items: center; gap: 5px; }
+.ss-ctree-leg-dot {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border-radius: 3px;
+    flex: 0 0 auto;
+}
+.ss-ctree-leg-label { color: #50575e; }
 .ss-rings-caption { color: #666; margin-left: auto; }

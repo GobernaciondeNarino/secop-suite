@@ -10,11 +10,17 @@
   // tipo T no se filtra por el propio campo de T (eso lo resuelve el servidor).
   // TODAS las cadenas de BD se insertan con .text() — nunca innerHTML de datos.
 
-  // Estado compartido a nivel de página (módulo). Sólo coordinan las listas que
-  // estén realmente presentes en el DOM.
-  var STATE = { dependencia: '', modalidad: '', tipo_contrato: '' };
+  // v5.10.0: el estado de filtro a nivel de página ya NO vive aquí. Se delega en
+  // el coordinador compartido window.SecopCoord (assets/js/dep-coord.js), de modo
+  // que las listas y el treemap [secop_dep_treemap] de la misma página compartan
+  // un único estado y se refresquen entre sí por el bus de eventos.
+  function coord() { return window.SecopCoord; }
+  function STATE_GET() {
+    var c = coord();
+    return c ? c.get() : { dependencia: '', modalidad: '', tipo_contrato: '' };
+  }
 
-  // tipo de lista → campo de STATE que conmuta / por el que se marca activo.
+  // tipo de lista → campo de estado que conmuta / por el que se marca activo.
   var TIPO_FIELD = {
     dependencias: 'dependencia',
     modalidades:  'modalidad',
@@ -58,6 +64,7 @@
     var cfg = $wrap.data('ssListaCfg');
     if (!cfg) return;
     var $body = $wrap.find('.ss-lista-body');
+    var STATE = STATE_GET();
 
     $.post(secopDep.ajaxUrl, {
       action: 'secop_dep_lista',
@@ -93,7 +100,7 @@
     $body.empty();
 
     var field = TIPO_FIELD[cfg.tipo];
-    var activeVal = field ? STATE[field] : '';
+    var activeVal = field ? STATE_GET()[field] : '';
 
     if (!rows.length) {
       $body.append($('<p>', { 'class': 'ss-lista-empty', text: strings().noData || 'No hay datos.' }));
@@ -209,7 +216,9 @@
     if (!$listas.length) return;
     $listas.each(function () { init(this); });
 
-    // Click en un elemento agregado → conmuta el campo de STATE y refresca TODAS.
+    // Click en un elemento agregado → conmuta el campo del coordinador compartido.
+    // El propio coordinador dispara `secop:coord:refresh`, al que están suscritas
+    // TODAS las listas (y el treemap), por lo que el filtrado cruzado es automático.
     $(document).on('click', '.ss-lista-item', function () {
       var $li = $(this);
       var $wrap = $li.closest('.ss-lista');
@@ -218,16 +227,18 @@
       var field = TIPO_FIELD[cfg.tipo];
       if (!field) return;
       var label = $li.attr('data-label') || '';
-      // Toggle: si ya está activo, limpia; si no, lo fija.
-      STATE[field] = (STATE[field] === label) ? '' : label;
-      refreshAll();
+      var c = coord();
+      if (c) { c.set(field, label); } // toggle a nivel de página.
     });
 
-    // Click en la cabecera de un contratista → expande/colapsa (sin cambiar STATE).
+    // Click en la cabecera de un contratista → expande/colapsa (sin tocar el estado).
     $(document).on('click', '.ss-lista-acc-head', function () {
       $(this).closest('.ss-lista-acc-item').toggleClass('open');
     });
 
+    // Cada cambio de estado (de cualquier elemento de la página) re-consulta las listas.
+    var c = coord();
+    if (c) { c.onRefresh(refreshAll); }
     refreshAll();
   });
 })(jQuery);
