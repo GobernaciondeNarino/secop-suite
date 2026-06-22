@@ -1433,3 +1433,11 @@
 .ss-pred-chart svg { width: 100%; height: auto; display: block; }
 .ss-pred-loading { color: #50575e; text-align: center; padding: 1.5rem 0; }
 .ss-pred-meta { margin-top: .6rem; color: #50575e; font-size: 13px; line-height: 1.5; }
+
+/* Rings ego-network (d3 radial) — tooltip y leyenda (v5.7.1) */
+.ss-rings-chart { position: relative; }
+.ss-rings-tooltip { position: absolute; pointer-events: none; background: #fff; border: 1px solid #ccc; border-radius: 4px; padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.15); z-index: 10; max-width: 260px; }
+.ss-rings-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 12px; align-items: center; }
+.ss-rings-leg-item { display: inline-flex; align-items: center; gap: 4px; }
+.ss-rings-leg-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.ss-rings-caption { color: #666; margin-left: auto; }

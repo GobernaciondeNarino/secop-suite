@@ -1596,7 +1596,7 @@ final class Tracking
     {
         $atts = shortcode_atts(['dependencia' => '', 'height' => 560, 'selector' => 'on'], $atts, 'secop_dep_rings');
         $this->enqueue_module_stack();
-        wp_enqueue_script('secop-dep-rings', SECOP_SUITE_URL . 'assets/js/dep-rings.js', ['jquery', 'd3plus', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+        wp_enqueue_script('secop-dep-rings', SECOP_SUITE_URL . 'assets/js/dep-rings.js', ['jquery', 'd3', 'd3plus', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
         $deps = ($atts['selector'] === 'on') ? $this->list_dependencies() : [];
         $uid  = 'ss-rings-' . wp_unique_id();
         ob_start();
