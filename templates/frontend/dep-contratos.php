@@ -20,7 +20,7 @@
       <td><?php echo esc_html(substr((string) $r['fecha_inicio_ejecucion'], 0, 10)); ?></td>
       <td><?php echo esc_html(substr((string) $r['fecha_fin_ejecucion'], 0, 10)); ?></td>
       <td><?php echo esc_html(\SecopSuite\Stats::money((float) $r['valor_contrato'])); ?></td>
-      <td><?php echo esc_html(wp_trim_words((string) $r['objeto_del_proceso'], 20)); ?></td>
+      <td><?php echo esc_html(wp_trim_words((string) $r['objeto_a_contratar'], 20)); ?></td>
     </tr>
   <?php endforeach; endif; ?>
   </tbody>

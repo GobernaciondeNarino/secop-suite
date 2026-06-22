@@ -208,7 +208,7 @@ if (!defined('ABSPATH')) {
 
 <?php elseif ($tab === 'consulta'): ?>
 
-    <!-- Tab Consulta: datos del VIEW dat_seguimiento_dependencias, vigencia actual -->
+    <!-- Tab Consulta: datos del VIEW vista_secop_sysman, vigencia actual -->
     <div class="ss-records-summary" style="margin-top:12px;">
         <p>
             <?php

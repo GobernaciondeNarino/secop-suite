@@ -18,7 +18,7 @@
     <td>
       <select name="dep_metric" id="dep_metric">
         <?php foreach ($metrics as $key => $m) : ?>
-          <option value="<?php echo esc_attr($key); ?>" <?php selected($config['metric'] ?? 'valordebito', $key); ?>>
+          <option value="<?php echo esc_attr($key); ?>" <?php selected($config['metric'] ?? 'valor_contrato', $key); ?>>
             <?php echo esc_html($m['label']); ?>
           </option>
         <?php endforeach; ?>

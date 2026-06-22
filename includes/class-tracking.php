@@ -17,19 +17,16 @@ final class Tracking
     private Database $db;
     private const POST_TYPE = 'secop_dep_card';
 
-    /** Dimensiones del módulo → tipos de gráfica compatibles. */
+    /**
+     * Dimensiones del módulo → tipos de gráfica compatibles.
+     * Limitadas a columnas que existen en la vista vista_secop_sysman.
+     */
     private const COMPAT = [
         'dependencia'   => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
         'tipo_contrato' => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
         'modalidad'     => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'estado'        => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'tipo_documento'=> ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'programa'      => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'rubro'         => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'fuente'        => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
+        'tercero'       => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
         'mensual'       => ['line', 'area'],
-        'ejecucion'     => ['donut', 'bar'],
-        'tercero'       => ['bar', 'treemap', 'pie', 'donut', 'stacked_bar'],
     ];
 
     /** Columna del VIEW que agrupa cada dimensión. */
@@ -37,14 +34,8 @@ final class Tracking
         'dependencia'   => 'nombredependencia',
         'tipo_contrato' => 'tipo_de_contrato',
         'modalidad'     => 'modalidad_de_contratacion',
-        'estado'        => 'estado_del_proceso',
-        'tipo_documento'=> 'tipo_documento_proveedor',
-        'programa'      => 'nombreplan',
-        'rubro'         => 'rubro',
-        'fuente'        => 'origen',
-        'mensual'       => 'mes',
-        'ejecucion'     => 'nombredependencia',
         'tercero'       => 'nombretercero',
+        'mensual'       => 'mes',
     ];
 
     public function __construct(Database $db)
@@ -60,16 +51,19 @@ final class Tracking
      * Métricas configurables del módulo de Contratación.
      * Cada entrada define la etiqueta visible, la función de agregación y la
      * columna del VIEW a agregar. COUNT_DISTINCT lo traduce el Visualizer a
-     * COUNT(DISTINCT col); valor_contrato se omite a propósito porque se
-     * duplica por fila y daría sumas infladas.
+     * COUNT(DISTINCT col). valor_contrato es la métrica de valor PRINCIPAL.
+     * NOTA: un contrato puede aparecer en varias filas presupuestales, por lo
+     * que SUM(valor_contrato) sobrecuenta ligeramente los contratos con varios
+     * comprobantes — compromiso aceptado y documentado al usar valor_contrato.
      */
     public function metrics(): array
     {
         return [
-            'valordebito'         => ['label' => __('Valor ejecutado', 'secop-suite'),    'agg' => 'SUM',            'col' => 'valordebito'],
-            'saldoporejecutaresp' => ['label' => __('Saldo por ejecutar', 'secop-suite'), 'agg' => 'SUM',            'col' => 'saldoporejecutaresp'],
-            'contratos'           => ['label' => __('Nº de contratos', 'secop-suite'),     'agg' => 'COUNT_DISTINCT', 'col' => 'numero_del_contrato'],
-            'registros'           => ['label' => __('Nº de registros', 'secop-suite'),     'agg' => 'COUNT',          'col' => 'numero_de_proceso'],
+            'valor_contrato'      => ['label' => __('Valor del contrato', 'secop-suite'),  'agg' => 'SUM',            'col' => 'valor_contrato'],
+            'valordebito'         => ['label' => __('Valor ejecutado', 'secop-suite'),     'agg' => 'SUM',            'col' => 'valordebito'],
+            'saldoporejecutaresp' => ['label' => __('Saldo por ejecutar', 'secop-suite'),  'agg' => 'SUM',            'col' => 'saldoporejecutaresp'],
+            'contratos'           => ['label' => __('Nº de contratos', 'secop-suite'),      'agg' => 'COUNT_DISTINCT', 'col' => 'numero_del_contrato'],
+            'registros'           => ['label' => __('Nº de registros', 'secop-suite'),      'agg' => 'COUNT',          'col' => 'numero_de_proceso'],
         ];
     }
 
@@ -167,9 +161,11 @@ final class Tracking
         }
         $where_sql = implode(' AND ', $where);
 
-        // Métrica: suma de débito (ejecución) y conteo de contratos distintos.
+        // Métrica de valor: valor_contrato (valor principal) y conteo de contratos distintos.
+        // NOTA: un contrato puede repetirse en varias filas presupuestales, por lo que
+        // SUM(valor_contrato) sobrecuenta ligeramente los contratos multi-comprobante.
         $sql = "SELECT `{$col}` AS label,
-                       SUM(valordebito) AS valor,
+                       SUM(valor_contrato) AS valor,
                        COUNT(DISTINCT numero_del_contrato) AS conteo
                 FROM `{$view}` WHERE {$where_sql}
                 GROUP BY `{$col}` ORDER BY valor DESC";
@@ -182,7 +178,7 @@ final class Tracking
             'conteo' => (int) $r['conteo'],
         ], $rows ?: []);
 
-        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
         return $result;
     }
 
@@ -214,7 +210,7 @@ final class Tracking
             $serie[] = [(int) $r['mes'], $acc];
         }
 
-        set_transient($cache_key, $serie, 10 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $serie, 30 * MINUTE_IN_SECONDS);
         return $serie;
     }
 
@@ -254,7 +250,7 @@ final class Tracking
             'saldo'         => (float) ($tot['saldo'] ?? 0),
         ];
 
-        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
         return $result;
     }
 
@@ -276,16 +272,12 @@ final class Tracking
         $config = get_post_meta($post->ID, '_secop_dep_card_config', true) ?: [];
         $dimensions = self::COMPAT;
         $metrics    = $this->metrics();
-        // Etiquetas amigables para el desplegable de dimensión. 'fuente' se excluye
-        // del menú (columna de valor único), pero se conserva en COMPAT por compatibilidad.
+        // Etiquetas amigables para el desplegable de dimensión.
+        // Limitadas a las columnas que existen en la vista vista_secop_sysman.
         $dim_labels = [
             'dependencia'    => __('Dependencia', 'secop-suite'),
             'tipo_contrato'  => __('Tipo de contrato', 'secop-suite'),
             'modalidad'      => __('Modalidad de contratación', 'secop-suite'),
-            'estado'         => __('Estado del proceso', 'secop-suite'),
-            'tipo_documento' => __('Tipo de documento del proveedor', 'secop-suite'),
-            'programa'       => __('Programa presupuestal', 'secop-suite'),
-            'rubro'          => __('Rubro presupuestal', 'secop-suite'),
             'tercero'        => __('Contratista', 'secop-suite'),
             'mensual'        => __('Mensual (evolución)', 'secop-suite'),
         ];
@@ -339,7 +331,7 @@ final class Tracking
         $cfg = [
             'dimension'   => sanitize_text_field(wp_unslash($_POST['dimension'] ?? 'dependencia')),
             'chart_type'  => sanitize_text_field(wp_unslash($_POST['chart_type'] ?? '')),
-            'metric'      => sanitize_text_field(wp_unslash($_POST['metric'] ?? 'valordebito')),
+            'metric'      => sanitize_text_field(wp_unslash($_POST['metric'] ?? 'valor_contrato')),
             'dependencia' => sanitize_text_field(wp_unslash($_POST['dependencia'] ?? '')),
             'order'       => sanitize_text_field(wp_unslash($_POST['order'] ?? 'valor')),
             'order_dir'   => sanitize_text_field(wp_unslash($_POST['order_dir'] ?? 'DESC')),
@@ -376,8 +368,8 @@ final class Tracking
         $colors_raw = sanitize_text_field(wp_unslash($_POST['dep_colors'] ?? ''));
         $colors = array_values(array_filter(array_map('trim', explode(',', $colors_raw)), static fn($c) => (bool) preg_match('/^#[0-9a-fA-F]{6}$/', $c)));
 
-        $metric = sanitize_text_field($_POST['dep_metric'] ?? 'valordebito');
-        if (!in_array($metric, array_keys($this->metrics()), true)) $metric = 'valordebito';
+        $metric = sanitize_text_field($_POST['dep_metric'] ?? 'valor_contrato');
+        if (!in_array($metric, array_keys($this->metrics()), true)) $metric = 'valor_contrato';
         $order = sanitize_text_field($_POST['dep_order'] ?? 'valor');
         if (!in_array($order, ['valor', 'etiqueta'], true)) $order = 'valor';
         $order_dir = sanitize_text_field($_POST['dep_order_dir'] ?? 'DESC');
@@ -461,8 +453,8 @@ final class Tracking
             ? $cfg['chart_type']
             : self::default_type($dimension);
         $metrics    = $this->metrics();
-        $raw_metric = $cfg['metric'] ?? 'valordebito';
-        $metric_key = isset($metrics[$raw_metric]) ? $raw_metric : 'valordebito';
+        $raw_metric = $cfg['metric'] ?? 'valor_contrato';
+        $metric_key = isset($metrics[$raw_metric]) ? $raw_metric : 'valor_contrato';
         $m          = $metrics[$metric_key];
         $x_field    = self::DIM_COLUMN[$dimension] ?? 'nombredependencia';
 
@@ -712,11 +704,11 @@ final class Tracking
         if ($type === '') $type = (string) ($base['chart_type'] ?? '');
         if (!self::is_compatible($dimension, $type)) $type = self::default_type($dimension);
 
-        // metric: valida contra metrics(); si no, conserva base/valordebito.
+        // metric: valida contra metrics(); si no, conserva base/valor_contrato.
         $metric = sanitize_text_field($atts['metric'] ?? '');
         if ($metric === '' || !isset($this->metrics()[$metric])) {
-            $metric = (string) ($base['metric'] ?? 'valordebito');
-            if (!isset($this->metrics()[$metric])) $metric = 'valordebito';
+            $metric = (string) ($base['metric'] ?? 'valor_contrato');
+            if (!isset($this->metrics()[$metric])) $metric = 'valor_contrato';
         }
 
         // dependencia.
@@ -941,7 +933,7 @@ final class Tracking
 
         $view = $this->db->get_view_name();
         $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
-                       fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_del_proceso
+                       fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_a_contratar
                 FROM `{$view}` WHERE anio = %d AND nombredependencia = %s
                 GROUP BY numero_del_contrato
                 ORDER BY valor_contrato DESC LIMIT %d";
@@ -949,7 +941,7 @@ final class Tracking
         $rows = $wpdb->get_results($wpdb->prepare($sql, $this->current_vigencia(), $dependencia, $limit), ARRAY_A);
 
         $result = $rows ?: [];
-        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
         return $result;
     }
 
@@ -964,7 +956,7 @@ final class Tracking
         $cols = $this->db->get_table_columns($view);
         if (!isset($cols[$column])) return [];
         $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
-                       fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_del_proceso
+                       fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_a_contratar
                 FROM `{$view}` WHERE anio = %d AND `{$column}` = %s
                 GROUP BY numero_del_contrato ORDER BY valor_contrato DESC LIMIT %d";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
@@ -1017,7 +1009,7 @@ final class Tracking
             $this->current_vigencia()
         )) ?: [];
 
-        set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
         return $result;
     }
 

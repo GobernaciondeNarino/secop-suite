@@ -69,6 +69,13 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.2.0 — Nuevo origen `vista_secop_sysman`, `valor_contrato` como valor principal y fix de rendimiento
+- **Nuevo origen de datos**: el módulo de Contratación usa la vista `{prefix}vista_secop_sysman` (creada por el usuario) como única fuente. `get_view_name()` y la definición de `create_view()` se alinean exactamente con esa vista para que una instalación nueva la reproduzca.
+- **`valor_contrato` como valor principal**: es la primera métrica por defecto del módulo; las agregaciones de análisis y las gráficas usan `SUM(valor_contrato)`. (Caveat documentado: un contrato puede aparecer en varias filas presupuestales, por lo que `SUM(valor_contrato)` sobrecuenta levemente los contratos multi-comprobante.)
+- **Dimensiones limitadas a las columnas reales de la vista**: dependencia, tipo de contrato, modalidad de contratación, contratista y mensual. Se eliminaron estado, tipo de documento, programa, rubro, fuente y ejecución (sus columnas no existen en la vista).
+- **Rendimiento (fix severo)**: se eliminaron los conteos con JOIN pesado del aviso que corría en **cada carga del admin** (causaban lentitud severa/cuelgues). El aviso solo hace comprobaciones baratas (`SHOW TABLES`). Además la caché de las lecturas de la vista sube de 10 a **30 minutos**.
+- **Referencias de columnas**: `objeto_del_proceso` → `objeto_a_contratar` en todas las consultas/renderizados de la vista. La actualización elimina la vista huérfana antigua `dat_seguimiento_dependencias`.
+
 ### v5.1.9 — Click-to-drill en gráficas de Contratación
 - **Drill por click**: el click en una barra/sector/elemento de una gráfica de Contratación abre un popup con los contratos asociados a esa categoría (vigencia actual, deduplicados por contrato, hasta 200). Se activa por gráfica con `drill="on"` en `[secop_dep_chart]` (también `1`/`true`/`yes`). Reutiliza el motor de gráficas del Visualizer (handler `chart.on('click')`).
 - **Capa de datos genérica**: `contracts_by_value(column, value)` consulta contratos por cualquier dimensión, con la columna validada contra la lista blanca `DIM_COLUMN` y el valor parametrizado (`$wpdb->prepare`).
@@ -343,7 +350,7 @@ Datos abiertos de seguimiento por dependencia (vigencia actual).
 **Parámetros:**
 - `formato` (string): `tabla` | `csv` | `txt` | `json` (default: tabla)
 
-**Nota:** El módulo funciona únicamente con la vigencia actual (`anio = YEAR(CURDATE())`) y se auto-actualiza automáticamente cuando cambia el año. Requiere tablas Sysman (`sysman_auxiliar_cuentas`, `sysman_plan_presupuestal`) en la misma base de datos. Se crea automáticamente una vista SQL `{prefix}dat_seguimiento_dependencias`.
+**Nota:** El módulo funciona únicamente con la vigencia actual (`anio = YEAR(CURDATE())`) y se auto-actualiza automáticamente cuando cambia el año. Requiere tablas Sysman (`sysman_auxiliar_cuentas`, `sysman_plan_presupuestal`) en la misma base de datos. Usa la vista SQL `{prefix}vista_secop_sysman` (creada por el usuario; el plugin la crea automáticamente si no existe y hay tablas Sysman).
 
 ## API REST — Módulo Seguimiento de Dependencias (v5.1.0)
 

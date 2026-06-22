@@ -3,7 +3,7 @@
  * Plugin Name: SECOP Suite
  * Plugin URI: https://github.com/GobernaciondeNarino/secop-suite
  * Description: Plugin integral para la importación, almacenamiento y visualización interactiva de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia. Combina importación automatizada desde datos.gov.co con gráficas D3plus configurables mediante shortcodes.
- * Version: 5.1.9
+ * Version: 5.2.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Jonnathan Bucheli Galindo - Gobernación de Nariño
@@ -25,8 +25,8 @@ if (!defined('ABSPATH')) {
 }
 
 // ─── Constantes ────────────────────────────────────────────────
-define('SECOP_SUITE_VERSION', '5.1.9');
-define('SECOP_SUITE_DB_VERSION', '5.1.0');
+define('SECOP_SUITE_VERSION', '5.2.0');
+define('SECOP_SUITE_DB_VERSION', '5.2.0');
 define('SECOP_SUITE_DIR', plugin_dir_path(__FILE__));
 define('SECOP_SUITE_URL', plugin_dir_url(__FILE__));
 define('SECOP_SUITE_BASENAME', plugin_basename(__FILE__));
@@ -143,6 +143,7 @@ final class Plugin
      */
     private function maybe_upgrade(): void
     {
+        global $wpdb;
         $current_version = get_option(SECOP_SUITE_PREFIX . 'db_version', '0');
 
         if (version_compare($current_version, SECOP_SUITE_DB_VERSION, '<')) {
@@ -154,6 +155,10 @@ final class Plugin
             } else {
                 $this->database->create_table();
             }
+
+            // v5.2.0: eliminar la vista huérfana antigua (renombrada a vista_secop_sysman).
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->query("DROP VIEW IF EXISTS `" . $wpdb->prefix . "dat_seguimiento_dependencias`");
 
             // v5.1.0: crear VIEW del módulo de seguimiento (si hay tablas Sysman).
             $this->database->create_view();
@@ -540,69 +545,22 @@ final class Plugin
             return;
         }
 
-        $view_name = $this->database->get_view_name();
-
+        // RENDIMIENTO (v5.2.0): el aviso solo ejecuta comprobaciones BARATAS
+        // (SHOW TABLES). Los conteos con JOIN pesado se eliminaron porque se
+        // ejecutaban en cada carga del admin y colgaban el panel.
         if (!$this->database->view_exists()) {
-            echo '<div class="notice notice-error"><p>'
+            $view_name = $this->database->get_view_name();
+            echo '<div class="notice notice-warning"><p>'
                . sprintf(
                    /* translators: %s: nombre del VIEW */
-                   esc_html__('SECOP Suite: el VIEW %s no existe. Se intentará crear automáticamente en la próxima carga. Si el problema persiste, desactiva y reactiva el plugin.', 'secop-suite'),
+                   esc_html__('SECOP Suite: la vista %s no existe en la base de datos. El módulo de Contratación necesita esa vista; el plugin intentará crearla automáticamente, o créela manualmente.', 'secop-suite'),
                    '<code>' . esc_html($view_name) . '</code>'
                  )
                . '</p></div>';
             return;
         }
 
-        // Diagnóstico CACHEADO: estos conteos hacen JOINs pesados sobre las tablas Sysman.
-        // Se ejecutan a lo sumo una vez cada 10 min, NUNCA en cada carga del admin
-        // (correrlos por página colgaba el panel). El cruce crudo solo se calcula si el VIEW está vacío.
-        $vig  = (int) current_time('Y');
-        $diag = get_transient(SECOP_SUITE_PREFIX . 'diag');
-        if (!is_array($diag)) {
-            $total = $this->database->count_view_rows();
-            $cur   = $this->database->count_view_rows($vig);
-            $raw   = ($total === 0) ? $this->database->count_raw_join() : 0;
-            $years = ($total > 0 && $cur === 0) ? $this->database->rows_by_year() : [];
-            $diag  = compact('total', 'cur', 'raw', 'years');
-            set_transient(SECOP_SUITE_PREFIX . 'diag', $diag, 10 * MINUTE_IN_SECONDS);
-        }
-        $total = (int) ($diag['total'] ?? 0);
-        $cur   = (int) ($diag['cur'] ?? 0);
-        $raw   = (int) ($diag['raw'] ?? 0);
-        $years = is_array($diag['years'] ?? null) ? $diag['years'] : [];
-
-        if ($total === 0) {
-            $raw_msg = $raw >= 0
-                ? sprintf(esc_html__('Conteo del cruce de las 3 tablas (sin filtro de año) = %d.', 'secop-suite'), $raw)
-                : esc_html__('No se pudo calcular el cruce de tablas.', 'secop-suite');
-            $hint = ($raw > 0)
-                ? ' ' . esc_html__('El JOIN produce filas: revisa que tipocpte = \'REs\' corresponda a registros reales.', 'secop-suite')
-                : '';
-            echo '<div class="notice notice-warning"><p>'
-               . esc_html__('SECOP Suite: el VIEW existe pero está vacío. ', 'secop-suite')
-               . $raw_msg . $hint
-               . '</p></div>';
-            return;
-        }
-
-        if ($cur === 0) {
-            $year_list = [];
-            foreach ($years as $y => $cnt) {
-                $year_list[] = esc_html((string) $y) . ' (' . (int) $cnt . ')';
-            }
-            echo '<div class="notice notice-warning"><p>'
-               . sprintf(
-                   /* translators: 1: total filas, 2: vigencia actual, 3: lista de años con datos */
-                   esc_html__('SECOP Suite: el VIEW tiene %1$d filas en total, pero ninguna para la vigencia %2$d. Los gráficos de Contratación no tendrán datos. Años con registros: %3$s.', 'secop-suite'),
-                   $total,
-                   $vig,
-                   implode(', ', $year_list)
-                 )
-               . '</p></div>';
-            return;
-        }
-
-        // Todo OK — no se muestra aviso (evitar ruido innecesario).
+        // Vista presente y tablas Sysman OK — no se muestra aviso.
     }
 
     // ── Prevenir clonación ─────────────────────────────────────

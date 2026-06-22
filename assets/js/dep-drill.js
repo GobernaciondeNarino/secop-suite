@@ -45,7 +45,7 @@
       $tr.append($('<td>').text(String(r.fecha_inicio_ejecucion || '').slice(0, 10)));
       $tr.append($('<td>').text(String(r.fecha_fin_ejecucion || '').slice(0, 10)));
       $tr.append($('<td>').text('$' + Math.round(r.valor_contrato || 0).toLocaleString('es-CO')));
-      $tr.append($('<td>').text(String(r.objeto_del_proceso || '').slice(0, 160)));
+      $tr.append($('<td>').text(String(r.objeto_a_contratar || '').slice(0, 160)));
       $tbody.append($tr);
     });
     $table.append($tbody);

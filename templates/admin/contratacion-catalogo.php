@@ -48,9 +48,9 @@ $tipos   = [
     $sc_params = [
         ['preset',      __('Clave de gráfica prediseñada (por_dependencia, top_contratistas, evolucion_mensual).', 'secop-suite')],
         ['card',        __('ID de una card a medida que sirve de base.', 'secop-suite')],
-        ['dimension',   __('Dimensión de agrupación: dependencia, tipo_contrato, modalidad, estado, tipo_documento, programa, rubro, tercero, mensual.', 'secop-suite')],
+        ['dimension',   __('Dimensión de agrupación: dependencia, tipo_contrato, modalidad, tercero, mensual.', 'secop-suite')],
         ['tipo',        __('Tipo de gráfica (bar, stacked_bar, treemap, pie, donut, line, area). Se valida contra la dimensión.', 'secop-suite')],
-        ['metric',      __('Métrica: valordebito (valor ejecutado), saldoporejecutaresp (saldo por ejecutar), contratos (Nº de contratos), registros (Nº de registros).', 'secop-suite')],
+        ['metric',      __('Métrica: valor_contrato (valor del contrato), valordebito (valor ejecutado), saldoporejecutaresp (saldo por ejecutar), contratos (Nº de contratos), registros (Nº de registros).', 'secop-suite')],
         ['order',       __('Orden de las categorías: valor o etiqueta.', 'secop-suite')],
         ['orderdir',    __('Sentido del orden: ASC o DESC.', 'secop-suite')],
         ['limit',       __('Top-N: número máximo de categorías (0 = todas).', 'secop-suite')],
