@@ -69,6 +69,10 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.5.0 — Galería de gráficas prediseñadas (Contratación)
+- Los presets de **Contratación** se amplían a una **galería** con un card por tipo de gráfica aplicado a los datos de contratación: barras (`por_dependencia`, `top_contratistas`), treemap (`tipos_treemap`), donut (`modalidad_donut`), pie (`modalidad_pie`), burbujas/pack (`contratistas_pack`), línea + predicción (`evolucion_mensual`) y área (`evolucion_area`). Cada card incluye su análisis automático (descripción, cualitativo, cuantitativo y predicción).
+- `pack` (burbujas) habilitado para las dimensiones categóricas (`dependencia`, `tipo_contrato`, `modalidad`, `tercero`).
+
 ### v5.4.1 — Red completa + nuevo gráfico Rings `[secop_dep_rings]`
 - La red de contratación (`[secop_dep_red]`) ahora muestra **todos los contratistas** cuando se ven «todas las dependencias» (sin filtro), para apreciar la magnitud completa. `limit="0"` (por defecto) = todos; un `limit` positivo conserva el Top-N. El endpoint `secop_dep_network` admite `limit=0` (cap de seguridad 5000). Para grafos grandes (>400 nodos) la simulación de fuerza se ejecuta un número acotado de ticks y se detiene (sin animación abierta), manteniendo responsivos incluso ~1700 nodos; se añade un indicador de carga y una leyenda con el nº de contratistas y dependencias.
 - Nuevo gráfico **Rings** (`[secop_dep_rings]`): red ego concéntrica con `d3plus.Rings` centrada en una dependencia (la elegida o, si no, la de mayor valor); sus contratistas, tipos y modalidades se disponen en anillos automáticamente. Reutiliza `network_data` y el endpoint `secop_dep_network`. Tooltips con datos por tipo de nodo (cadenas de BD escapadas) y coloreado por tipo (dependencia/contratista/tipo/modalidad). Atributos: `dependencia`, `height`, `selector`.

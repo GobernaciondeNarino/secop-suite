@@ -22,10 +22,10 @@ final class Tracking
      * Limitadas a columnas que existen en la vista vista_secop_sysman.
      */
     private const COMPAT = [
-        'dependencia'   => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'tipo_contrato' => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'modalidad'     => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
-        'tercero'       => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut'],
+        'dependencia'   => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'tipo_contrato' => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'modalidad'     => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'tercero'       => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
         'mensual'       => ['line', 'area'],
     ];
 
@@ -672,28 +672,68 @@ final class Tracking
     {
         return [
             'por_dependencia' => [
-                'titulo'      => __('Ejecución por dependencia', 'secop-suite'),
+                'titulo'      => __('Ejecución por dependencia (barras)', 'secop-suite'),
                 'dimension'   => 'dependencia',
                 'chart_type'  => 'bar',
-                'metric'      => 'valordebito',
+                'metric'      => 'valor_contrato',
                 'limit'       => 15,
-                'descripcion' => __('Valor ejecutado (compromisos RES) y número de contratos por cada dependencia de la entidad en la vigencia actual.', 'secop-suite'),
+                'descripcion' => __('Valor contratado por cada dependencia de la entidad en la vigencia actual.', 'secop-suite'),
             ],
             'top_contratistas' => [
-                'titulo'      => __('Top 10 contratistas', 'secop-suite'),
+                'titulo'      => __('Top 10 contratistas (barras)', 'secop-suite'),
                 'dimension'   => 'tercero',
                 'chart_type'  => 'bar',
-                'metric'      => 'valordebito',
+                'metric'      => 'valor_contrato',
                 'limit'       => 10,
-                'descripcion' => __('Los diez contratistas (terceros) con mayor valor ejecutado en la vigencia actual.', 'secop-suite'),
+                'descripcion' => __('Los diez contratistas con mayor valor contratado.', 'secop-suite'),
+            ],
+            'tipos_treemap' => [
+                'titulo'      => __('Tipos de contrato (treemap)', 'secop-suite'),
+                'dimension'   => 'tipo_contrato',
+                'chart_type'  => 'treemap',
+                'metric'      => 'valor_contrato',
+                'limit'       => 0,
+                'descripcion' => __('Distribución del valor contratado por tipo de contrato.', 'secop-suite'),
+            ],
+            'modalidad_donut' => [
+                'titulo'      => __('Modalidades (donut)', 'secop-suite'),
+                'dimension'   => 'modalidad',
+                'chart_type'  => 'donut',
+                'metric'      => 'valor_contrato',
+                'limit'       => 0,
+                'descripcion' => __('Participación de cada modalidad de contratación en el valor total.', 'secop-suite'),
+            ],
+            'modalidad_pie' => [
+                'titulo'      => __('Modalidades por nº de contratos (pie)', 'secop-suite'),
+                'dimension'   => 'modalidad',
+                'chart_type'  => 'pie',
+                'metric'      => 'contratos',
+                'limit'       => 0,
+                'descripcion' => __('Número de contratos por modalidad de contratación.', 'secop-suite'),
+            ],
+            'contratistas_pack' => [
+                'titulo'      => __('Contratistas por valor (burbujas)', 'secop-suite'),
+                'dimension'   => 'tercero',
+                'chart_type'  => 'pack',
+                'metric'      => 'valor_contrato',
+                'limit'       => 40,
+                'descripcion' => __('Los contratistas con mayor valor, representados como burbujas proporcionales.', 'secop-suite'),
             ],
             'evolucion_mensual' => [
-                'titulo'      => __('Evolución mensual y predicción', 'secop-suite'),
+                'titulo'      => __('Evolución mensual (línea + predicción)', 'secop-suite'),
                 'dimension'   => 'mensual',
                 'chart_type'  => 'line',
-                'metric'      => 'valordebito',
+                'metric'      => 'valor_contrato',
                 'limit'       => 0,
-                'descripcion' => __('Ejecución acumulada mes a mes de la vigencia actual, con proyección de cierre por regresión lineal.', 'secop-suite'),
+                'descripcion' => __('Valor contratado acumulado mes a mes, con proyección de cierre de vigencia.', 'secop-suite'),
+            ],
+            'evolucion_area' => [
+                'titulo'      => __('Evolución mensual (área)', 'secop-suite'),
+                'dimension'   => 'mensual',
+                'chart_type'  => 'area',
+                'metric'      => 'valor_contrato',
+                'limit'       => 0,
+                'descripcion' => __('Valor contratado acumulado mes a mes, en área.', 'secop-suite'),
             ],
         ];
     }
@@ -1006,9 +1046,10 @@ final class Tracking
             $presets   = $this->presets();
             if (!isset($presets[$presetKey])) {
                 return '<p class="ss-error">' . esc_html(sprintf(
-                    /* translators: %s: preset key */
-                    __('Preset desconocido: "%s". Presets disponibles: por_dependencia, top_contratistas, evolucion_mensual.', 'secop-suite'),
-                    $presetKey
+                    /* translators: 1: preset key, 2: comma-separated list of available preset keys */
+                    __('Preset desconocido: "%1$s". Presets disponibles: %2$s.', 'secop-suite'),
+                    $presetKey,
+                    implode(', ', array_keys($presets))
                 )) . '</p>';
             }
         }
@@ -1097,9 +1138,10 @@ final class Tracking
             $presets   = $this->presets();
             if (!isset($presets[$presetKey])) {
                 return '<p class="ss-error">' . esc_html(sprintf(
-                    /* translators: %s: preset key */
-                    __('Preset desconocido: "%s". Presets disponibles: por_dependencia, top_contratistas, evolucion_mensual.', 'secop-suite'),
-                    $presetKey
+                    /* translators: 1: preset key, 2: comma-separated list of available preset keys */
+                    __('Preset desconocido: "%1$s". Presets disponibles: %2$s.', 'secop-suite'),
+                    $presetKey,
+                    implode(', ', array_keys($presets))
                 )) . '</p>';
             }
             $atts['card'] = $this->get_preset_post_id($presetKey);

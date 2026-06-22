@@ -33,6 +33,13 @@ $presets = $tracking->presets();
         ); ?>
     </p>
 
+    <p class="description">
+        <?php esc_html_e(
+            'La galería presenta los mismos datos de contratación en un tipo de gráfica distinto por tarjeta (barras, treemap, donut, pie, burbujas, línea y área), cada una acompañada de su análisis automático.',
+            'secop-suite'
+        ); ?>
+    </p>
+
     <p>
         <a href="<?php echo esc_url(admin_url('edit.php?post_type=secop_dep_card')); ?>" class="button">
             <span class="dashicons dashicons-plus-alt2" style="vertical-align:middle;"></span>
@@ -43,10 +50,10 @@ $presets = $tracking->presets();
     <?php
     // Parámetros de personalización del shortcode [secop_dep_chart] (v5.1.8).
     $sc_params = [
-        ['preset',      __('Clave de gráfica prediseñada (por_dependencia, top_contratistas, evolucion_mensual).', 'secop-suite')],
+        ['preset',      sprintf(__('Clave de gráfica prediseñada (%s).', 'secop-suite'), implode(', ', array_keys($presets)))],
         ['card',        __('ID de una card a medida que sirve de base.', 'secop-suite')],
         ['dimension',   __('Dimensión de agrupación: dependencia, tipo_contrato, modalidad, tercero, mensual.', 'secop-suite')],
-        ['tipo',        __('Tipo de gráfica (bar, stacked_bar, treemap, pie, donut, line, area). Se valida contra la dimensión.', 'secop-suite')],
+        ['tipo',        __('Tipo de gráfica (bar, stacked_bar, treemap, pie, donut, pack, line, area). Se valida contra la dimensión.', 'secop-suite')],
         ['metric',      __('Métrica: valor_contrato (valor del contrato), valordebito (valor ejecutado), saldoporejecutaresp (saldo por ejecutar), contratos (Nº de contratos), registros (Nº de registros).', 'secop-suite')],
         ['order',       __('Orden de las categorías: valor o etiqueta.', 'secop-suite')],
         ['orderdir',    __('Sentido del orden: ASC o DESC.', 'secop-suite')],
