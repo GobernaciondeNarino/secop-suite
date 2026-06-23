@@ -180,7 +180,12 @@ final class Visualizer
             'y_axis_title'     => sanitize_text_field($_POST['ss_y_axis_title'] ?? ''),
             'x_axis_title'     => sanitize_text_field($_POST['ss_x_axis_title'] ?? ''),
             'number_format'    => sanitize_text_field($_POST['ss_number_format'] ?? 'colombiano'),
-            'custom_query'     => isset($_POST['ss_use_custom_query']) ? $this->sanitize_custom_query($_POST['ss_custom_query'] ?? '') : '',
+            // ★ SEGURIDAD (C1): la query personalizada SOLO la pueden guardar
+            // administradores (manage_options), que de por sí ya pueden ejecutar SQL.
+            // Cualquier otro rol (incl. quien tenga edit_posts vía el CPT) recibe ''.
+            'custom_query'     => (current_user_can('manage_options') && isset($_POST['ss_use_custom_query']))
+                ? $this->sanitize_custom_query($_POST['ss_custom_query'] ?? '')
+                : '',
         ];
 
         update_post_meta($post_id, '_secop_chart_config', $config);
@@ -279,6 +284,22 @@ final class Visualizer
         if (preg_match('/\b(information_schema|mysql|performance_schema|sys)\b/i', $cleaned)) {
             Logger::log('SEGURIDAD: Query personalizada rechazada — acceso a tablas del sistema');
             return '';
+        }
+
+        // ★ SEGURIDAD (C1): bloquear tablas sensibles de WordPress sin importar el
+        // prefijo (wp_users, wp_usermeta, wp_options y variantes prefijadas). Estas
+        // denegaciones se evalúan ANTES del check de whitelist por substring (que es
+        // evadible) para evitar la lectura de hashes/credenciales/secretos.
+        $forbidden_tables = [
+            '/\b\w*users\b/i',
+            '/\b\w*usermeta\b/i',
+            '/\b\w*options\b/i',
+        ];
+        foreach ($forbidden_tables as $pattern) {
+            if (preg_match($pattern, $cleaned)) {
+                Logger::log('SEGURIDAD: Query personalizada rechazada — referencia a tabla sensible');
+                return '';
+            }
         }
 
         // Validar que la tabla referenciada esté en la whitelist
@@ -502,8 +523,13 @@ final class Visualizer
             $config['filters'][] = ['field' => 'nombredependencia', 'operator' => '=', 'value' => $dependencia];
         }
 
+        $data = $this->get_chart_data($config);
+
+        // ★ SEGURIDAD (M5): no divulgar claves internas (SQL crudo) al cliente público.
+        unset($config['custom_query']);
+
         wp_send_json_success([
-            'data'   => $this->get_chart_data($config),
+            'data'   => $data,
             'config' => $config,
         ]);
     }

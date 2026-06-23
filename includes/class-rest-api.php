@@ -18,6 +18,16 @@ final class Rest_Api
     private Database $db;
     private const NAMESPACE = 'secop-suite/v1';
 
+    /** Columnas de datos personales del proveedor — Ley 1581 (nunca se exponen en endpoints públicos). */
+    private const PII_COLS = ['documento_proveedor', 'tipo_documento_proveedor'];
+
+    /** Quita columnas de datos personales (documento del proveedor) de una fila — Ley 1581. */
+    private function strip_pii(array $row): array
+    {
+        unset($row['documento_proveedor'], $row['tipo_documento_proveedor']);
+        return $row;
+    }
+
     public function __construct(Database $db)
     {
         $this->db = $db;
@@ -123,6 +133,11 @@ final class Rest_Api
     // ── Contratos ──────────────────────────────────────────────
     public function get_contracts(\WP_REST_Request $request): \WP_REST_Response
     {
+        // FIX I2: rate limit por IP (reutiliza consulta_rate_limited — máx. 30 req/min)
+        if ($this->consulta_rate_limited()) {
+            return new \WP_REST_Response(['message' => 'Demasiadas solicitudes'], 429);
+        }
+
         global $wpdb;
         $table = $this->db->get_table_name();
 
@@ -169,6 +184,11 @@ final class Rest_Api
             $values
         ));
 
+        // Ley 1581: nunca exponer el documento del proveedor en el endpoint público.
+        foreach ($contracts as $c) {
+            unset($c->documento_proveedor, $c->tipo_documento_proveedor);
+        }
+
         // Total filtrado (sin LIMIT/OFFSET) para paginación correcta
         $count_values = array_slice($values, 0, -2); // Quitar per_page y offset
         if (!empty($count_values)) {
@@ -203,12 +223,20 @@ final class Rest_Api
             return new \WP_REST_Response(['message' => 'Contrato no encontrado'], 404);
         }
 
+        // Ley 1581: nunca exponer el documento del proveedor en el endpoint público.
+        unset($contract->documento_proveedor, $contract->tipo_documento_proveedor);
+
         return new \WP_REST_Response($contract);
     }
 
     // ── Estadísticas ───────────────────────────────────────────
     public function get_stats(\WP_REST_Request $request): \WP_REST_Response
     {
+        // FIX I2: rate limit por IP (reutiliza consulta_rate_limited — máx. 30 req/min)
+        if ($this->consulta_rate_limited()) {
+            return new \WP_REST_Response(['message' => 'Demasiadas solicitudes'], 429);
+        }
+
         global $wpdb;
         $table = $this->db->get_table_name();
 
@@ -225,6 +253,11 @@ final class Rest_Api
     // ── Datos de gráfica ───────────────────────────────────────
     public function get_chart_data(\WP_REST_Request $request): \WP_REST_Response
     {
+        // FIX I2: rate limit por IP (reutiliza consulta_rate_limited — máx. 30 req/min)
+        if ($this->consulta_rate_limited()) {
+            return new \WP_REST_Response(['message' => 'Demasiadas solicitudes'], 429);
+        }
+
         $chart_id = (int) $request->get_param('id');
         $config   = get_post_meta($chart_id, '_secop_chart_config', true);
 
@@ -242,6 +275,13 @@ final class Rest_Api
 
     public function get_chart_csv(\WP_REST_Request $request): void
     {
+        // FIX I2: rate limit por IP (reutiliza consulta_rate_limited — máx. 30 req/min)
+        if ($this->consulta_rate_limited()) {
+            status_header(429);
+            echo 'Demasiadas solicitudes';
+            exit;
+        }
+
         $chart_id = (int) $request->get_param('id');
         $config   = get_post_meta($chart_id, '_secop_chart_config', true);
 
@@ -310,16 +350,25 @@ final class Rest_Api
         header('Cache-Control: no-cache, no-store, must-revalidate');
         header('X-Content-Type-Options: nosniff');
 
+        // Ley 1581: lista ordenada de columnas SIN los datos personales del proveedor.
+        // Se calcula una vez y se usa tanto para la cabecera como para cada fila, de modo
+        // que las columnas queden alineadas y el documento del proveedor nunca se exporte.
+        $columns = array_values(array_diff(array_keys($first_batch[0]), self::PII_COLS));
+
         $output = fopen('php://output', 'w');
         fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
         // FIX I3: csv_safe on column headers
-        fputcsv($output, array_map([self::class, 'csv_safe'], array_keys($first_batch[0])));
+        fputcsv($output, array_map([self::class, 'csv_safe'], $columns));
         // Stream all batches
         $batch = $first_batch;
         while (!empty($batch)) {
             foreach ($batch as $row) {
-                // FIX I3: csv_safe on every data cell
-                fputcsv($output, array_map([self::class, 'csv_safe'], $row));
+                // FIX I3 + Ley 1581: csv_safe en cada celda, en el mismo orden de columnas (sin PII)
+                $cells = [];
+                foreach ($columns as $col) {
+                    $cells[] = self::csv_safe($row[$col] ?? '');
+                }
+                fputcsv($output, $cells);
             }
             if (count($batch) < $batch_size) {
                 break;
@@ -366,7 +415,8 @@ final class Rest_Api
         header('X-Content-Type-Options: nosniff');
 
         // Compute column widths from first batch only (acceptable for fixed-width TXT)
-        $columns = array_keys($first_batch[0]);
+        // Ley 1581: se excluyen los datos personales del proveedor de la lista de columnas.
+        $columns = array_values(array_diff(array_keys($first_batch[0]), self::PII_COLS));
         $widths  = [];
         foreach ($columns as $col) {
             $widths[$col] = max(mb_strlen($col), 15);
@@ -511,13 +561,21 @@ final class Rest_Api
         header('Cache-Control: no-cache, no-store, must-revalidate');
         header('X-Content-Type-Options: nosniff');
 
+        // Ley 1581: lista ordenada de columnas SIN los datos personales del proveedor,
+        // usada para la cabecera y para cada fila (columnas alineadas, sin documento del proveedor).
+        $columns = array_values(array_diff(array_keys($data[0]), self::PII_COLS));
+
         $output = fopen('php://output', 'w');
         fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
         // FIX 5: cabecera de columnas (nombres de columna son internos, seguros; se sanitizan por si acaso)
-        fputcsv($output, array_map([self::class, 'csv_safe'], array_keys($data[0])));
+        fputcsv($output, array_map([self::class, 'csv_safe'], $columns));
         foreach ($data as $row) {
-            // FIX 5: protección contra inyección de fórmulas CSV en valores de la BD
-            fputcsv($output, array_map([self::class, 'csv_safe'], $row));
+            // FIX 5 + Ley 1581: csv_safe en cada celda, en el mismo orden de columnas (sin PII)
+            $cells = [];
+            foreach ($columns as $col) {
+                $cells[] = self::csv_safe($row[$col] ?? '');
+            }
+            fputcsv($output, $cells);
         }
         fclose($output);
         exit;
@@ -553,7 +611,8 @@ final class Rest_Api
         header('Cache-Control: no-cache, no-store, must-revalidate');
         header('X-Content-Type-Options: nosniff');
 
-        $columns = array_keys($data[0]);
+        // Ley 1581: se excluyen los datos personales del proveedor de la lista de columnas.
+        $columns = array_values(array_diff(array_keys($data[0]), self::PII_COLS));
         $widths  = [];
         foreach ($columns as $col) {
             $widths[$col] = max(mb_strlen($col), 15);

@@ -30,7 +30,7 @@ $cfg = [
 ?>
 <div id="<?php echo esc_attr($uid); ?>" class="ss-explora-wrapper" data-uid="<?php echo esc_attr($uid); ?>">
     <script type="application/json" id="<?php echo esc_attr($uid); ?>-cfg"><?php
-        echo wp_json_encode($cfg);
+        echo wp_json_encode($cfg, JSON_HEX_TAG | JSON_HEX_APOS);
     ?></script>
 
     <div class="ss-explora-header">
