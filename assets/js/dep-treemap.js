@@ -84,19 +84,14 @@
       return;
     }
 
-    // Estado compartido EXCLUYENDO el propio campo del treemap (para que muestre
-    // todas sus celdas dadas las demás selecciones activas).
-    var st = coord() ? coord().get() : { dependencia: '', modalidad: '', tipo_contrato: '' };
+    // DRIVER: el treemap siempre muestra TODAS sus celdas (no se filtra por las
+    // selecciones de los demás elementos), de modo que clic en una lista no lo recarga.
     var payload = {
       action: 'secop_dep_treemap',
       nonce: secopDep.nonce,
       dimension: cfg.dimension,
-      limit: cfg.limit,
-      dependencia: st.dependencia || '',
-      modalidad: st.modalidad || '',
-      tipo_contrato: st.tipo_contrato || ''
+      limit: cfg.limit
     };
-    if (cfg.stateField && cfg.stateField in payload) payload[cfg.stateField] = '';
 
     $.post(secopDep.ajaxUrl, payload).done(function (res) {
       if (!res || !res.success || !res.data || !res.data.rows) {
@@ -104,6 +99,7 @@
         clearLegend($wrap);
         return;
       }
+      $wrap.data('ssCtreeRows', res.data.rows || []); // cache para re-dibujar el resalte sin AJAX.
       draw($wrap, cfg, res.data.rows || []);
     }).fail(function () {
       $chart.empty().text(strings().error || 'Error al cargar los datos.');
@@ -160,7 +156,11 @@
       .on('click', function (d) {
         d = unwrap(d);
         if (cfg.stateField && d && d.id && coord()) {
-          coord().set(cfg.stateField, d.id); // toggle a nivel de página.
+          coord().set(cfg.stateField, d.id); // toggle del filtro a nivel de página (filtra a los demás).
+          // Re-dibuja SOLO este treemap con las filas cacheadas para reflejar el
+          // resalte de la celda activa — sin AJAX y sin depender del bus.
+          var rows = $wrap.data('ssCtreeRows') || [];
+          setTimeout(function () { draw($wrap, cfg, rows); }, 0);
         }
       })
       .render();
@@ -199,8 +199,9 @@
     var cfg = readConfig($wrap, uid);
     $wrap.data('ssCtreeCfg', cfg);
 
-    // Cualquier cambio de estado (de este treemap, otro treemap o una lista) re-renderiza.
-    if (coord()) { coord().onRefresh(function () { render($wrap); }); }
+    // El treemap es un DRIVER unidireccional: filtra a los demás elementos al hacer
+    // clic, pero NO reacciona a los cambios de los demás (NO se suscribe a
+    // secop:coord:refresh) → no se recarga cuando cambian las listas u otros treemaps.
     render($wrap);
   }
 
