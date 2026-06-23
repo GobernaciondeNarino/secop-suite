@@ -69,6 +69,9 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.10.4 — Protección de datos personales (Ley 1581)
+- **Privacidad:** las descargas/endpoints públicos ya no exponen el documento del proveedor (`documento_proveedor` / `tipo_documento_proveedor`). Se aplica en `/contracts`, `/contracts/{id}`, `/export/csv`, `/export/txt`, `/consulta/csv` y `/consulta/txt` (las cabeceras y filas de CSV/TXT se calculan sobre la lista de columnas sin PII, manteniendo la alineación). Se conserva el nombre del contratista y el resto de la información.
+
 ### v5.10.3 — Endurecimiento de seguridad (revisión adversarial)
 - **Seguridad:** `custom_query` restringido a administradores (`manage_options`) + denylist de tablas sensibles (`wp_users`/`wp_usermeta`/`wp_options` y variantes prefijadas) en la validación de queries personalizadas; rate-limit por IP en los endpoints públicos `/contracts`, `/stats`, `/chart/{id}/data` y `/chart/{id}/csv`; guarda de esquema `http(s)` en los enlaces de los filtros (anti-XSS `javascript:`/`data:`); JSON inline endurecido con `JSON_HEX_TAG | JSON_HEX_APOS`; chequeos de capacidad e info-disclosure menores (capability en `ajax_check_progress`, expresión de columna validada en seguimiento, y se deja de exponer `custom_query` en la respuesta pública de la gráfica).
 
