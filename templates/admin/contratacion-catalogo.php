@@ -195,22 +195,22 @@ $presets = $tracking->presets();
     </div>
 
     <?php
-    // v5.4.1: Red ego (Rings) [secop_dep_rings].
+    // v5.4.1 / v5.12.0: Red ego (Rings) [secop_dep_rings].
     $rings_params = [
-        ['dependencia', __('Dependencia central de la red ego (vacío = la de mayor valor).', 'secop-suite')],
+        ['dependencia', __('Dependencia central inicial (vacío = muestra TODA la red al inicio).', 'secop-suite')],
         ['height',      __('Altura del lienzo en píxeles (por defecto 560).', 'secop-suite')],
-        ['selector',    __('Muestra el selector de dependencia central: on u off (por defecto on).', 'secop-suite')],
+        ['selector',    __('Selector de dependencia INLINE (retrocompatibilidad): on u off (por defecto off). El selector recomendado ahora es el shortcode separado [secop_dep_selector].', 'secop-suite')],
     ];
     $rings_shortcodes = [
         '[secop_dep_rings]',
         '[secop_dep_rings height="640"]',
-        '[secop_dep_rings dependencia="Secretaría General" selector="off"]',
+        '[secop_dep_rings] [secop_dep_selector campo="dependencia"]',
     ];
     ?>
     <div class="ss-cat-card ss-cat-card-rings" style="margin-top:20px;">
         <h2 class="ss-cat-title"><?php esc_html_e('Red ego (Rings)', 'secop-suite'); ?></h2>
         <p class="ss-cat-desc">
-            <?php esc_html_e('Red ego centrada en una dependencia (d3plus.Rings): la dependencia elegida ocupa el centro y sus contratistas, tipos y modalidades se disponen en anillos concéntricos. Si no se elige dependencia, se centra en la de mayor valor.', 'secop-suite'); ?>
+            <?php esc_html_e('Al inicio muestra TODA la red de contratación (todas las dependencias, contratistas, tipos y modalidades) como grafo de fuerza. Ya NO se autocentra en la dependencia de mayor valor. Empárejalo con [secop_dep_selector campo="dependencia"]: al elegir una dependencia, el Rings se redibuja como red ego concéntrica centrada en ella (sus contratistas, tipos y modalidades en anillos); al volver a «— Todas —» regresa a la red completa. La coordinación es vía el estado compartido a nivel de página (SecopCoord).', 'secop-suite'); ?>
         </p>
         <details class="ss-cat-params">
             <summary><strong><?php esc_html_e('Parámetros del shortcode [secop_dep_rings]', 'secop-suite'); ?></strong></summary>
@@ -234,6 +234,59 @@ $presets = $tracking->presets();
         <div class="ss-cat-shortcodes">
             <h3><?php esc_html_e('Shortcodes', 'secop-suite'); ?></h3>
             <?php foreach ($rings_shortcodes as $sc) : ?>
+                <div class="ss-cat-sc-row">
+                    <input type="text" class="ss-cat-sc-input" readonly
+                           value="<?php echo esc_attr($sc); ?>"
+                           onclick="this.select();" />
+                    <button type="button" class="button ss-cat-copy"
+                            data-clipboard="<?php echo esc_attr($sc); ?>">
+                        <?php esc_html_e('Copiar', 'secop-suite'); ?>
+                    </button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <?php
+    // v5.12.0: Selector de filtro composable [secop_dep_selector].
+    $selector_params = [
+        ['campo',  __('Campo del filtro compartido que gobierna: dependencia, modalidad o tipo_contrato (por defecto dependencia).', 'secop-suite')],
+        ['titulo', __('Etiqueta visible del selector (por defecto "Dependencia:").', 'secop-suite')],
+        ['todas',  __('Texto de la opción "sin filtro" (por defecto "— Todas —").', 'secop-suite')],
+    ];
+    $selector_shortcodes = [
+        '[secop_dep_selector campo="dependencia"]',
+        '[secop_dep_selector campo="modalidad" titulo="Modalidad:"]',
+        '[secop_dep_selector campo="tipo_contrato" todas="— Todos —"]',
+    ];
+    ?>
+    <div class="ss-cat-card ss-cat-card-selector" style="margin-top:20px;">
+        <h2 class="ss-cat-title"><?php esc_html_e('Selector de filtro compartido', 'secop-suite'); ?></h2>
+        <p class="ss-cat-desc">
+            <?php esc_html_e('Desplegable independiente que fija un campo del estado de filtro a nivel de página (SecopCoord). Al elegir un valor enfoca la Red ego [secop_dep_rings] (modo ego centrado en la dependencia), el Treemap [secop_dep_treemap] y las Listas [secop_dep_lista] de la misma página; al elegir la opción vacía limpia el filtro (el Rings vuelve a la red completa). Colócalo junto al elemento que quieras controlar.', 'secop-suite'); ?>
+        </p>
+        <details class="ss-cat-params">
+            <summary><strong><?php esc_html_e('Parámetros del shortcode [secop_dep_selector]', 'secop-suite'); ?></strong></summary>
+            <table class="widefat striped" style="max-width:760px;">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Parámetro', 'secop-suite'); ?></th>
+                        <th><?php esc_html_e('Descripción', 'secop-suite'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($selector_params as $param) : ?>
+                        <tr>
+                            <td><code><?php echo esc_html($param[0]); ?></code></td>
+                            <td><?php echo esc_html($param[1]); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </details>
+        <div class="ss-cat-shortcodes">
+            <h3><?php esc_html_e('Shortcodes', 'secop-suite'); ?></h3>
+            <?php foreach ($selector_shortcodes as $sc) : ?>
                 <div class="ss-cat-sc-row">
                     <input type="text" class="ss-cat-sc-input" readonly
                            value="<?php echo esc_attr($sc); ?>"

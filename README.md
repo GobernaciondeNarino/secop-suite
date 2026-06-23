@@ -69,6 +69,11 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.12.0 — Red ego (Rings) muestra toda la red al inicio + selector separado
+- La **Red ego `[secop_dep_rings]`** ahora muestra **toda la red de contratación al inicio** (todas las dependencias, contratistas, tipos y modalidades como grafo de fuerza d3 con layout acotado para responsividad con ~1700 nodos) en la **misma card**. Se **eliminó el autocentrado** en la dependencia de mayor valor.
+- Su selector de dependencia se **separó en el shortcode `[secop_dep_selector]`**, que enfoca el Rings (y demás elementos suscritos: treemap, listas) en una dependencia/modalidad/tipo mediante el **estado compartido a nivel de página** (`window.SecopCoord`). Al elegir una dependencia el Rings se redibuja como **red ego concéntrica** centrada en ella; al volver a «— Todas —» regresa a la red completa.
+- Nuevo `[secop_dep_selector]` (atributos `campo` = dependencia|modalidad|tipo_contrato, `titulo`, `todas`): un `<select>` independiente que fija el filtro compartido. Reutiliza el AJAX `secop_dep_network` (mismo nonce + rate-limit) y `lista_aggregate` (columna validada + prepared) para las opciones. El selector inline del Rings pasa a `selector="off"` por defecto (retrocompatibilidad: `selector="on"` sigue disponible y también gobierna SecopCoord).
+
 ### v5.11.0 — Filtrado por cualquier campo en las APIs de Datos Abiertos
 - Las APIs de Datos Abiertos (`/consulta`, `/consulta/csv`, `/consulta/txt`, `/export/csv`, `/export/txt`, `/contracts`) aceptan **filtros por cualquier campo directamente desde la URL**: `?columna=valor` (igualdad), `?columna_like=valor` (contiene), `?columna_min=valor` (≥) y `?columna_max=valor` (≤), además de `order_by`/`order` (ASC|DESC) y paginación `page`/`per_page`.
 - Las columnas se **validan contra las columnas reales** de la tabla/vista (`get_table_columns()`); los valores se vinculan vía `$wpdb->prepare`; los operadores provienen de un conjunto fijo. Los parámetros desconocidos se ignoran de forma segura.

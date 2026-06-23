@@ -1291,6 +1291,11 @@
 .ss-rings-wrapper { position: relative; width: 100%; }
 .ss-rings-chart { width: 100%; }
 
+/* v5.12.0: selector de filtro composable [secop_dep_selector]. */
+.ss-dep-selector { margin: 0 0 .75rem; }
+.ss-dep-selector label { font-weight: 600; }
+.ss-dep-selector-coord { margin-left: .4rem; max-width: 100%; padding: .25rem .4rem; }
+
 /* ==========================================================================
    Explorador interactivo (v5.6.0) — [secop_dep_explora]
    Treemap de dependencias + panel inferior (modalidades + acordeón de

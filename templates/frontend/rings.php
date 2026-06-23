@@ -2,14 +2,15 @@
 /**
  * Template: Red ego de contratación (Rings d3plus).
  *
- * Red concéntrica centrada en UNA dependencia: el nodo central es la dependencia
- * y sus conexiones (contratistas, tipos y modalidades) se disponen en anillos
- * automáticamente. Reutiliza el endpoint AJAX secop_dep_network (limit=0) y se
- * renderiza con assets/js/dep-rings.js (d3plus.Rings).
+ * v5.12.0: al inicio (sin dependencia seleccionada) muestra la RED COMPLETA de
+ * todos los nodos; al elegir una dependencia (vía el selector separado
+ * [secop_dep_selector] o el inline opcional) se centra en ella en anillos
+ * concéntricos. El centro proviene del estado compartido SecopCoord. Reutiliza el
+ * endpoint AJAX secop_dep_network (limit=0); render en assets/js/dep-rings.js.
  *
  * Variables disponibles:
  * - $atts array  Atributos del shortcode (dependencia, height, selector).
- * - $deps array  Lista de dependencias para el selector (vacío si selector="off").
+ * - $deps array  Lista de dependencias para el selector inline (vacío si selector="off").
  * - $uid  string ID único del contenedor.
  *
  * @package SecopSuite
@@ -23,7 +24,7 @@ if (!defined('ABSPATH')) {
         <div class="ss-rings-controls">
             <label><?php esc_html_e('Dependencia central:', 'secop-suite'); ?>
                 <select class="ss-rings-selector">
-                    <option value=""><?php esc_html_e('— Automática (mayor valor) —', 'secop-suite'); ?></option>
+                    <option value=""><?php esc_html_e('— Toda la red —', 'secop-suite'); ?></option>
                     <?php foreach ($deps as $d) : ?>
                         <option value="<?php echo esc_attr($d); ?>" <?php selected($atts['dependencia'], $d); ?>><?php echo esc_html($d); ?></option>
                     <?php endforeach; ?>
