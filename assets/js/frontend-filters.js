@@ -250,8 +250,9 @@
                     $tr.append($('<td>').text(value));
                 });
 
-                // URL link icon
-                if (urlField && row[urlField]) {
+                // URL link icon — only render an <a href> when the URL has a valid
+                // http(s) scheme (bloquea javascript:/data: → anti-XSS). Mirror dep-*.
+                if (urlField && typeof row[urlField] === 'string' && /^https?:\/\//i.test(row[urlField])) {
                     var url = row[urlField];
                     $tr.append(
                         $('<td>').addClass('ss-filter-url-cell').append(

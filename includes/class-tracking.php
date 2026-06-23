@@ -227,10 +227,23 @@ final class Tracking
      */
     private function sysman_label_expr(string $col): string
     {
+        // ★ SEGURIDAD (defensa en profundidad): el nombre de columna del default
+        // se interpola en SQL. Aunque todos los llamadores actuales pasan valores de
+        // confianza (DIM_COLUMN / lista_filter_map), se valida contra una allowlist
+        // de columnas conocidas de la vista para blindar a futuros llamadores.
+        $allowed = [
+            'nombredependencia',
+            'nombretercero',
+            'nom_raz_social_contratista',
+            'tipo_de_contrato',
+            'modalidad_de_contratacion',
+            'mes',
+        ];
+
         return match ($col) {
             'nombredependencia' => "COALESCE(NULLIF(`nombredependencia`,''), 'No Registra SYSMAN')",
             'nombretercero'     => "COALESCE(NULLIF(`nombretercero`,''), NULLIF(`nom_raz_social_contratista`,''), 'No Registra SYSMAN')",
-            default             => "`{$col}`",
+            default             => in_array($col, $allowed, true) ? "`{$col}`" : "''",
         };
     }
 

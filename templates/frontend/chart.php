@@ -259,5 +259,5 @@ $chart_height = $config['chart_height'] ?? 400;
     'chartNonce' => wp_create_nonce('secop_suite_chart_' . $chart_id),
     'drill' => (bool) $drill_enabled,
     'drillColumn' => (string) $drill_column,
-]); ?>
+], JSON_HEX_TAG | JSON_HEX_APOS); ?>
 </script>

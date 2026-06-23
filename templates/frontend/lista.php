@@ -32,7 +32,7 @@ $cfg = [
 <div id="<?php echo esc_attr($uid); ?>" class="ss-lista" data-uid="<?php echo esc_attr($uid); ?>"
      data-tipo="<?php echo esc_attr($tipo); ?>" data-campos="<?php echo esc_attr(implode(',', $campos)); ?>">
     <script type="application/json" id="<?php echo esc_attr($uid); ?>-cfg"><?php
-        echo wp_json_encode($cfg);
+        echo wp_json_encode($cfg, JSON_HEX_TAG | JSON_HEX_APOS);
     ?></script>
     <h4 class="ss-lista-title"><?php echo esc_html($titulo); ?></h4>
     <div class="ss-lista-body" style="max-height:<?php echo (int) $height; ?>px">

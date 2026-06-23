@@ -123,6 +123,11 @@ final class Rest_Api
     // ── Contratos ──────────────────────────────────────────────
     public function get_contracts(\WP_REST_Request $request): \WP_REST_Response
     {
+        // FIX I2: rate limit por IP (reutiliza consulta_rate_limited — máx. 30 req/min)
+        if ($this->consulta_rate_limited()) {
+            return new \WP_REST_Response(['message' => 'Demasiadas solicitudes'], 429);
+        }
+
         global $wpdb;
         $table = $this->db->get_table_name();
 
@@ -209,6 +214,11 @@ final class Rest_Api
     // ── Estadísticas ───────────────────────────────────────────
     public function get_stats(\WP_REST_Request $request): \WP_REST_Response
     {
+        // FIX I2: rate limit por IP (reutiliza consulta_rate_limited — máx. 30 req/min)
+        if ($this->consulta_rate_limited()) {
+            return new \WP_REST_Response(['message' => 'Demasiadas solicitudes'], 429);
+        }
+
         global $wpdb;
         $table = $this->db->get_table_name();
 
@@ -225,6 +235,11 @@ final class Rest_Api
     // ── Datos de gráfica ───────────────────────────────────────
     public function get_chart_data(\WP_REST_Request $request): \WP_REST_Response
     {
+        // FIX I2: rate limit por IP (reutiliza consulta_rate_limited — máx. 30 req/min)
+        if ($this->consulta_rate_limited()) {
+            return new \WP_REST_Response(['message' => 'Demasiadas solicitudes'], 429);
+        }
+
         $chart_id = (int) $request->get_param('id');
         $config   = get_post_meta($chart_id, '_secop_chart_config', true);
 
@@ -242,6 +257,13 @@ final class Rest_Api
 
     public function get_chart_csv(\WP_REST_Request $request): void
     {
+        // FIX I2: rate limit por IP (reutiliza consulta_rate_limited — máx. 30 req/min)
+        if ($this->consulta_rate_limited()) {
+            status_header(429);
+            echo 'Demasiadas solicitudes';
+            exit;
+        }
+
         $chart_id = (int) $request->get_param('id');
         $config   = get_post_meta($chart_id, '_secop_chart_config', true);
 

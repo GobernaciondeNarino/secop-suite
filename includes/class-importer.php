@@ -62,6 +62,10 @@ final class Importer
     {
         check_ajax_referer('secop_suite_import', 'nonce');
 
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permisos insuficientes']);
+        }
+
         $progress = get_transient(SECOP_SUITE_PREFIX . 'import_progress') ?: [
             'processed' => 0,
             'total'     => 0,

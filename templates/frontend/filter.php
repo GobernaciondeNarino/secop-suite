@@ -141,5 +141,5 @@ $result_columns = $config['result_columns'] ?? [];
     'showUrlLink'   => $show_url_link,
     'urlField'      => $url_field,
     'filterNonce'   => wp_create_nonce('secop_suite_filter'),
-]); ?>
+], JSON_HEX_TAG | JSON_HEX_APOS); ?>
 </script>
