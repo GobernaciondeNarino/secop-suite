@@ -175,13 +175,25 @@ final class Rest_Api
             }
         }
 
+        // v5.11.0: además de los alias legacy de arriba (anno/estado/search/fecha_*),
+        // se admite el filtrado genérico por CUALQUIER columna de la tabla desde la URL
+        // (=, _like, _min, _max), validado contra las columnas reales y sin PII.
+        // order_by/order también validados; default fecha_de_firma_del_contrato DESC.
+        [$filters, $fvals] = $this->url_field_filters($request, $table, self::PII_COLS);
+        $where  = array_merge($where, $filters);
+        $values = array_merge($values, $fvals);
+
         $where_sql = implode(' AND ', $where);
-        $values[]  = $per_page;
-        $values[]  = $offset;
+        $order_sql = $this->url_order($request, $table, 'fecha_de_firma_del_contrato', 'DESC');
+
+        // El COUNT usa exactamente el mismo WHERE + params (sin LIMIT/OFFSET). Para la
+        // consulta de datos se agregan per_page y offset al final, manteniendo el orden
+        // de params alineado con los placeholders.
+        $data_values   = array_merge($values, [$per_page, $offset]);
 
         $contracts = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY fecha_de_firma_del_contrato DESC LIMIT %d OFFSET %d",
-            $values
+            "SELECT * FROM {$table} WHERE {$where_sql} {$order_sql} LIMIT %d OFFSET %d",
+            $data_values
         ));
 
         // Ley 1581: nunca exponer el documento del proveedor en el endpoint público.
@@ -190,11 +202,10 @@ final class Rest_Api
         }
 
         // Total filtrado (sin LIMIT/OFFSET) para paginación correcta
-        $count_values = array_slice($values, 0, -2); // Quitar per_page y offset
-        if (!empty($count_values)) {
+        if (!empty($values)) {
             $total = (int) $wpdb->get_var($wpdb->prepare(
                 "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}",
-                $count_values
+                $values
             ));
         } else {
             $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table} WHERE {$where_sql}");
@@ -333,10 +344,19 @@ final class Rest_Api
         $batch_size = 2000;
         $offset     = 0;
 
+        // v5.11.0: filtrado genérico por URL (=, _like, _min, _max) + order_by/order, sin PII.
+        [$filters, $fvals] = $this->url_field_filters($request, $table, self::PII_COLS);
+        $order_sql = $this->url_order($request, $table, 'fecha_de_firma_del_contrato', 'DESC');
+        $where_sql = '1=1';
+        if (!empty($filters)) {
+            $where_sql .= ' AND ' . implode(' AND ', $filters);
+        }
+
         // First batch — needed to detect empty data and write CSV column headers
+        // Orden de params: [...filtros, LIMIT, OFFSET] — coincide con WHERE <filtros> ... LIMIT %d OFFSET %d.
         $first_batch = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC LIMIT %d OFFSET %d",
-            $batch_size, $offset
+            "SELECT * FROM {$table} WHERE {$where_sql} {$order_sql} LIMIT %d OFFSET %d",
+            array_merge($fvals, [$batch_size, $offset])
         ), ARRAY_A);
 
         if (empty($first_batch)) {
@@ -375,8 +395,8 @@ final class Rest_Api
             }
             $offset += $batch_size;
             $batch = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC LIMIT %d OFFSET %d",
-                $batch_size, $offset
+                "SELECT * FROM {$table} WHERE {$where_sql} {$order_sql} LIMIT %d OFFSET %d",
+                array_merge($fvals, [$batch_size, $offset])
             ), ARRAY_A);
         }
         fclose($output);
@@ -397,10 +417,19 @@ final class Rest_Api
         $batch_size = 2000;
         $offset     = 0;
 
+        // v5.11.0: filtrado genérico por URL (=, _like, _min, _max) + order_by/order, sin PII.
+        [$filters, $fvals] = $this->url_field_filters($request, $table, self::PII_COLS);
+        $order_sql = $this->url_order($request, $table, 'fecha_de_firma_del_contrato', 'DESC');
+        $where_sql = '1=1';
+        if (!empty($filters)) {
+            $where_sql .= ' AND ' . implode(' AND ', $filters);
+        }
+
         // First batch — needed to check for data and compute column widths
+        // Orden de params: [...filtros, LIMIT, OFFSET] — coincide con WHERE <filtros> ... LIMIT %d OFFSET %d.
         $first_batch = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC LIMIT %d OFFSET %d",
-            $batch_size, $offset
+            "SELECT * FROM {$table} WHERE {$where_sql} {$order_sql} LIMIT %d OFFSET %d",
+            array_merge($fvals, [$batch_size, $offset])
         ), ARRAY_A);
 
         if (empty($first_batch)) {
@@ -449,8 +478,8 @@ final class Rest_Api
             }
             $offset += $batch_size;
             $batch = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM {$table} ORDER BY fecha_de_firma_del_contrato DESC LIMIT %d OFFSET %d",
-                $batch_size, $offset
+                "SELECT * FROM {$table} WHERE {$where_sql} {$order_sql} LIMIT %d OFFSET %d",
+                array_merge($fvals, [$batch_size, $offset])
             ), ARRAY_A);
         }
         exit;
@@ -486,6 +515,64 @@ final class Rest_Api
         return $str;
     }
 
+    /**
+     * Construye filtros WHERE a partir de los parámetros de la URL contra las columnas
+     * REALES de una tabla/vista. Soporta:
+     *   ?columna=valor          → igualdad exacta
+     *   ?columna_like=valor     → contiene (LIKE %valor%)
+     *   ?columna_min=valor      → >= valor   (numérico/fecha)
+     *   ?columna_max=valor      → <= valor
+     * Columnas validadas contra get_table_columns(); valores vía $wpdb->prepare.
+     * @return array{0:array<string>,1:array} [fragmentos WHERE, params]
+     */
+    private function url_field_filters(\WP_REST_Request $request, string $source, array $exclude = []): array
+    {
+        global $wpdb;
+        $columns = $this->db->get_table_columns($source); // [col => type]
+        $params  = $request->get_params(); // incluye query vars
+        $where = []; $vals = [];
+        foreach ($params as $key => $value) {
+            if ($value === '' || is_array($value)) {
+                continue;
+            }
+            // sufijos de operador
+            $op = '='; $col = $key;
+            if (str_ends_with($key, '_like')) { $op = 'LIKE'; $col = substr($key, 0, -5); }
+            elseif (str_ends_with($key, '_min')) { $op = '>=';  $col = substr($key, 0, -4); }
+            elseif (str_ends_with($key, '_max')) { $op = '<=';  $col = substr($key, 0, -4); }
+            if (!isset($columns[$col]) || in_array($col, $exclude, true)) {
+                continue;
+            }
+            if ($op === 'LIKE') {
+                $where[] = "`{$col}` LIKE %s";
+                $vals[]  = '%' . $wpdb->esc_like(sanitize_text_field((string) $value)) . '%';
+            } else {
+                $where[] = "`{$col}` {$op} %s";
+                $vals[]  = sanitize_text_field((string) $value);
+            }
+        }
+        return [$where, $vals];
+    }
+
+    /**
+     * Devuelve una cláusula ORDER BY segura a partir de los parámetros `order_by`/`order`
+     * de la URL. La columna se valida contra las columnas reales de la tabla/vista (y nunca
+     * puede ser PII); la dirección se restringe a ASC|DESC. Si algo no valida, usa el default.
+     */
+    private function url_order(\WP_REST_Request $request, string $source, string $default_col, string $default_dir = 'DESC'): string
+    {
+        $columns  = $this->db->get_table_columns($source);
+        $order_by = (string) $request->get_param('order_by');
+        $order    = strtoupper((string) $request->get_param('order'));
+        $dir      = in_array($order, ['ASC', 'DESC'], true) ? $order : $default_dir;
+
+        $col = $default_col;
+        if ($order_by !== '' && isset($columns[$order_by]) && !in_array($order_by, self::PII_COLS, true)) {
+            $col = $order_by;
+        }
+        return "ORDER BY `{$col}` {$dir}";
+    }
+
     public function get_consulta(\WP_REST_Request $request): \WP_REST_Response
     {
         // FIX 4: rate limit por IP
@@ -499,7 +586,20 @@ final class Rest_Api
         $page     = max(1, (int) $request->get_param('page'));
         $offset   = ($page - 1) * $per_page;
 
-        $cache_key = 'secop_trk_' . md5('rest_consulta|' . $page . '|' . $per_page . '|' . $vigencia);
+        // v5.11.0: filtrado genérico por cualquier columna de la vista desde la URL
+        // (=, _like, _min, _max) + order_by/order, validados contra columnas reales y
+        // sin exponer/filtrar datos personales (PII). El default de orden es valordebito DESC.
+        [$filters, $fvals] = $this->url_field_filters($request, $view, self::PII_COLS);
+        $order_sql = $this->url_order($request, $view, 'valordebito', 'DESC');
+
+        $where_sql = 'YEAR(`fecha_de_firma_del_contrato`) = %d';
+        if (!empty($filters)) {
+            $where_sql .= ' AND ' . implode(' AND ', $filters);
+        }
+
+        // La clave de caché incluye el hash de TODOS los parámetros (filtros + orden),
+        // de modo que distintas combinaciones de filtros se cachean por separado.
+        $cache_key = 'secop_trk_' . md5('rest_consulta|' . $page . '|' . $per_page . '|' . $vigencia . '|' . md5(wp_json_encode($request->get_params())));
         $cached    = get_transient($cache_key);
         if (is_array($cached)) {
             return new \WP_REST_Response($cached);
@@ -510,15 +610,18 @@ final class Rest_Api
         // *_asiento. Se conservan los alias `anio`/`mes` del payload para no romper a
         // los consumidores (anio = año de firma; mes = mes del asiento Sysman). Los
         // contratos sin cruce Sysman se etiquetan "No Registra SYSMAN".
+        // Orden de params: [vigencia, ...filtros, per_page, offset] — coincide con los
+        // placeholders: WHERE YEAR=%d AND <filtros %s...> ... LIMIT %d OFFSET %d.
+        $params = array_merge([$vigencia], $fvals, [$per_page, $offset]);
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT COALESCE(NULLIF(`nombredependencia`,''),'No Registra SYSMAN') AS nombredependencia,
                     numero_de_proceso, numero_del_contrato,
                     COALESCE(NULLIF(`nombretercero`,''), NULLIF(`nom_raz_social_contratista`,''),'No Registra SYSMAN') AS nombretercero,
                     valordebito, valorcredito, saldoporejecutaresp,
                     valor_contrato, YEAR(`fecha_de_firma_del_contrato`) AS anio, mes_asiento AS mes
-             FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d
-             ORDER BY valordebito DESC LIMIT %d OFFSET %d",
-            $vigencia, $per_page, $offset
+             FROM `{$view}` WHERE {$where_sql}
+             {$order_sql} LIMIT %d OFFSET %d",
+            $params
         ), ARRAY_A);
 
         $payload = [
@@ -545,9 +648,17 @@ final class Rest_Api
 
         // Exporta TODA la información de la vista (todas las columnas) para la vigencia actual.
         // v5.9.0: vigencia por año de firma del contrato.
+        // v5.11.0: filtrado genérico por URL (=, _like, _min, _max) + order_by/order, sin PII.
+        [$filters, $fvals] = $this->url_field_filters($request, $view, self::PII_COLS);
+        $order_sql = $this->url_order($request, $view, 'valor_contrato', 'DESC');
+        $where_sql = 'YEAR(`fecha_de_firma_del_contrato`) = %d';
+        if (!empty($filters)) {
+            $where_sql .= ' AND ' . implode(' AND ', $filters);
+        }
+        // Orden de params: [vigencia, ...filtros] — coincide con WHERE YEAR=%d AND <filtros>.
         $data = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d ORDER BY valor_contrato DESC",
-            $vigencia
+            "SELECT * FROM `{$view}` WHERE {$where_sql} {$order_sql}",
+            array_merge([$vigencia], $fvals)
         ), ARRAY_A);
 
         if (empty($data)) {
@@ -595,9 +706,17 @@ final class Rest_Api
 
         // Exporta TODA la información de la vista (todas las columnas) para la vigencia actual.
         // v5.9.0: vigencia por año de firma del contrato.
+        // v5.11.0: filtrado genérico por URL (=, _like, _min, _max) + order_by/order, sin PII.
+        [$filters, $fvals] = $this->url_field_filters($request, $view, self::PII_COLS);
+        $order_sql = $this->url_order($request, $view, 'valor_contrato', 'DESC');
+        $where_sql = 'YEAR(`fecha_de_firma_del_contrato`) = %d';
+        if (!empty($filters)) {
+            $where_sql .= ' AND ' . implode(' AND ', $filters);
+        }
+        // Orden de params: [vigencia, ...filtros] — coincide con WHERE YEAR=%d AND <filtros>.
         $data = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d ORDER BY valor_contrato DESC",
-            $vigencia
+            "SELECT * FROM `{$view}` WHERE {$where_sql} {$order_sql}",
+            array_merge([$vigencia], $fvals)
         ), ARRAY_A);
 
         if (empty($data)) {
