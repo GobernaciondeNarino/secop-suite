@@ -22,11 +22,11 @@ final class Tracking
      * Limitadas a columnas que existen en la vista vista_secop_sysman.
      */
     private const COMPAT = [
-        'dependencia'   => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
-        'tipo_contrato' => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
-        'modalidad'     => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
-        'tercero'       => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
-        'mensual'       => ['line', 'area'],
+        'dependencia'   => ['bar', 'stacked_bar', 'grouped_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'tipo_contrato' => ['bar', 'stacked_bar', 'grouped_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'modalidad'     => ['bar', 'stacked_bar', 'grouped_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'tercero'       => ['bar', 'stacked_bar', 'grouped_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'mensual'       => ['line', 'area', 'bar', 'stacked_bar'],
     ];
 
     /** Columna del VIEW que agrupa cada dimensión. */
@@ -45,6 +45,7 @@ final class Tracking
     private const CHART_TYPE_LABELS = [
         'bar'         => 'Barras',
         'stacked_bar' => 'Barras apiladas',
+        'grouped_bar' => 'Barras agrupadas',
         'treemap'     => 'Treemap (mapa de árbol)',
         'pie'         => 'Pastel',
         'donut'       => 'Dona',

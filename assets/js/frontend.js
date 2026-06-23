@@ -240,10 +240,14 @@
             case 'pack':
                 Cls = getD3PlusClass('Pack');
                 if (!Cls) throw new Error('d3plus.Pack not available');
-                var packData = data.map(function(d) { return { id: d.x, value: d.y, group: d.group }; });
-                return new Cls().data(packData).groupBy('id').sum('value')
+                // Se conservan los campos canónicos x/y/count (no se remapea a
+                // {id,value}), igual que Treemap, para que el tooltip compartido
+                // (categoría, valor, Nº de contratos) funcione. v5.12.2.
+                return new Cls()
+                    .data(data).groupBy('x').sum('y')
                     .select(target)
-                    .color(function(d) { return colorScale(d.group || d.id); })
+                    .color(function(d) { return colorScale(d.x); })
+                    .tooltipConfig(tooltipConfig)
                     .legend(legend).locale('es_ES');
 
             case 'network':
