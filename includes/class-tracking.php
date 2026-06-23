@@ -950,6 +950,38 @@ final class Tracking
      * @param array $cardCfg Config efectiva de la card (dimension, chart_type, …).
      * @return int Post ID, o 0 si falla la creación.
      */
+    /**
+     * Nombre descriptivo y legible para una card (auto-generada o a medida),
+     * a partir de su dimensión, métrica, tipo de gráfica y dependencia.
+     * Ej.: "Contratación por modalidad de contratación · Valor del contrato (donut)".
+     */
+    public function card_title(array $cfg): string
+    {
+        $dimLabels = [
+            'dependencia'   => 'dependencia',
+            'tipo_contrato' => 'tipo de contrato',
+            'modalidad'     => 'modalidad de contratación',
+            'tercero'       => 'contratista',
+            'mensual'       => 'mes',
+        ];
+        $typeLabels = [
+            'bar' => 'barras', 'stacked_bar' => 'barras apiladas', 'grouped_bar' => 'barras agrupadas',
+            'treemap' => 'treemap', 'pie' => 'pie', 'donut' => 'donut',
+            'line' => 'línea', 'area' => 'área', 'pack' => 'burbujas',
+        ];
+        $metrics = $this->metrics();
+        $dim    = $dimLabels[$cfg['dimension'] ?? ''] ?? ($cfg['dimension'] ?? 'dependencia');
+        $metric = $metrics[$cfg['metric'] ?? 'valor_contrato']['label'] ?? __('Valor del contrato', 'secop-suite');
+        $type   = $typeLabels[$cfg['chart_type'] ?? ''] ?? ($cfg['chart_type'] ?? '');
+        $title  = $type !== ''
+            ? sprintf(__('Contratación por %1$s · %2$s (%3$s)', 'secop-suite'), $dim, $metric, $type)
+            : sprintf(__('Contratación por %1$s · %2$s', 'secop-suite'), $dim, $metric);
+        if (!empty($cfg['dependencia'])) {
+            $title .= ' — ' . $cfg['dependencia'];
+        }
+        return $title;
+    }
+
     private function get_config_post_id(array $cardCfg): int
     {
         $hash = md5(wp_json_encode($cardCfg));
@@ -975,7 +1007,7 @@ final class Tracking
             $id = wp_insert_post([
                 'post_type'   => self::POST_TYPE,
                 'post_status' => 'publish',
-                'post_title'  => '(auto) ' . ($cardCfg['dimension'] ?? 'grafica'),
+                'post_title'  => $this->card_title($cardCfg),
             ]);
             if (!$id || is_wp_error($id)) { delete_transient($lock); return 0; }
             update_post_meta($id, '_secop_cfg_hash', $hash);
@@ -987,6 +1019,13 @@ final class Tracking
         if ($stored !== $cardCfg) {
             update_post_meta($id, '_secop_dep_card_config', $cardCfg);
             update_post_meta($id, '_secop_chart_config', $this->card_to_chart_config($cardCfg));
+        }
+
+        // Renombrar cards con título poco claro (las antiguas «(auto) …» o vacías) a un
+        // nombre descriptivo. Se escribe a lo sumo una vez (luego ya no es «(auto)»).
+        $currentTitle = (string) get_post_field('post_title', $id);
+        if ($currentTitle === '' || str_starts_with($currentTitle, '(auto) ')) {
+            wp_update_post(['ID' => $id, 'post_title' => $this->card_title($cardCfg)]);
         }
         return (int) $id;
     }
