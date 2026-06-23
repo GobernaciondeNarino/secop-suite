@@ -51,11 +51,25 @@
   <tr>
     <th><label for="dep_chart_type"><?php esc_html_e('Tipo de gráfica', 'secop-suite'); ?></label></th>
     <td>
+      <?php
+      // Solo los tipos compatibles con la dimensión ACTUAL, sin duplicados. Al
+      // cambiar la dimensión, dep-card-preview.js reconstruye este desplegable.
+      $cur_dim = $config['dimension'] ?? 'dependencia';
+      if (!isset($dimensions[$cur_dim])) {
+          $cur_dim = (string) array_key_first($dimensions);
+      }
+      $cur_types = $dimensions[$cur_dim];
+      $cur_type  = $config['chart_type'] ?? '';
+      if (!in_array($cur_type, $cur_types, true)) {
+          $cur_type = $cur_types[0] ?? 'bar';
+      }
+      ?>
       <select name="dep_chart_type" id="dep_chart_type">
-        <?php foreach ($dimensions as $dim => $types) : foreach ($types as $tp) : ?>
-          <option value="<?php echo esc_attr($tp); ?>" data-dim="<?php echo esc_attr($dim); ?>"
-            <?php selected($config['chart_type'] ?? '', $tp); ?>><?php echo esc_html($tp); ?></option>
-        <?php endforeach; endforeach; ?>
+        <?php foreach ($cur_types as $tp) : ?>
+          <option value="<?php echo esc_attr($tp); ?>" <?php selected($cur_type, $tp); ?>>
+            <?php echo esc_html($chart_type_labels[$tp] ?? $tp); ?>
+          </option>
+        <?php endforeach; ?>
       </select>
     </td>
   </tr>

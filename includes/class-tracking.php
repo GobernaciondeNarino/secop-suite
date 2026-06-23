@@ -38,6 +38,40 @@ final class Tracking
         'mensual'       => 'mes',
     ];
 
+    /**
+     * Etiquetas amigables (es-CO) para los tipos de gráfica D3plus.
+     * Se usan en el desplegable «Tipo de gráfica» del editor avanzado a medida.
+     */
+    private const CHART_TYPE_LABELS = [
+        'bar'         => 'Barras',
+        'stacked_bar' => 'Barras apiladas',
+        'treemap'     => 'Treemap (mapa de árbol)',
+        'pie'         => 'Pastel',
+        'donut'       => 'Dona',
+        'pack'        => 'Círculos (pack)',
+        'line'        => 'Línea (evolución)',
+        'area'        => 'Área',
+    ];
+
+    /** Nombre legible de un tipo de gráfica (fallback: el propio valor). */
+    public static function chart_type_label(string $type): string
+    {
+        return self::CHART_TYPE_LABELS[$type] ?? $type;
+    }
+
+    /** Mapa dimensión → [{value,label}] de tipos compatibles, para el editor (JS). */
+    public static function chart_types_by_dimension(): array
+    {
+        $out = [];
+        foreach (self::COMPAT as $dim => $types) {
+            $out[$dim] = array_map(
+                static fn(string $t): array => ['value' => $t, 'label' => self::chart_type_label($t)],
+                $types
+            );
+        }
+        return $out;
+    }
+
     public function __construct(Database $db)
     {
         $this->db = $db;
@@ -459,6 +493,7 @@ final class Tracking
             'tercero'        => __('Contratista', 'secop-suite'),
             'mensual'        => __('Mensual (evolución)', 'secop-suite'),
         ];
+        $chart_type_labels = self::CHART_TYPE_LABELS;
         $dependencias = $this->list_dependencies();
         $filter_columns = $this->filter_columns();
         include SECOP_SUITE_DIR . 'templates/admin/dep-card-config.php';
@@ -692,6 +727,9 @@ final class Tracking
         wp_localize_script('secop-dep-card-preview', 'secopDepPreview', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce'   => wp_create_nonce('secop_dep_preview'),
+            // Tipos de gráfica compatibles por dimensión: el editor reconstruye el
+            // desplegable «Tipo de gráfica» al cambiar la dimensión (evita duplicados).
+            'chartTypes' => self::chart_types_by_dimension(),
             'strings' => [
                 'loading' => __('Generando vista previa…', 'secop-suite'),
                 'error'   => __('Error al generar la vista previa', 'secop-suite'),
