@@ -69,6 +69,21 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.11.0 — Filtrado por cualquier campo en las APIs de Datos Abiertos
+- Las APIs de Datos Abiertos (`/consulta`, `/consulta/csv`, `/consulta/txt`, `/export/csv`, `/export/txt`, `/contracts`) aceptan **filtros por cualquier campo directamente desde la URL**: `?columna=valor` (igualdad), `?columna_like=valor` (contiene), `?columna_min=valor` (≥) y `?columna_max=valor` (≤), además de `order_by`/`order` (ASC|DESC) y paginación `page`/`per_page`.
+- Las columnas se **validan contra las columnas reales** de la tabla/vista (`get_table_columns()`); los valores se vinculan vía `$wpdb->prepare`; los operadores provienen de un conjunto fijo. Los parámetros desconocidos se ignoran de forma segura.
+- **Sin exponer ni filtrar datos personales**: las columnas `documento_proveedor` / `tipo_documento_proveedor` se excluyen del filtrado, del orden y de la salida (Ley 1581).
+- En `/consulta` la clave de caché incluye el hash de los parámetros, de modo que cada combinación de filtros se cachea por separado. Se conservan el rate-limit por IP, el stripping de PII, `csv_safe`, el BOM y el streaming por lotes.
+
+#### API de Datos Abiertos — ejemplos de uso
+- `…/secop-suite/v1/consulta` — todos los registros de la vigencia actual, JSON paginado.
+- `…/secop-suite/v1/consulta?nombredependencia=SECRETARIA DE EDUCACION` — filtrar por dependencia (igualdad exacta).
+- `…/secop-suite/v1/consulta?modalidad_de_contratacion_like=directa` — modalidad que contiene "directa".
+- `…/secop-suite/v1/consulta?valor_contrato_min=100000000&order_by=valor_contrato&order=desc` — contratos ≥ 100M, de mayor a menor.
+- `…/secop-suite/v1/consulta/csv?tipo_de_contrato=Prestación de servicios` — descargar CSV filtrado.
+- `…/secop-suite/v1/contracts?estado=Aprobado&per_page=50&page=2` — contratos aprobados, paginado.
+- Sufijos soportados: `_like`, `_min`, `_max`; orden con `order_by`/`order`; paginación con `page`/`per_page`. Los campos de documento/datos personales no se exponen ni se pueden filtrar/ordenar.
+
 ### v5.10.4 — Protección de datos personales (Ley 1581)
 - **Privacidad:** las descargas/endpoints públicos ya no exponen el documento del proveedor (`documento_proveedor` / `tipo_documento_proveedor`). Se aplica en `/contracts`, `/contracts/{id}`, `/export/csv`, `/export/txt`, `/consulta/csv` y `/consulta/txt` (las cabeceras y filas de CSV/TXT se calculan sobre la lista de columnas sin PII, manteniendo la alineación). Se conserva el nombre del contratista y el resto de la información.
 

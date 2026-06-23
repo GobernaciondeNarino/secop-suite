@@ -110,4 +110,56 @@ if (!defined('ABSPATH')) {
             </tr>
         </tbody>
     </table>
+
+    <h2><?php esc_html_e('Ejemplos de uso de la API', 'secop-suite'); ?></h2>
+    <p><?php esc_html_e(
+        'Desde la versión 5.11.0 las APIs de Datos Abiertos aceptan filtros por cualquier campo directamente en la URL. Cada nombre de columna puede usarse como parámetro con estos sufijos:',
+        'secop-suite'
+    ); ?></p>
+    <ul>
+        <li><code>?columna=valor</code> — <?php esc_html_e('igualdad exacta.', 'secop-suite'); ?></li>
+        <li><code>?columna_like=valor</code> — <?php esc_html_e('contiene (LIKE %valor%).', 'secop-suite'); ?></li>
+        <li><code>?columna_min=valor</code> — <?php esc_html_e('mayor o igual (≥), para números/fechas.', 'secop-suite'); ?></li>
+        <li><code>?columna_max=valor</code> — <?php esc_html_e('menor o igual (≤), para números/fechas.', 'secop-suite'); ?></li>
+        <li><code>order_by=columna&order=asc|desc</code> — <?php esc_html_e('orden por columna y dirección.', 'secop-suite'); ?></li>
+        <li><code>page</code>, <code>per_page</code> — <?php esc_html_e('paginación (JSON).', 'secop-suite'); ?></li>
+    </ul>
+    <table class="widefat striped">
+        <thead>
+            <tr>
+                <th><?php esc_html_e('Ejemplo', 'secop-suite'); ?></th>
+                <th><?php esc_html_e('Qué hace', 'secop-suite'); ?></th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code><?php echo esc_html(esc_url(rest_url('secop-suite/v1/consulta'))); ?></code></td>
+                <td><?php esc_html_e('Todos los registros de la vigencia actual, JSON paginado.', 'secop-suite'); ?></td>
+            </tr>
+            <tr>
+                <td><code><?php echo esc_html(esc_url(rest_url('secop-suite/v1/consulta')) . '?nombredependencia=SECRETARIA DE EDUCACION'); ?></code></td>
+                <td><?php esc_html_e('Filtrar por dependencia (igualdad exacta).', 'secop-suite'); ?></td>
+            </tr>
+            <tr>
+                <td><code><?php echo esc_html(esc_url(rest_url('secop-suite/v1/consulta')) . '?modalidad_de_contratacion_like=directa'); ?></code></td>
+                <td><?php esc_html_e('Modalidad que contiene "directa".', 'secop-suite'); ?></td>
+            </tr>
+            <tr>
+                <td><code><?php echo esc_html(esc_url(rest_url('secop-suite/v1/consulta')) . '?valor_contrato_min=100000000&order_by=valor_contrato&order=desc'); ?></code></td>
+                <td><?php esc_html_e('Contratos ≥ 100M, de mayor a menor.', 'secop-suite'); ?></td>
+            </tr>
+            <tr>
+                <td><code><?php echo esc_html(esc_url(rest_url('secop-suite/v1/consulta/csv')) . '?tipo_de_contrato=Prestación de servicios'); ?></code></td>
+                <td><?php esc_html_e('Descargar CSV filtrado por tipo de contrato.', 'secop-suite'); ?></td>
+            </tr>
+            <tr>
+                <td><code><?php echo esc_html(esc_url(rest_url('secop-suite/v1/contracts')) . '?estado=Aprobado&per_page=50&page=2'); ?></code></td>
+                <td><?php esc_html_e('Contratos aprobados, 50 por página, página 2.', 'secop-suite'); ?></td>
+            </tr>
+        </tbody>
+    </table>
+    <p><em><?php esc_html_e(
+        'Nota de privacidad: las columnas de datos personales del proveedor (documento_proveedor / tipo_documento_proveedor) nunca se exponen ni se pueden filtrar/ordenar (Ley 1581). Las columnas y direcciones de orden inválidas se ignoran de forma segura.',
+        'secop-suite'
+    ); ?></em></p>
 </div>
