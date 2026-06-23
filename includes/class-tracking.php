@@ -35,7 +35,11 @@ final class Tracking
         'tipo_contrato' => 'tipo_de_contrato',
         'modalidad'     => 'modalidad_de_contratacion',
         'tercero'       => 'nombretercero',
-        'mensual'       => 'mes',
+        // v5.13.1: la evolución mensual se agrupa por el MES DE FIRMA DEL CONTRATO
+        // (fecha_de_firma_del_contrato), no por una columna «mes» — esa columna NO
+        // existe en la vista. fecha_de_firma viene del contrato (lado SECOP del LEFT
+        // JOIN), por lo que está presente incluso en contratos sin cruce presupuestal.
+        'mensual'       => 'fecha_de_firma_del_contrato',
     ];
 
     /**
@@ -153,7 +157,6 @@ final class Tracking
             'modalidad_de_contratacion' => __('Modalidad', 'secop-suite'),
             'nombretercero'             => __('Contratista', 'secop-suite'),
             'documento_proveedor'       => __('Documento proveedor', 'secop-suite'),
-            'mes'                       => __('Mes', 'secop-suite'),
             'valor_contrato'            => __('Valor del contrato', 'secop-suite'),
             'valordebito'               => __('Valor ejecutado', 'secop-suite'),
             'saldoporejecutaresp'       => __('Saldo por ejecutar', 'secop-suite'),
@@ -309,7 +312,6 @@ final class Tracking
             'nom_raz_social_contratista',
             'tipo_de_contrato',
             'modalidad_de_contratacion',
-            'mes',
         ];
 
         return match ($col) {
@@ -348,21 +350,46 @@ final class Tracking
         // SUM(valor_contrato) sobrecuenta ligeramente los contratos multi-comprobante.
         // v5.9.0: los contratos sin cruce Sysman (NULL por el LEFT JOIN) se agrupan bajo
         // "No Registra SYSMAN" (dependencia) o caen al contratista del SECOP (tercero).
-        $label_expr  = $this->sysman_label_expr($col);
         $metric_expr = $this->metric_aggregate_sql($metric); // magnitud principal (métrica elegida)
+        $is_mensual  = ($dimension === 'mensual');
+
+        if ($is_mensual) {
+            // Evolución mensual: se agrupa por el MES de fecha_de_firma_del_contrato
+            // (DATETIME real del contrato). El '%%m' va escapado porque el SQL pasa
+            // por $wpdb->prepare. Orden cronológico (Enero→Diciembre).
+            $label_expr   = "DATE_FORMAT(`fecha_de_firma_del_contrato`, '%%m')";
+            $extra_where  = " AND `fecha_de_firma_del_contrato` IS NOT NULL";
+            $order_clause = 'ORDER BY label ASC';
+        } else {
+            $label_expr   = $this->sysman_label_expr($col);
+            $extra_where  = '';
+            $order_clause = 'ORDER BY valor DESC';
+        }
+
         $sql = "SELECT {$label_expr} AS label,
                        {$metric_expr} AS valor,
                        COUNT(DISTINCT numero_del_contrato) AS conteo
-                FROM `{$view}` WHERE {$where_sql}
-                GROUP BY {$label_expr} ORDER BY valor DESC";
+                FROM `{$view}` WHERE {$where_sql}{$extra_where}
+                GROUP BY {$label_expr} {$order_clause}";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
 
-        $result = array_map(fn($r) => [
-            'label'  => $r['label'] ?? 'N/D',
-            'valor'  => (float) $r['valor'],
-            'conteo' => (int) $r['conteo'],
-        ], $rows ?: []);
+        $month_names = [
+            '01' => 'Enero',   '02' => 'Febrero',   '03' => 'Marzo',     '04' => 'Abril',
+            '05' => 'Mayo',    '06' => 'Junio',     '07' => 'Julio',     '08' => 'Agosto',
+            '09' => 'Septiembre', '10' => 'Octubre', '11' => 'Noviembre', '12' => 'Diciembre',
+        ];
+        $result = array_map(function ($r) use ($is_mensual, $month_names) {
+            $label = $r['label'] ?? 'N/D';
+            if ($is_mensual && isset($month_names[$label])) {
+                $label = $month_names[$label]; // 03 → Marzo
+            }
+            return [
+                'label'  => $label,
+                'valor'  => (float) $r['valor'],
+                'conteo' => (int) $r['conteo'],
+            ];
+        }, $rows ?: []);
 
         set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
         return $result;
@@ -828,6 +855,10 @@ final class Tracking
         $metric_key = isset($metrics[$raw_metric]) ? $raw_metric : 'valor_contrato';
         $m          = $metrics[$metric_key];
         $x_field    = self::DIM_COLUMN[$dimension] ?? 'nombredependencia';
+        // v5.13.1: la evolución mensual agrupa el eje X por el mes de la fecha de
+        // firma (month_name → '01'..'12', reetiquetado a nombres de mes en español
+        // por el Visualizer). El resto de dimensiones no usan agrupación por fecha.
+        $x_date_grouping = ($dimension === 'mensual') ? 'month_name' : '';
 
         // Ordenamiento de barras: por valor agregado (sentinela __value__) o por etiqueta.
         $order     = in_array($cfg['order'] ?? '', ['valor', 'etiqueta'], true) ? $cfg['order'] : 'valor';
@@ -876,7 +907,7 @@ final class Tracking
             'chart_type'      => $type,
             'table_name'      => $view,
             'x_field'         => $x_field,
-            'x_date_grouping' => '',
+            'x_date_grouping' => $x_date_grouping,
             'y_field'         => $m['col'],
             'y_fields'        => [],
             'group_by'        => '',
