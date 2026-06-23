@@ -216,6 +216,32 @@
         });
     }
 
+    /**
+     * Reconstruye el desplegable «Tipo de gráfica» con SOLO los tipos compatibles
+     * con la dimensión seleccionada (sin duplicados, con etiquetas amigables).
+     * Conserva la selección previa si sigue siendo válida; si no, usa la primera.
+     */
+    function rebuildChartTypes() {
+        var map = (secopDepPreview && secopDepPreview.chartTypes) || {};
+        var dim = $(SEL.dimension).val() || 'dependencia';
+        var types = map[dim] || [];
+        if (!types.length) {
+            return;
+        }
+        var $sel = $(SEL.chartType);
+        var prev = $sel.val();
+        var keep = false;
+        $sel.empty();
+        types.forEach(function (t) {
+            if (t.value === prev) {
+                keep = true;
+            }
+            // .text() para la etiqueta: nunca innerHTML.
+            $sel.append($('<option>', { value: t.value, text: t.label }));
+        });
+        $sel.val(keep ? prev : types[0].value);
+    }
+
     var debounceTimer = null;
     function debouncedRefresh() {
         clearTimeout(debounceTimer);
@@ -224,6 +250,10 @@
 
     $(function() {
         $('#ss-dep-refresh-preview').on('click', refresh);
+
+        // Al cambiar la dimensión, primero se reconstruye el desplegable de tipos
+        // (síncrono) y luego se refresca la vista previa con el valor ya válido.
+        $(document).on('change', SEL.dimension, rebuildChartTypes);
 
         var watch = [
             SEL.dimension, SEL.chartType, SEL.metric, SEL.dependencia,
