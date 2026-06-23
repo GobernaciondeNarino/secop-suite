@@ -159,6 +159,9 @@ final class Tracking
         add_action('wp_ajax_nopriv_secop_dep_network',   [$this, 'ajax_network']);
         // v5.4.1: red ego (Rings) centrada en una dependencia (d3plus.Rings).
         add_shortcode('secop_dep_rings',                 [$this, 'sc_rings']);
+        // v5.12.0: selector de filtro composable que gobierna el estado compartido
+        // (SecopCoord) — enfoca el Rings (y demás elementos) por dependencia/modalidad/tipo.
+        add_shortcode('secop_dep_selector',              [$this, 'sc_selector']);
         // v5.7.0: predicción — serie mensual (mes del contrato) + proyección punteada.
         add_shortcode('secop_dep_prediccion',            [$this, 'sc_prediccion']);
         add_action('wp_ajax_secop_dep_prediccion',        [$this, 'ajax_prediccion']);
@@ -1369,7 +1372,7 @@ final class Tracking
         global $post;
         if (!is_a($post, 'WP_Post')) return;
         $has = false;
-        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings','secop_dep_explora','secop_dep_prediccion','secop_dep_lista','secop_dep_treemap'] as $sc) {
+        foreach (['secop_dep_chart','secop_seguimiento','secop_dep_contratos','secop_consulta','secop_dep_red','secop_dep_rings','secop_dep_selector','secop_dep_explora','secop_dep_prediccion','secop_dep_lista','secop_dep_treemap'] as $sc) {
             if (has_shortcode($post->post_content, $sc)) { $has = true; break; }
         }
         if (!$has) return;
@@ -1721,14 +1724,70 @@ final class Tracking
      */
     public function sc_rings(array $atts): string
     {
-        $atts = shortcode_atts(['dependencia' => '', 'height' => 560, 'selector' => 'on'], $atts, 'secop_dep_rings');
+        // v5.12.0: el selector se separó en [secop_dep_selector]; por defecto el
+        // selector inline queda OFF. Si se pasa selector="on" se mantiene por
+        // retrocompatibilidad (también gobierna el estado compartido SecopCoord).
+        $atts = shortcode_atts(['dependencia' => '', 'height' => 560, 'selector' => 'off'], $atts, 'secop_dep_rings');
         $this->enqueue_module_stack();
-        wp_enqueue_script('secop-dep-rings', SECOP_SUITE_URL . 'assets/js/dep-rings.js', ['jquery', 'd3', 'd3plus', 'secop-suite-frontend'], SECOP_SUITE_VERSION, true);
+        // El Rings ahora se gobierna por el coordinador de filtros (SecopCoord).
+        wp_enqueue_script('secop-dep-coord', SECOP_SUITE_URL . 'assets/js/dep-coord.js',
+            ['jquery'], SECOP_SUITE_VERSION, true);
+        wp_enqueue_script('secop-dep-rings', SECOP_SUITE_URL . 'assets/js/dep-rings.js',
+            ['jquery', 'd3', 'd3plus', 'secop-suite-frontend', 'secop-dep-coord'], SECOP_SUITE_VERSION, true);
         $deps = ($atts['selector'] === 'on') ? $this->list_dependencies() : [];
         $uid  = 'ss-rings-' . wp_unique_id();
         ob_start();
         include SECOP_SUITE_DIR . 'templates/frontend/rings.php';
         return ob_get_clean();
+    }
+
+    /**
+     * v5.12.0: Shortcode [secop_dep_selector] — selector de filtro composable que
+     * gobierna el estado compartido a nivel de página (SecopCoord). Enfoca la red
+     * ego [secop_dep_rings] (y cualquier otro elemento suscrito: treemap, listas)
+     * en un valor de dependencia / modalidad / tipo de contrato. Es un DRIVER:
+     * cambia el filtro pero no se recarga a sí mismo.
+     */
+    public function sc_selector(array $atts): string
+    {
+        $atts = shortcode_atts(['campo' => 'dependencia', 'titulo' => '', 'todas' => '— Todas —'], $atts, 'secop_dep_selector');
+        $campo = in_array($atts['campo'], ['dependencia', 'modalidad', 'tipo_contrato'], true) ? $atts['campo'] : 'dependencia';
+
+        $this->enqueue_module_stack();
+        // Asegura el coordinador (SecopCoord) y el script del selector.
+        wp_enqueue_script('secop-dep-coord', SECOP_SUITE_URL . 'assets/js/dep-coord.js',
+            ['jquery'], SECOP_SUITE_VERSION, true);
+        wp_enqueue_script('secop-dep-selector', SECOP_SUITE_URL . 'assets/js/dep-selector.js',
+            ['jquery', 'secop-dep-coord'], SECOP_SUITE_VERSION, true);
+
+        $options = $this->selector_options($campo);
+        $titulo  = (string) $atts['titulo'];
+        $todas   = (string) $atts['todas'];
+        $uid     = 'ss-sel-' . wp_unique_id();
+
+        ob_start();
+        include SECOP_SUITE_DIR . 'templates/frontend/selector.php';
+        return ob_get_clean();
+    }
+
+    /**
+     * v5.12.0: Valores distintos del campo de un [secop_dep_selector], en la
+     * vigencia actual, vía lista_aggregate (columna validada + prepared). Devuelve
+     * sólo las etiquetas (strings) ordenadas por valor DESC.
+     *
+     * @param string $campo dependencia|modalidad|tipo_contrato.
+     * @return array<int,string>
+     */
+    public function selector_options(string $campo): array
+    {
+        $col_map = [
+            'dependencia'   => 'nombredependencia',
+            'modalidad'     => 'modalidad_de_contratacion',
+            'tipo_contrato' => 'tipo_de_contrato',
+        ];
+        $col = $col_map[$campo] ?? 'nombredependencia';
+        $rows = $this->lista_aggregate($col, []);
+        return array_values(array_map(static fn($r) => (string) ($r['label'] ?? ''), $rows));
     }
 
     // ── v5.7.0: Predicción (serie mensual del contrato + proyección) ──
