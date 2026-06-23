@@ -151,6 +151,12 @@ final class Stats
         return number_format(round($value), 0, ',', '.');
     }
 
+    /** Formatea una magnitud según la métrica: dinero ($) o conteo (entero). */
+    public static function magnitud(float $value, bool $is_money): string
+    {
+        return $is_money ? self::money($value) : self::num($value);
+    }
+
     /** Recorta a <=564 caracteres respetando límites de palabra. */
     public static function clamp564(string $text): string
     {
@@ -182,14 +188,21 @@ final class Stats
 
     public static function analisis_descripcion(array $d): string
     {
-        $dim = self::dim_label($d['dimension']);
-        $ncat = count($d['categorias']);
+        $dim     = self::dim_label($d['dimension']);
+        $ncat    = count($d['categorias']);
+        $isMoney = $d['metric_is_money'] ?? true;
+        $metric  = mb_strtolower($d['metric_label'] ?? 'valor del contrato');
+        $unidad  = $d['metric_unit'] ?? 'contratos';
+        // Magnitud principal según la métrica: dinero (+ nº de contratos) o conteo.
+        $magn = $isMoney
+            ? sprintf('%s en %s contratos', self::money($d['total_valor']), self::num($d['total_conteo']))
+            : sprintf('%s %s', self::num($d['total_valor']), $unidad);
         $t = sprintf(
-            'La contratación de la entidad durante la vigencia %d, vista por %s. '
-          . 'Se presentan %s contratos por un valor total de %s, repartidos en %d %s. '
+            'La contratación de la entidad durante la vigencia %d, vista por %s y medida en %s. '
+          . 'Se presentan %s, repartidos en %d %s. '
           . 'La información proviene de los contratos publicados en el SECOP y del sistema presupuestal de la entidad, '
           . 'y se actualiza durante el año para que la ciudadanía pueda seguir en qué contrata su gobierno.',
-            $d['vigencia'], $dim, self::num($d['total_conteo']), self::money($d['total_valor']),
+            $d['vigencia'], $dim, $metric, $magn,
             $ncat, $ncat === 1 ? 'categoría' : 'categorías'
         );
         return self::clamp564($t);
@@ -203,15 +216,20 @@ final class Stats
         $concentrada = self::hhi($valores) > 0.5;
         $top1 = $cats[0] ?? ['label' => 'N/D', 'valor' => 0];
         $share1 = self::top_share($valores, 1);
+        $isMoney = $d['metric_is_money'] ?? true;
+        $metric  = mb_strtolower($d['metric_label'] ?? 'valor del contrato');
+        $sujeto  = $isMoney ? 'Los recursos' : 'Los ' . ($d['metric_unit'] ?? 'contratos');
         $t = sprintf(
-            'Los recursos %s. «%s» reúne %s del valor contratado, la mayor parte. %s. '
-          . 'Observar cómo se reparte la contratación entre las %s le ayuda a la ciudadanía a saber '
-          . 'si el dinero se enfoca en unas pocas áreas o se distribuye de forma más amplia.',
+            '%s %s. «%s» reúne %s del %s, la mayor parte. %s. '
+          . 'Observar cómo se reparte la contratación por %s le ayuda a la ciudadanía a saber '
+          . 'si %s se enfoca en unas pocas áreas o se distribuye de forma más amplia.',
+            $sujeto,
             $concentrada ? 'se concentran en pocas áreas' : 'se reparten entre varias áreas',
-            $top1['label'], self::percent($share1),
-            $concentrada ? 'Unas pocas categorías agrupan casi todo el valor'
-                         : 'El valor está distribuido de manera más equilibrada',
-            self::dim_label($d['dimension']) . 's'
+            $top1['label'], self::percent($share1), $metric,
+            $concentrada ? 'Unas pocas categorías agrupan casi todo el total'
+                         : 'El total está distribuido de manera más equilibrada',
+            self::dim_label($d['dimension']),
+            $isMoney ? 'el dinero' : 'la actividad contractual'
         );
         return self::clamp564($t);
     }
@@ -224,14 +242,19 @@ final class Stats
         $media   = self::mean($valores);
         $mediana = self::median($valores);
         $top     = $cats[0] ?? ['label' => 'N/D'];
+        $isMoney = $d['metric_is_money'] ?? true;
         $totalPpto = $d['ejecutado'] + $d['saldo'];
         $pctEjec   = $totalPpto > 0 ? $d['ejecutado'] / $totalPpto : 0.0;
+        // Magnitud principal en la métrica elegida; el avance presupuestal es siempre dinero.
+        $totalTxt = $isMoney
+            ? sprintf('%s en %s contratos', self::money($d['total_valor']), self::num($d['total_conteo']))
+            : sprintf('%s %s', self::num($d['total_valor']), $d['metric_unit'] ?? 'contratos');
         $t = sprintf(
-            'En total se contrataron %s en %s contratos. En promedio, cada %s reúne %s, y la mitad queda por debajo de %s. '
+            'En total se registraron %s. En promedio, cada %s reúne %s, y la mitad queda por debajo de %s. '
           . '«%s» es la que más concentra. Del presupuesto con seguimiento ya se ejecutó el %s (%s de %s) y quedan %s por ejecutar. '
           . 'Estas cifras dan una idea del tamaño y del avance de la contratación.',
-            self::money($d['total_valor']), self::num($d['total_conteo']),
-            self::dim_label($d['dimension']), self::money($media), self::money($mediana),
+            $totalTxt,
+            self::dim_label($d['dimension']), self::magnitud($media, $isMoney), self::magnitud($mediana, $isMoney),
             $top['label'], self::percent($pctEjec), self::money($d['ejecutado']),
             self::money($totalPpto), self::money($d['saldo'])
         );
@@ -248,15 +271,17 @@ final class Stats
                 $d['vigencia']
             ));
         }
+        $isMoney = $d['metric_is_money'] ?? true;
+        $metric  = mb_strtolower($d['metric_label'] ?? 'valor del contrato');
         $cierre = self::project($reg, 12.0);
         $actual = end($d['serie_mensual'])[1] ?? 0.0;
         $crecimiento = $actual > 0 ? ($cierre - $actual) / $actual : 0.0;
         $confianza = $reg['r2'] >= 0.8 ? 'alta' : ($reg['r2'] >= 0.5 ? 'media' : 'baja');
         $t = sprintf(
-            'Según la tendencia de los primeros %d meses, la contratación podría cerrar la vigencia %d cerca de %s, '
+            'Según la tendencia de los primeros %d meses, el %s podría cerrar la vigencia %d cerca de %s, '
           . 'frente a %s a la fecha (una variación cercana al %s). La confiabilidad de este ajuste es %s. '
           . 'Es una estimación basada en lo que va del año y puede cambiar según el ritmo de la contratación.',
-            $reg['n'], $d['vigencia'], self::money((float) $cierre), self::money($actual),
+            $reg['n'], $metric, $d['vigencia'], self::magnitud((float) $cierre, $isMoney), self::magnitud($actual, $isMoney),
             self::percent($crecimiento), $confianza
         );
         return self::clamp564($t);

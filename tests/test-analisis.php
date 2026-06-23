@@ -41,3 +41,37 @@ it('prediccion con datos insuficientes lo advierte', function () {
     $t = Stats::analisis_prediccion($d);
     assert_true(str_contains(mb_strtolower($t), 'insuficien') || str_contains(mb_strtolower($t), 'no es posible'));
 });
+
+// ── Métrica de conteo: el cruce dimensión × métrica debe cambiar la narrativa ──
+function ds_conteo(): array {
+    $d = ds();
+    $d['metric_is_money'] = false;
+    $d['metric_label']    = 'Nº de contratos';
+    $d['metric_unit']     = 'contratos';
+    return $d;
+}
+
+it('descripcion refleja la metrica elegida (conteo)', function () {
+    $t = Stats::analisis_descripcion(ds_conteo());
+    assert_true(str_contains(mb_strtolower($t), 'medida en nº de contratos'));
+    assert_true(mb_strlen($t) <= 564);
+});
+
+it('descripcion con dinero y con conteo producen textos distintos', function () {
+    $money = Stats::analisis_descripcion(ds());
+    $conteo = Stats::analisis_descripcion(ds_conteo());
+    assert_true($money !== $conteo);
+});
+
+it('cuantitativo de conteo no formatea la magnitud principal como dinero', function () {
+    $t = Stats::analisis_cuantitativo(ds_conteo());
+    // El avance presupuestal sigue en $, pero la magnitud principal es un conteo.
+    assert_true(str_contains($t, 'contratos'));
+    assert_true(mb_strlen($t) <= 564);
+});
+
+it('prediccion de conteo menciona la metrica y no usa $ en la proyeccion', function () {
+    $t = Stats::analisis_prediccion(ds_conteo());
+    assert_true(str_contains(mb_strtolower($t), 'nº de contratos'));
+    assert_true(mb_strlen($t) <= 564);
+});

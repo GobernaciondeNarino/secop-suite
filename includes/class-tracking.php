@@ -22,11 +22,11 @@ final class Tracking
      * Limitadas a columnas que existen en la vista vista_secop_sysman.
      */
     private const COMPAT = [
-        'dependencia'   => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
-        'tipo_contrato' => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
-        'modalidad'     => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
-        'tercero'       => ['bar', 'stacked_bar', 'treemap', 'pie', 'donut', 'pack'],
-        'mensual'       => ['line', 'area'],
+        'dependencia'   => ['bar', 'stacked_bar', 'grouped_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'tipo_contrato' => ['bar', 'stacked_bar', 'grouped_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'modalidad'     => ['bar', 'stacked_bar', 'grouped_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'tercero'       => ['bar', 'stacked_bar', 'grouped_bar', 'treemap', 'pie', 'donut', 'pack'],
+        'mensual'       => ['line', 'area', 'bar', 'stacked_bar'],
     ];
 
     /** Columna del VIEW que agrupa cada dimensión. */
@@ -35,7 +35,11 @@ final class Tracking
         'tipo_contrato' => 'tipo_de_contrato',
         'modalidad'     => 'modalidad_de_contratacion',
         'tercero'       => 'nombretercero',
-        'mensual'       => 'mes',
+        // v5.13.1: la evolución mensual se agrupa por el MES DE FIRMA DEL CONTRATO
+        // (fecha_de_firma_del_contrato), no por una columna «mes» — esa columna NO
+        // existe en la vista. fecha_de_firma viene del contrato (lado SECOP del LEFT
+        // JOIN), por lo que está presente incluso en contratos sin cruce presupuestal.
+        'mensual'       => 'fecha_de_firma_del_contrato',
     ];
 
     /**
@@ -45,6 +49,7 @@ final class Tracking
     private const CHART_TYPE_LABELS = [
         'bar'         => 'Barras',
         'stacked_bar' => 'Barras apiladas',
+        'grouped_bar' => 'Barras agrupadas',
         'treemap'     => 'Treemap (mapa de árbol)',
         'pie'         => 'Pastel',
         'donut'       => 'Dona',
@@ -101,6 +106,40 @@ final class Tracking
         ];
     }
 
+    /** Clave de métrica válida (con respaldo a valor_contrato). */
+    private function metric_key(string $metric): string
+    {
+        return isset($this->metrics()[$metric]) ? $metric : 'valor_contrato';
+    }
+
+    /**
+     * Expresión SQL de agregación de una métrica. La columna proviene de la
+     * whitelist metrics() (no de entrada del usuario), por lo que es segura de
+     * interpolar; el WHERE sigue usando $wpdb->prepare para los valores.
+     */
+    private function metric_aggregate_sql(string $metric): string
+    {
+        $m   = $this->metrics()[$this->metric_key($metric)];
+        $col = $m['col'];
+        switch ($m['agg']) {
+            case 'COUNT_DISTINCT': return "COUNT(DISTINCT `{$col}`)";
+            case 'COUNT':          return "COUNT(`{$col}`)";
+            default:               return "SUM(`{$col}`)";
+        }
+    }
+
+    /** ¿La métrica representa dinero (SUM de columna monetaria) o un conteo? */
+    private function metric_is_money(string $metric): bool
+    {
+        return !in_array($this->metric_key($metric), ['contratos', 'registros'], true);
+    }
+
+    /** Palabra-unidad en plural para métricas de conteo (uso en la narrativa). */
+    private function metric_unit(string $metric): string
+    {
+        return $this->metric_key($metric) === 'registros' ? 'registros' : 'contratos';
+    }
+
     /**
      * Whitelist de columnas filtrables del módulo de Contratación.
      * Sólo columnas que existen en la vista vista_secop_sysman. El valor es la
@@ -118,7 +157,6 @@ final class Tracking
             'modalidad_de_contratacion' => __('Modalidad', 'secop-suite'),
             'nombretercero'             => __('Contratista', 'secop-suite'),
             'documento_proveedor'       => __('Documento proveedor', 'secop-suite'),
-            'mes'                       => __('Mes', 'secop-suite'),
             'valor_contrato'            => __('Valor del contrato', 'secop-suite'),
             'valordebito'               => __('Valor ejecutado', 'secop-suite'),
             'saldoporejecutaresp'       => __('Saldo por ejecutar', 'secop-suite'),
@@ -274,7 +312,6 @@ final class Tracking
             'nom_raz_social_contratista',
             'tipo_de_contrato',
             'modalidad_de_contratacion',
-            'mes',
         ];
 
         return match ($col) {
@@ -284,13 +321,14 @@ final class Tracking
         };
     }
 
-    /** Agrupación por dimensión para la vigencia actual. */
-    public function group_by_dimension(string $dimension, ?string $dependencia = null): array
+    /** Agrupación por dimensión para la vigencia actual, medida en la métrica dada. */
+    public function group_by_dimension(string $dimension, ?string $dependencia = null, string $metric = 'valor_contrato'): array
     {
         global $wpdb;
         if (!isset(self::DIM_COLUMN[$dimension])) return [];
 
-        $cache_key = 'secop_trk_' . md5('group_by_dimension|' . $dimension . '|' . ($dependencia ?? '') . '|' . $this->current_vigencia());
+        $metric = $this->metric_key($metric);
+        $cache_key = 'secop_trk_' . md5('group_by_dimension|' . $dimension . '|' . ($dependencia ?? '') . '|' . $metric . '|' . $this->current_vigencia());
         $cached = get_transient($cache_key);
         if (is_array($cached)) return $cached;
 
@@ -312,31 +350,58 @@ final class Tracking
         // SUM(valor_contrato) sobrecuenta ligeramente los contratos multi-comprobante.
         // v5.9.0: los contratos sin cruce Sysman (NULL por el LEFT JOIN) se agrupan bajo
         // "No Registra SYSMAN" (dependencia) o caen al contratista del SECOP (tercero).
-        $label_expr = $this->sysman_label_expr($col);
+        $metric_expr = $this->metric_aggregate_sql($metric); // magnitud principal (métrica elegida)
+        $is_mensual  = ($dimension === 'mensual');
+
+        if ($is_mensual) {
+            // Evolución mensual: se agrupa por el MES de fecha_de_firma_del_contrato
+            // (DATETIME real del contrato). El '%%m' va escapado porque el SQL pasa
+            // por $wpdb->prepare. Orden cronológico (Enero→Diciembre).
+            $label_expr   = "DATE_FORMAT(`fecha_de_firma_del_contrato`, '%%m')";
+            $extra_where  = " AND `fecha_de_firma_del_contrato` IS NOT NULL";
+            $order_clause = 'ORDER BY label ASC';
+        } else {
+            $label_expr   = $this->sysman_label_expr($col);
+            $extra_where  = '';
+            $order_clause = 'ORDER BY valor DESC';
+        }
+
         $sql = "SELECT {$label_expr} AS label,
-                       SUM(valor_contrato) AS valor,
+                       {$metric_expr} AS valor,
                        COUNT(DISTINCT numero_del_contrato) AS conteo
-                FROM `{$view}` WHERE {$where_sql}
-                GROUP BY {$label_expr} ORDER BY valor DESC";
+                FROM `{$view}` WHERE {$where_sql}{$extra_where}
+                GROUP BY {$label_expr} {$order_clause}";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
 
-        $result = array_map(fn($r) => [
-            'label'  => $r['label'] ?? 'N/D',
-            'valor'  => (float) $r['valor'],
-            'conteo' => (int) $r['conteo'],
-        ], $rows ?: []);
+        $month_names = [
+            '01' => 'Enero',   '02' => 'Febrero',   '03' => 'Marzo',     '04' => 'Abril',
+            '05' => 'Mayo',    '06' => 'Junio',     '07' => 'Julio',     '08' => 'Agosto',
+            '09' => 'Septiembre', '10' => 'Octubre', '11' => 'Noviembre', '12' => 'Diciembre',
+        ];
+        $result = array_map(function ($r) use ($is_mensual, $month_names) {
+            $label = $r['label'] ?? 'N/D';
+            if ($is_mensual && isset($month_names[$label])) {
+                $label = $month_names[$label]; // 03 → Marzo
+            }
+            return [
+                'label'  => $label,
+                'valor'  => (float) $r['valor'],
+                'conteo' => (int) $r['conteo'],
+            ];
+        }, $rows ?: []);
 
         set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
         return $result;
     }
 
-    /** Serie mensual acumulada de ejecución (para predicción). */
-    public function monthly_series(?string $dependencia = null): array
+    /** Serie mensual acumulada de la métrica elegida (para predicción). */
+    public function monthly_series(?string $dependencia = null, string $metric = 'valor_contrato'): array
     {
         global $wpdb;
 
-        $cache_key = 'secop_trk_' . md5('monthly_series|' . ($dependencia ?? '') . '|' . $this->current_vigencia());
+        $metric = $this->metric_key($metric);
+        $cache_key = 'secop_trk_' . md5('monthly_series|' . ($dependencia ?? '') . '|' . $metric . '|' . $this->current_vigencia());
         $cached = get_transient($cache_key);
         if (is_array($cached)) return $cached;
 
@@ -354,7 +419,8 @@ final class Tracking
         // MONTH(`fecha_de_firma_del_contrato`) (sin STR_TO_DATE ni escapado de %%).
         // Sólo la vigencia (%d) y la dependencia (%s) son placeholders preparados.
         $expr = "MONTH(`fecha_de_firma_del_contrato`)";
-        $sql = "SELECT {$expr} AS mes, SUM(valor_contrato) AS valor
+        $metric_expr = $this->metric_aggregate_sql($metric);
+        $sql = "SELECT {$expr} AS mes, {$metric_expr} AS valor
                 FROM `{$view}`
                 WHERE {$where_sql} AND `fecha_de_firma_del_contrato` IS NOT NULL
                 GROUP BY {$expr} ORDER BY mes ASC";
@@ -382,13 +448,14 @@ final class Tracking
      * @param string|null $dependencia Filtra por una dependencia (null = todas).
      * @return array{points:array<int,array{mes:int,valor:float,serie:string}>,meta:array<string,mixed>}
      */
-    public function prediccion_data(?string $dependencia = null): array
+    public function prediccion_data(?string $dependencia = null, string $metric = 'valor_contrato'): array
     {
-        $cache_key = 'secop_trk_' . md5('prediccion_data|' . ($dependencia ?? '') . '|' . $this->current_vigencia());
+        $metric = $this->metric_key($metric);
+        $cache_key = 'secop_trk_' . md5('prediccion_data|' . ($dependencia ?? '') . '|' . $metric . '|' . $this->current_vigencia());
         $cached = get_transient($cache_key);
         if (is_array($cached)) return $cached;
 
-        $serie = $this->monthly_series($dependencia);
+        $serie = $this->monthly_series($dependencia, $metric);
         $reg   = \SecopSuite\Stats::linear_regression($serie);
 
         $points = [];
@@ -426,18 +493,25 @@ final class Tracking
         return $result;
     }
 
-    /** Construir el dataset de análisis completo para una card. */
-    public function build_dataset(string $dimension, ?string $dependencia = null): array
+    /**
+     * Construir el dataset de análisis completo para una card, medido en la
+     * métrica elegida (cruce dimensión × métrica). La «magnitud principal»
+     * (total_valor y categorias[].valor) refleja la métrica; total_conteo,
+     * ejecutado y saldo se conservan como contexto presupuestal (siempre dinero).
+     */
+    public function build_dataset(string $dimension, ?string $dependencia = null, string $metric = 'valor_contrato'): array
     {
         global $wpdb;
 
-        $cache_key = 'secop_trk_' . md5('build_dataset|' . $dimension . '|' . ($dependencia ?? '') . '|' . $this->current_vigencia());
+        $metric = $this->metric_key($metric);
+        $cache_key = 'secop_trk_' . md5('build_dataset|' . $dimension . '|' . ($dependencia ?? '') . '|' . $metric . '|' . $this->current_vigencia());
         $cached = get_transient($cache_key);
         if (is_array($cached)) return $cached;
 
-        $cats  = $this->group_by_dimension($dimension, $dependencia);
-        $serie = $this->monthly_series($dependencia);
+        $cats  = $this->group_by_dimension($dimension, $dependencia, $metric);
+        $serie = $this->monthly_series($dependencia, $metric);
         $view  = $this->db->get_view_name();
+        $metric_expr = $this->metric_aggregate_sql($metric);
 
         $where  = ['YEAR(`fecha_de_firma_del_contrato`) = %d'];
         $params = [$this->current_vigencia()];
@@ -447,19 +521,25 @@ final class Tracking
         $tot = $wpdb->get_row($wpdb->prepare(
             "SELECT SUM(valordebito) AS ejec, SUM(saldoporejecutaresp) AS saldo,
                     COUNT(DISTINCT numero_del_contrato) AS conteo,
-                    SUM(valor_contrato) AS valc
+                    {$metric_expr} AS metrica
              FROM `{$view}` WHERE {$where_sql}", ...$params), ARRAY_A);
 
         $result = [
-            'dimension'     => $dimension,
-            'vigencia'      => $this->current_vigencia(),
-            'meses'         => count($serie),
-            'categorias'    => $cats,
-            'serie_mensual' => $serie,
-            'total_valor'   => (float) ($tot['valc'] ?? 0),
-            'total_conteo'  => (int) ($tot['conteo'] ?? 0),
-            'ejecutado'     => (float) ($tot['ejec'] ?? 0),
-            'saldo'         => (float) ($tot['saldo'] ?? 0),
+            'dimension'       => $dimension,
+            'vigencia'        => $this->current_vigencia(),
+            'meses'           => count($serie),
+            'categorias'      => $cats,
+            'serie_mensual'   => $serie,
+            // Magnitud principal = la métrica elegida (dinero o conteo).
+            'total_valor'     => (float) ($tot['metrica'] ?? 0),
+            'total_conteo'    => (int) ($tot['conteo'] ?? 0),
+            'ejecutado'       => (float) ($tot['ejec'] ?? 0),
+            'saldo'           => (float) ($tot['saldo'] ?? 0),
+            // Metadatos de la métrica para que la narrativa se adapte.
+            'metric'          => $metric,
+            'metric_label'    => $this->metrics()[$metric]['label'],
+            'metric_is_money' => $this->metric_is_money($metric),
+            'metric_unit'     => $this->metric_unit($metric),
         ];
 
         set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
@@ -582,8 +662,8 @@ final class Tracking
         $chart_config = $this->card_to_chart_config($cfg);
         $res = \SecopSuite\Plugin::get_instance()->visualizer()->get_chart_data_with_sql($chart_config);
 
-        // Análisis en vivo para la dimensión/dependencia de la card.
-        $ds = $this->build_dataset($cfg['dimension'], $cfg['dependencia'] !== '' ? $cfg['dependencia'] : null);
+        // Análisis en vivo para el cruce dimensión × métrica × dependencia de la card.
+        $ds = $this->build_dataset($cfg['dimension'], $cfg['dependencia'] !== '' ? $cfg['dependencia'] : null, $cfg['metric'] ?? 'valor_contrato');
         $analisis = [
             'descripcion'  => \SecopSuite\Stats::analisis_descripcion($ds),
             'cualitativo'  => \SecopSuite\Stats::analisis_cualitativo($ds),
@@ -775,6 +855,10 @@ final class Tracking
         $metric_key = isset($metrics[$raw_metric]) ? $raw_metric : 'valor_contrato';
         $m          = $metrics[$metric_key];
         $x_field    = self::DIM_COLUMN[$dimension] ?? 'nombredependencia';
+        // v5.13.1: la evolución mensual agrupa el eje X por el mes de la fecha de
+        // firma (month_name → '01'..'12', reetiquetado a nombres de mes en español
+        // por el Visualizer). El resto de dimensiones no usan agrupación por fecha.
+        $x_date_grouping = ($dimension === 'mensual') ? 'month_name' : '';
 
         // Ordenamiento de barras: por valor agregado (sentinela __value__) o por etiqueta.
         $order     = in_array($cfg['order'] ?? '', ['valor', 'etiqueta'], true) ? $cfg['order'] : 'valor';
@@ -823,7 +907,7 @@ final class Tracking
             'chart_type'      => $type,
             'table_name'      => $view,
             'x_field'         => $x_field,
-            'x_date_grouping' => '',
+            'x_date_grouping' => $x_date_grouping,
             'y_field'         => $m['col'],
             'y_fields'        => [],
             'group_by'        => '',
@@ -1399,7 +1483,7 @@ final class Tracking
         if (empty($cfg['dimension'])) return '';
         $tipo = in_array($atts['tipo'], ['descripcion','cualitativo','cuantitativo','prediccion'], true)
             ? $atts['tipo'] : 'descripcion';
-        $ds = $this->build_dataset($cfg['dimension'], $cfg['dependencia'] ?? null);
+        $ds = $this->build_dataset($cfg['dimension'], $cfg['dependencia'] ?? null, $cfg['metric'] ?? 'valor_contrato');
         $m = 'analisis_' . $tipo;
         return '<p class="ss-dep-analisis ss-dep-' . esc_attr($tipo) . '">'
              . esc_html(Stats::$m($ds)) . '</p>';
