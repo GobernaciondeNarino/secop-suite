@@ -982,6 +982,35 @@ final class Tracking
         return $title;
     }
 
+    /**
+     * Migración: renombra de una sola vez todas las cards con título poco claro
+     * («(auto) …» o vacío) a un nombre descriptivo basado en su configuración.
+     * Devuelve cuántas se renombraron. Se invoca desde maybe_upgrade().
+     */
+    public function retitle_auto_cards(): int
+    {
+        $ids = get_posts([
+            'post_type'   => self::POST_TYPE,
+            'post_status' => 'any',
+            'numberposts' => 1000,
+            'fields'      => 'ids',
+        ]);
+        $n = 0;
+        foreach ($ids as $id) {
+            $title = (string) get_post_field('post_title', $id);
+            if ($title !== '' && !str_starts_with($title, '(auto) ')) {
+                continue; // ya tiene un nombre propio/descriptivo.
+            }
+            $cfg = get_post_meta($id, '_secop_dep_card_config', true);
+            if (!is_array($cfg) || empty($cfg['dimension'])) {
+                continue;
+            }
+            wp_update_post(['ID' => (int) $id, 'post_title' => $this->card_title($cfg)]);
+            $n++;
+        }
+        return $n;
+    }
+
     private function get_config_post_id(array $cardCfg): int
     {
         $hash = md5(wp_json_encode($cardCfg));
