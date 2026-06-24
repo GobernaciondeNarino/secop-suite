@@ -76,6 +76,18 @@
         const numberFormat = config.numberFormat || 'colombiano';
         const isMultiY = config.multiY || false;
 
+        // v5.13.2: ¿hay una agrupación REAL (multi-serie)? Si group_value viene vacío
+        // o coincide con la X (caso típico de la evolución mensual, sin group_by), NO
+        // hay serie real. Para line/area todos los puntos deben formar UNA sola serie
+        // conectada; si cada punto fuese su propia serie, d3plus no dibuja la línea
+        // (verificado: la gráfica sale vacía). Las gráficas de categoría (bar, pie…)
+        // siguen coloreando por 'group'.
+        var hasRealGroup = rows.some(function(d) {
+            return d.group_value !== null && d.group_value !== undefined &&
+                   d.group_value !== '' && String(d.group_value) !== String(d.x_value);
+        });
+        var singleSeriesLabel = config.yAxisTitle || 'Total';
+
         // Prepare data — force x to string so d3plus won't parse years as dates
         const chartData = rows.map(function(d) {
             var xVal = (d.x_value !== null && d.x_value !== undefined) ? String(d.x_value) : '';
@@ -83,6 +95,8 @@
                 x: xVal,
                 y: parseFloat(d.y_value) || 0,
                 group: d.group_value || xVal,
+                // Serie para line/área: única (conectada) cuando no hay agrupación real.
+                series: hasRealGroup ? (d.group_value || xVal) : singleSeriesLabel,
                 // v5.3.2: conteo de contratos por categoría (solo si la query lo devolvió).
                 count: (d.y_count !== undefined && d.y_count !== null) ? (parseFloat(d.y_count) || 0) : null
             };
@@ -176,9 +190,9 @@
                 Cls = getD3PlusClass('LinePlot');
                 if (!Cls) throw new Error('d3plus.LinePlot not available');
                 var lc = new Cls()
-                    .data(data).groupBy('group').x('x').y('y')
+                    .data(data).groupBy('series').x('x').y('y')
                     .select(target)
-                    .color(function(d) { return colorScale(d.group); })
+                    .color(function(d) { return colorScale(d.series); })
                     .tooltipConfig(tooltipConfig).yConfig(yConfig)
                     .legend(legend).locale('es_ES');
                 if (config.showTimeline && typeof lc.time === 'function') {
@@ -191,9 +205,9 @@
                 Cls = getD3PlusClass('AreaPlot') || getD3PlusClass('StackedArea');
                 if (!Cls) throw new Error('d3plus.AreaPlot not available');
                 return new Cls()
-                    .data(data).groupBy('group').x('x').y('y')
+                    .data(data).groupBy('series').x('x').y('y')
                     .select(target)
-                    .color(function(d) { return colorScale(d.group); })
+                    .color(function(d) { return colorScale(d.series); })
                     .tooltipConfig(tooltipConfig).yConfig(yConfig)
                     .legend(legend).locale('es_ES');
 
