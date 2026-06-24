@@ -499,12 +499,15 @@ final class Tracking
      * (total_valor y categorias[].valor) refleja la métrica; total_conteo,
      * ejecutado y saldo se conservan como contexto presupuestal (siempre dinero).
      */
-    public function build_dataset(string $dimension, ?string $dependencia = null, string $metric = 'valor_contrato'): array
+    public function build_dataset(string $dimension, ?string $dependencia = null, string $metric = 'valor_contrato', int $limit = 0): array
     {
         global $wpdb;
 
         $metric = $this->metric_key($metric);
-        $cache_key = 'secop_trk_' . md5('build_dataset|' . $dimension . '|' . ($dependencia ?? '') . '|' . $metric . '|' . $this->current_vigencia());
+        // Límite efectivo: replica el de la gráfica (top 50 en categóricas, sin
+        // límite en mensual) para que el análisis describa lo que realmente se ve.
+        $limit = $limit > 0 ? $limit : ($dimension === 'mensual' ? 0 : 50);
+        $cache_key = 'secop_trk_' . md5('build_dataset|' . $dimension . '|' . ($dependencia ?? '') . '|' . $metric . '|' . $limit . '|' . $this->current_vigencia());
         $cached = get_transient($cache_key);
         if (is_array($cached)) return $cached;
 
@@ -524,26 +527,121 @@ final class Tracking
                     {$metric_expr} AS metrica
              FROM `{$view}` WHERE {$where_sql}", ...$params), ARRAY_A);
 
+        $total_valor      = (float) ($tot['metrica'] ?? 0);
+        $total_categorias = count($cats);
+
+        // Ordenar por magnitud (mayor → menor) para nombrar líderes y calcular
+        // participaciones. group_by_dimension ya viene así salvo «mensual» (que
+        // viene cronológico), por eso se reordena aquí una copia para el análisis.
+        $cats_val = $cats;
+        usort($cats_val, fn($a, $b) => $b['valor'] <=> $a['valor']);
+        $valores = array_map(fn($c) => (float) $c['valor'], $cats_val);
+
+        // Recorte al top-N que muestra la gráfica + agregado del «resto».
+        $shown = ($limit > 0) ? array_slice($cats_val, 0, $limit) : $cats_val;
+        $resto_valor = 0.0; $resto_conteo = 0; $resto_count = 0;
+        if ($limit > 0 && $total_categorias > $limit) {
+            foreach (array_slice($cats_val, $limit) as $c) {
+                $resto_valor  += (float) $c['valor'];
+                $resto_conteo += (int) $c['conteo'];
+            }
+            $resto_count = $total_categorias - $limit;
+        }
+
+        // Añadir el % de cada categoría mostrada respecto al total de la métrica.
+        $pct = fn($v) => $total_valor > 0 ? (float) $v / $total_valor : 0.0;
+        $shown = array_map(fn($c) => $c + ['pct' => $pct($c['valor'])], $shown);
+
+        $lider = $shown[0] ?? null;
+
+        // Predicción: para dimensiones categóricas se proyecta la categoría líder;
+        // para «mensual» se usa la serie acumulada de toda la entidad.
+        $serie_lider = [];
+        if ($dimension !== 'mensual' && $lider) {
+            $serie_lider = $this->monthly_series_category($dimension, (string) $lider['label'], $dependencia, $metric);
+        }
+
         $result = [
-            'dimension'       => $dimension,
-            'vigencia'        => $this->current_vigencia(),
-            'meses'           => count($serie),
-            'categorias'      => $cats,
-            'serie_mensual'   => $serie,
+            'dimension'        => $dimension,
+            'vigencia'         => $this->current_vigencia(),
+            'meses'            => count($serie),
+            'limit'            => $limit,
+            'total_categorias' => $total_categorias,
+            'categorias'       => $shown, // top-N mostrado, con 'pct'
+            'resto'            => [
+                'count'  => $resto_count,
+                'valor'  => $resto_valor,
+                'conteo' => $resto_conteo,
+                'pct'    => $pct($resto_valor),
+            ],
+            'lider'            => $lider,
+            'share1'           => $valores ? $pct($valores[0]) : 0.0,
+            'share3'           => $pct(array_sum(array_slice($valores, 0, 3))),
+            'hhi'              => \SecopSuite\Stats::hhi($valores),
+            'media'            => \SecopSuite\Stats::mean($valores),
+            'mediana'          => \SecopSuite\Stats::median($valores),
+            'serie_mensual'    => $serie,        // entidad (predicción mensual)
+            'serie_lider'      => $serie_lider,  // categoría líder (predicción categórica)
             // Magnitud principal = la métrica elegida (dinero o conteo).
-            'total_valor'     => (float) ($tot['metrica'] ?? 0),
-            'total_conteo'    => (int) ($tot['conteo'] ?? 0),
-            'ejecutado'       => (float) ($tot['ejec'] ?? 0),
-            'saldo'           => (float) ($tot['saldo'] ?? 0),
+            'total_valor'      => $total_valor,
+            'total_conteo'     => (int) ($tot['conteo'] ?? 0),
+            'ejecutado'        => (float) ($tot['ejec'] ?? 0),
+            'saldo'            => (float) ($tot['saldo'] ?? 0),
             // Metadatos de la métrica para que la narrativa se adapte.
-            'metric'          => $metric,
-            'metric_label'    => $this->metrics()[$metric]['label'],
-            'metric_is_money' => $this->metric_is_money($metric),
-            'metric_unit'     => $this->metric_unit($metric),
+            'metric'           => $metric,
+            'metric_label'     => $this->metrics()[$metric]['label'],
+            'metric_is_money'  => $this->metric_is_money($metric),
+            'metric_unit'      => $this->metric_unit($metric),
         ];
 
         set_transient($cache_key, $result, 30 * MINUTE_IN_SECONDS);
         return $result;
+    }
+
+    /**
+     * Serie mensual acumulada de la métrica para UNA categoría concreta de una
+     * dimensión (p. ej. la modalidad líder). Sirve para proyectar el cierre de
+     * vigencia de esa categoría en la predicción de las gráficas categóricas.
+     *
+     * @return array<int,array{0:int,1:float}> pares [mes, acumulado].
+     */
+    private function monthly_series_category(string $dimension, string $category_label, ?string $dependencia, string $metric): array
+    {
+        global $wpdb;
+        if (!isset(self::DIM_COLUMN[$dimension])) return [];
+
+        $metric      = $this->metric_key($metric);
+        $view        = $this->db->get_view_name();
+        $col         = self::DIM_COLUMN[$dimension];
+        $label_expr  = $this->sysman_label_expr($col);
+        $metric_expr = $this->metric_aggregate_sql($metric);
+
+        $where  = [
+            'YEAR(`fecha_de_firma_del_contrato`) = %d',
+            $label_expr . ' = %s',
+            '`fecha_de_firma_del_contrato` IS NOT NULL',
+        ];
+        $params = [$this->current_vigencia(), $category_label];
+        if ($dependencia !== null && $dependencia !== '') {
+            $where[]  = $this->sysman_label_expr('nombredependencia') . ' = %s';
+            $params[] = $dependencia;
+        }
+        $where_sql = implode(' AND ', $where);
+
+        $expr = 'MONTH(`fecha_de_firma_del_contrato`)';
+        $sql  = "SELECT {$expr} AS mes, {$metric_expr} AS valor
+                 FROM `{$view}` WHERE {$where_sql}
+                 GROUP BY {$expr} ORDER BY mes ASC";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $rows = $wpdb->get_results($wpdb->prepare($sql, ...$params), ARRAY_A);
+
+        $acc = 0.0; $serie = [];
+        foreach ($rows ?: [] as $r) {
+            if ($r['mes'] === null) continue;
+            $acc += (float) $r['valor'];
+            $serie[] = [(int) $r['mes'], $acc];
+        }
+        return $serie;
     }
 
     // ── CPT metaboxes y guardado ──────────────────────────────────
@@ -662,8 +760,8 @@ final class Tracking
         $chart_config = $this->card_to_chart_config($cfg);
         $res = \SecopSuite\Plugin::get_instance()->visualizer()->get_chart_data_with_sql($chart_config);
 
-        // Análisis en vivo para el cruce dimensión × métrica × dependencia de la card.
-        $ds = $this->build_dataset($cfg['dimension'], $cfg['dependencia'] !== '' ? $cfg['dependencia'] : null, $cfg['metric'] ?? 'valor_contrato');
+        // Análisis en vivo para el cruce dimensión × métrica × dependencia × límite.
+        $ds = $this->build_dataset($cfg['dimension'], $cfg['dependencia'] !== '' ? $cfg['dependencia'] : null, $cfg['metric'] ?? 'valor_contrato', (int) ($cfg['limit'] ?? 0));
         $analisis = [
             'descripcion'  => \SecopSuite\Stats::analisis_descripcion($ds),
             'cualitativo'  => \SecopSuite\Stats::analisis_cualitativo($ds),
@@ -1483,7 +1581,7 @@ final class Tracking
         if (empty($cfg['dimension'])) return '';
         $tipo = in_array($atts['tipo'], ['descripcion','cualitativo','cuantitativo','prediccion'], true)
             ? $atts['tipo'] : 'descripcion';
-        $ds = $this->build_dataset($cfg['dimension'], $cfg['dependencia'] ?? null, $cfg['metric'] ?? 'valor_contrato');
+        $ds = $this->build_dataset($cfg['dimension'], $cfg['dependencia'] ?? null, $cfg['metric'] ?? 'valor_contrato', (int) ($cfg['limit'] ?? 0));
         $m = 'analisis_' . $tipo;
         return '<p class="ss-dep-analisis ss-dep-' . esc_attr($tipo) . '">'
              . esc_html(Stats::$m($ds)) . '</p>';

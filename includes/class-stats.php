@@ -184,106 +184,188 @@ final class Stats
         ][$dim] ?? $dim;
     }
 
+    /** Plural de la dimensión (para frases tipo «de 23 modalidades»). */
+    private static function dim_label_plural(string $dim): string
+    {
+        return [
+            'dependencia'   => 'dependencias',
+            'tipo_contrato' => 'tipos de contrato',
+            'modalidad'     => 'modalidades de contratación',
+            'tercero'       => 'contratistas',
+            'mensual'       => 'meses',
+        ][$dim] ?? ($dim . 's');
+    }
+
+    /** Magnitud principal del dataset según la métrica (dinero o conteo). */
+    private static function fmt_metric(array $d, float $v): string
+    {
+        return self::magnitud($v, $d['metric_is_money'] ?? true);
+    }
+
     // ── Textos para la ciudadanía (lenguaje claro, sin jerga técnica) ──────────
 
     public static function analisis_descripcion(array $d): string
     {
-        $dim     = self::dim_label($d['dimension']);
-        $ncat    = count($d['categorias']);
-        $isMoney = $d['metric_is_money'] ?? true;
-        $metric  = mb_strtolower($d['metric_label'] ?? 'valor del contrato');
-        $unidad  = $d['metric_unit'] ?? 'contratos';
-        // Magnitud principal según la métrica: dinero (+ nº de contratos) o conteo.
-        $magn = $isMoney
-            ? sprintf('%s en %s contratos', self::money($d['total_valor']), self::num($d['total_conteo']))
-            : sprintf('%s %s', self::num($d['total_valor']), $unidad);
-        $t = sprintf(
-            'La contratación de la entidad durante la vigencia %d, vista por %s y medida en %s. '
-          . 'Se presentan %s, repartidos en %d %s. '
-          . 'La información proviene de los contratos publicados en el SECOP y del sistema presupuestal de la entidad, '
-          . 'y se actualiza durante el año para que la ciudadanía pueda seguir en qué contrata su gobierno.',
-            $d['vigencia'], $dim, $metric, $magn,
-            $ncat, $ncat === 1 ? 'categoría' : 'categorías'
+        $cats = $d['categorias'] ?? [];
+        $dim  = self::dim_label($d['dimension']);
+        if (empty($cats)) {
+            return self::clamp564(sprintf(
+                'Todavía no hay contratos registrados por %s en la vigencia %d. La información se irá '
+              . 'completando a medida que se publiquen contratos en el SECOP.',
+                $dim, $d['vigencia']
+            ));
+        }
+        $metric = mb_strtolower($d['metric_label'] ?? 'valor del contrato');
+        $dimP   = self::dim_label_plural($d['dimension']);
+        $top    = $cats[0];
+
+        // Encabezado: métrica + dimensión + vigencia, y el alcance (top N de M).
+        $intro = sprintf('El %s por %s en la vigencia %d', $metric, $dim, $d['vigencia']);
+        if (($d['limit'] ?? 0) > 0 && ($d['total_categorias'] ?? 0) > count($cats)) {
+            $intro .= sprintf(' (top %d de %d %s)', count($cats), $d['total_categorias'], $dimP);
+        }
+        $t = $intro . sprintf(
+            ': «%s» encabeza con %s (%s del total)',
+            $top['label'], self::fmt_metric($d, (float) $top['valor']), self::percent($top['pct'] ?? $d['share1'] ?? 0)
         );
+        if (isset($cats[1])) {
+            $t .= sprintf(
+                ' y le sigue «%s» con %s (%s)',
+                $cats[1]['label'], self::fmt_metric($d, (float) $cats[1]['valor']), self::percent($cats[1]['pct'] ?? 0)
+            );
+        }
+        $t .= '. ';
+        if (($d['share3'] ?? 0) > 0 && count($cats) >= 3) {
+            $t .= sprintf('El top 3 reúne el %s. ', self::percent($d['share3']));
+        }
+        $resto = $d['resto'] ?? ['count' => 0];
+        if (($resto['count'] ?? 0) > 0) {
+            $restoLabel = $resto['count'] === 1 ? $dim : $dimP;
+            $t .= sprintf(
+                'El resto (%d %s) suma %s (%s).',
+                $resto['count'], $restoLabel, self::fmt_metric($d, (float) $resto['valor']), self::percent($resto['pct'] ?? 0)
+            );
+        }
         return self::clamp564($t);
     }
 
     public static function analisis_cualitativo(array $d): string
     {
-        $cats = $d['categorias'];
-        usort($cats, fn($a, $b) => $b['valor'] <=> $a['valor']);
-        $valores = array_map(fn($c) => $c['valor'], $cats);
-        $concentrada = self::hhi($valores) > 0.5;
-        $top1 = $cats[0] ?? ['label' => 'N/D', 'valor' => 0];
-        $share1 = self::top_share($valores, 1);
-        $isMoney = $d['metric_is_money'] ?? true;
-        $metric  = mb_strtolower($d['metric_label'] ?? 'valor del contrato');
-        $sujeto  = $isMoney ? 'Los recursos' : 'Los ' . ($d['metric_unit'] ?? 'contratos');
+        $cats = $d['categorias'] ?? [];
+        if (empty($cats)) {
+            return self::clamp564('Aún no hay datos suficientes para analizar cómo se distribuye la contratación en esta vigencia.');
+        }
+        $metric = mb_strtolower($d['metric_label'] ?? 'valor del contrato');
+        $dim    = self::dim_label($d['dimension']);
+        $share1 = $d['share1'] ?? 0.0;
+        $share3 = $d['share3'] ?? 0.0;
+        $hhi    = $d['hhi'] ?? 0.0;
+        $top    = $cats[0];
+        $concentrada = $hhi > 0.5 || $share1 > 0.5;
+
         $t = sprintf(
-            '%s %s. «%s» reúne %s del %s, la mayor parte. %s. '
-          . 'Observar cómo se reparte la contratación por %s le ayuda a la ciudadanía a saber '
-          . 'si %s se enfoca en unas pocas áreas o se distribuye de forma más amplia.',
-            $sujeto,
-            $concentrada ? 'se concentran en pocas áreas' : 'se reparten entre varias áreas',
-            $top1['label'], self::percent($share1), $metric,
-            $concentrada ? 'Unas pocas categorías agrupan casi todo el total'
-                         : 'El total está distribuido de manera más equilibrada',
-            self::dim_label($d['dimension']),
-            $isMoney ? 'el dinero' : 'la actividad contractual'
+            'La distribución del %s por %s es %s: «%s» concentra el %s',
+            $metric, $dim,
+            $concentrada ? 'muy desigual' : 'relativamente equilibrada',
+            $top['label'], self::percent($share1)
         );
+        if ($share3 > 0 && count($cats) >= 3) {
+            $t .= sprintf(' y el top 3 llega al %s', self::percent($share3));
+        }
+        $t .= '. ';
+        $t .= $concentrada
+            ? 'Unos pocos nombres acaparan la mayor parte; conviene revisar que esa concentración esté justificada y promover más participación.'
+            : 'La contratación se reparte de forma amplia, sin un actor que domine por completo: una señal de pluralidad.';
         return self::clamp564($t);
     }
 
     public static function analisis_cuantitativo(array $d): string
     {
-        $cats = $d['categorias'];
-        usort($cats, fn($a, $b) => $b['valor'] <=> $a['valor']);
-        $valores = array_map(fn($c) => $c['valor'], $cats);
-        $media   = self::mean($valores);
-        $mediana = self::median($valores);
-        $top     = $cats[0] ?? ['label' => 'N/D'];
+        $cats = $d['categorias'] ?? [];
+        if (empty($cats)) {
+            return self::clamp564('Sin contratos registrados, todavía no hay cifras que resumir en esta vigencia.');
+        }
         $isMoney = $d['metric_is_money'] ?? true;
-        $totalPpto = $d['ejecutado'] + $d['saldo'];
-        $pctEjec   = $totalPpto > 0 ? $d['ejecutado'] / $totalPpto : 0.0;
-        // Magnitud principal en la métrica elegida; el avance presupuestal es siempre dinero.
-        $totalTxt = $isMoney
-            ? sprintf('%s en %s contratos', self::money($d['total_valor']), self::num($d['total_conteo']))
-            : sprintf('%s %s', self::num($d['total_valor']), $d['metric_unit'] ?? 'contratos');
+        $metric  = mb_strtolower($d['metric_label'] ?? 'valor del contrato');
+        $dimP    = self::dim_label_plural($d['dimension']);
+        $media   = (float) ($d['media'] ?? 0);
+        $mediana = (float) ($d['mediana'] ?? 0);
+        $top     = $cats[0];
+        $ratio   = $media > 0 ? (float) $top['valor'] / $media : 0.0;
+
         $t = sprintf(
-            'En total se registraron %s. En promedio, cada %s reúne %s, y la mitad queda por debajo de %s. '
-          . '«%s» es la que más concentra. Del presupuesto con seguimiento ya se ejecutó el %s (%s de %s) y quedan %s por ejecutar. '
-          . 'Estas cifras dan una idea del tamaño y del avance de la contratación.',
-            $totalTxt,
-            self::dim_label($d['dimension']), self::magnitud($media, $isMoney), self::magnitud($mediana, $isMoney),
-            $top['label'], self::percent($pctEjec), self::money($d['ejecutado']),
-            self::money($totalPpto), self::money($d['saldo'])
+            'En total, el %s suma %s repartido en %d %s. El promedio es %s y la mediana %s',
+            $metric, self::fmt_metric($d, (float) ($d['total_valor'] ?? 0)),
+            (int) ($d['total_categorias'] ?? count($cats)), $dimP,
+            self::fmt_metric($d, $media), self::fmt_metric($d, $mediana)
         );
+        if ($media > 0 && $mediana > 0 && $media > $mediana * 1.3) {
+            $t .= ' (la media supera a la mediana: hay casos atípicos que jalan el promedio hacia arriba)';
+        }
+        $t .= '. ';
+        if ($ratio >= 2) {
+            $t .= sprintf('«%s» (%s) está %s veces por encima del promedio. ', $top['label'], self::fmt_metric($d, (float) $top['valor']), self::num($ratio));
+        }
+        // Avance presupuestal SÓLO cuando la métrica es monetaria y hay datos.
+        $totalPpto = (float) ($d['ejecutado'] ?? 0) + (float) ($d['saldo'] ?? 0);
+        if ($isMoney && $totalPpto > 0) {
+            $t .= sprintf('Del presupuesto con seguimiento se ha ejecutado el %s (%s de %s).',
+                self::percent($d['ejecutado'] / $totalPpto), self::money($d['ejecutado']), self::money($totalPpto));
+        }
         return self::clamp564($t);
     }
 
     public static function analisis_prediccion(array $d): string
     {
-        $reg = self::linear_regression($d['serie_mensual']);
-        if ($reg['insufficient']) {
+        $vig     = $d['vigencia'];
+        $metric  = mb_strtolower($d['metric_label'] ?? 'valor del contrato');
+        $isMoney = $d['metric_is_money'] ?? true;
+
+        // Dimensión temporal: proyección de cierre de toda la entidad.
+        if (($d['dimension'] ?? '') === 'mensual') {
+            $reg = self::linear_regression($d['serie_mensual'] ?? []);
+            if ($reg['insufficient']) {
+                return self::clamp564(sprintf(
+                    'Aún no es posible proyectar cómo cerrará la vigencia %d: hay muy pocos meses con información (se necesitan al menos dos).',
+                    $vig
+                ));
+            }
+            $cierre = self::project($reg, 12.0);
+            $actual = end($d['serie_mensual'])[1] ?? 0.0;
+            $crec   = $actual > 0 ? ($cierre - $actual) / $actual : 0.0;
+            $conf   = $reg['r2'] >= 0.8 ? 'alta' : ($reg['r2'] >= 0.5 ? 'media' : 'baja');
             return self::clamp564(sprintf(
-                'Aún no es posible proyectar cómo cerrará la vigencia %d: hay muy pocos meses con información '
-              . '(se necesitan al menos dos). La proyección aparecerá a medida que avance el año y se registren más contratos.',
-                $d['vigencia']
+                'Según la tendencia de los primeros %d meses, el %s de la entidad cerraría la vigencia %d cerca de %s, '
+              . 'frente a %s a la fecha (variación ≈%s). La confiabilidad del ajuste es %s.',
+                $reg['n'], $metric, $vig, self::magnitud((float) $cierre, $isMoney),
+                self::magnitud($actual, $isMoney), self::percent($crec), $conf
             ));
         }
-        $isMoney = $d['metric_is_money'] ?? true;
-        $metric  = mb_strtolower($d['metric_label'] ?? 'valor del contrato');
+
+        // Dimensión categórica: proyectar la categoría líder.
+        $lider = $d['lider'] ?? null;
+        $serie = $d['serie_lider'] ?? [];
+        $nombre = $lider['label'] ?? 'la categoría principal';
+        if (!$lider || count($serie) < 2) {
+            return self::clamp564(sprintf(
+                'Todavía no hay suficiente historia mensual para proyectar cómo cerrará «%s», la %s con mayor %s. '
+              . 'La estimación aparecerá conforme avance la vigencia %d.',
+                $nombre, self::dim_label($d['dimension']), $metric, $vig
+            ));
+        }
+        $reg = self::linear_regression($serie);
+        if ($reg['insufficient']) {
+            return self::clamp564(sprintf('No es posible proyectar el cierre de «%s» con los meses disponibles en la vigencia %d.', $nombre, $vig));
+        }
         $cierre = self::project($reg, 12.0);
-        $actual = end($d['serie_mensual'])[1] ?? 0.0;
-        $crecimiento = $actual > 0 ? ($cierre - $actual) / $actual : 0.0;
-        $confianza = $reg['r2'] >= 0.8 ? 'alta' : ($reg['r2'] >= 0.5 ? 'media' : 'baja');
-        $t = sprintf(
-            'Según la tendencia de los primeros %d meses, el %s podría cerrar la vigencia %d cerca de %s, '
-          . 'frente a %s a la fecha (una variación cercana al %s). La confiabilidad de este ajuste es %s. '
-          . 'Es una estimación basada en lo que va del año y puede cambiar según el ritmo de la contratación.',
-            $reg['n'], $metric, $d['vigencia'], self::magnitud((float) $cierre, $isMoney), self::magnitud($actual, $isMoney),
-            self::percent($crecimiento), $confianza
-        );
-        return self::clamp564($t);
+        $actual = end($serie)[1] ?? 0.0;
+        $crec   = $actual > 0 ? ($cierre - $actual) / $actual : 0.0;
+        $conf   = $reg['r2'] >= 0.8 ? 'alta' : ($reg['r2'] >= 0.5 ? 'media' : 'baja');
+        return self::clamp564(sprintf(
+            'Si «%s» mantiene su ritmo, cerraría la vigencia %d cerca de %s en %s (hoy concentra el %s del total). '
+          . 'Variación frente a hoy ≈%s; confiabilidad %s.',
+            $nombre, $vig, self::magnitud((float) $cierre, $isMoney), $metric,
+            self::percent($lider['pct'] ?? $d['share1'] ?? 0), self::percent($crec), $conf
+        ));
     }
 }
