@@ -701,10 +701,19 @@ final class Visualizer
             $select_parts[] = "`{$group_by}` AS group_value";
         }
         if ($y_field) {
-            // COUNT_DISTINCT no es una función SQL real: se emite como COUNT(DISTINCT col).
-            $select_parts[] = ($aggregate === 'COUNT_DISTINCT')
-                ? "COUNT(DISTINCT `{$y_field}`) AS y_value"
-                : "{$aggregate}(`{$y_field}`) AS y_value";
+            // Regla contable (Contratación): el VALOR EFECTIVO del contrato es
+            // valordebito y, solo cuando es NULL, valor_contrato. card_to_chart_config
+            // activa 'value_efectivo' para la métrica de valor; el resto de gráficas
+            // ([secop_chart], conteos, etc.) no se ven afectadas.
+            if (!empty($config['value_efectivo']) && $aggregate === 'SUM'
+                && isset($valid_columns['valordebito'], $valid_columns['valor_contrato'])) {
+                $select_parts[] = 'SUM(COALESCE(`valordebito`, `valor_contrato`)) AS y_value';
+            } else {
+                // COUNT_DISTINCT no es una función SQL real: se emite como COUNT(DISTINCT col).
+                $select_parts[] = ($aggregate === 'COUNT_DISTINCT')
+                    ? "COUNT(DISTINCT `{$y_field}`) AS y_value"
+                    : "{$aggregate}(`{$y_field}`) AS y_value";
+            }
             // v5.3.2: columna secundaria con el conteo de contratos de cada categoría,
             // para el tooltip configurable. Solo se añade cuando la card lo solicita
             // (tooltip_count) y la columna existe → [secop_chart] no se ve afectado.
