@@ -106,6 +106,15 @@ final class Tracking
         ];
     }
 
+    /**
+     * Regla contable (v5.15.0): el VALOR EFECTIVO de un contrato es `valordebito`
+     * y, única y exclusivamente cuando ese campo es NULL, se toma `valor_contrato`.
+     * Esta expresión se usa en TODO el módulo de Contratación dondequiera que se
+     * calcule un valor monetario (métrica de valor, red, listas, treemap, tabla de
+     * contratos, explorador). Ambas columnas existen en la vista vista_secop_sysman.
+     */
+    private const VALUE_EXPR = 'COALESCE(`valordebito`, `valor_contrato`)';
+
     /** Clave de métrica válida (con respaldo a valor_contrato). */
     private function metric_key(string $metric): string
     {
@@ -116,10 +125,15 @@ final class Tracking
      * Expresión SQL de agregación de una métrica. La columna proviene de la
      * whitelist metrics() (no de entrada del usuario), por lo que es segura de
      * interpolar; el WHERE sigue usando $wpdb->prepare para los valores.
+     * La métrica «valor_contrato» usa el VALOR EFECTIVO (regla contable).
      */
     private function metric_aggregate_sql(string $metric): string
     {
-        $m   = $this->metrics()[$this->metric_key($metric)];
+        $key = $this->metric_key($metric);
+        if ($key === 'valor_contrato') {
+            return 'SUM(' . self::VALUE_EXPR . ')';
+        }
+        $m   = $this->metrics()[$key];
         $col = $m['col'];
         switch ($m['agg']) {
             case 'COUNT_DISTINCT': return "COUNT(DISTINCT `{$col}`)";
@@ -345,9 +359,10 @@ final class Tracking
         }
         $where_sql = implode(' AND ', $where);
 
-        // Métrica de valor: valor_contrato (valor principal) y conteo de contratos distintos.
-        // NOTA: un contrato puede repetirse en varias filas presupuestales, por lo que
-        // SUM(valor_contrato) sobrecuenta ligeramente los contratos multi-comprobante.
+        // Métrica de valor: VALOR EFECTIVO (regla contable v5.15.0) = valordebito y,
+        // solo si es NULL, valor_contrato. Al sumar valordebito por fila presupuestal
+        // ya no se sobrecuenta el valor del contrato en los multi-comprobante; los
+        // contratos sin cruce Sysman (valordebito NULL) toman su valor_contrato.
         // v5.9.0: los contratos sin cruce Sysman (NULL por el LEFT JOIN) se agrupan bajo
         // "No Registra SYSMAN" (dependencia) o caen al contratista del SECOP (tercero).
         $metric_expr = $this->metric_aggregate_sql($metric); // magnitud principal (métrica elegida)
@@ -1010,6 +1025,9 @@ final class Tracking
             'y_fields'        => [],
             'group_by'        => '',
             'aggregate'       => $m['agg'],
+            // Regla contable: la métrica de valor usa el VALOR EFECTIVO
+            // (valordebito; solo si NULL, valor_contrato) en el motor del gráfico.
+            'value_efectivo'  => ($metric_key === 'valor_contrato'),
             'color_field'     => '',
             'filters'         => $filters,
             'date_field'      => '',
@@ -1649,7 +1667,7 @@ final class Tracking
         // con dependencia NULL (sin cruce Sysman).
         $dep_expr = $this->sysman_label_expr('nombredependencia');
         $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
-                       fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_a_contratar
+                       fecha_inicio_ejecucion, fecha_fin_ejecucion, SUM(COALESCE(`valordebito`, `valor_contrato`)) AS valor_contrato, objeto_a_contratar
                 FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d AND {$dep_expr} = %s
                 GROUP BY numero_del_contrato
                 ORDER BY valor_contrato DESC LIMIT %d";
@@ -1676,7 +1694,7 @@ final class Tracking
         // SECOP localicen los contratos sin cruce Sysman).
         $col_expr = $this->sysman_label_expr($column);
         $sql = "SELECT numero_del_contrato, url_contrato, nom_raz_social_contratista,
-                       fecha_inicio_ejecucion, fecha_fin_ejecucion, valor_contrato, objeto_a_contratar
+                       fecha_inicio_ejecucion, fecha_fin_ejecucion, SUM(COALESCE(`valordebito`, `valor_contrato`)) AS valor_contrato, objeto_a_contratar
                 FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d AND {$col_expr} = %s
                 GROUP BY numero_del_contrato ORDER BY valor_contrato DESC LIMIT %d";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
@@ -1761,7 +1779,7 @@ final class Tracking
                        MAX(" . $this->sysman_label_expr('nombretercero') . ")     AS nombretercero,
                        MAX(tipo_de_contrato)          AS tipo_de_contrato,
                        MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
-                       MAX(valor_contrato)            AS valor_contrato
+                       SUM(COALESCE(`valordebito`, `valor_contrato`))            AS valor_contrato
                 FROM `{$view}` WHERE {$where_sql}
                 GROUP BY numero_del_contrato";
 
@@ -2152,7 +2170,7 @@ final class Tracking
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT modalidad_de_contratacion AS label,
                     COUNT(DISTINCT numero_del_contrato) AS conteo,
-                    SUM(valor_contrato) AS valor
+                    SUM(COALESCE(`valordebito`, `valor_contrato`)) AS valor
              FROM `{$view}` WHERE YEAR(`fecha_de_firma_del_contrato`) = %d AND {$dep_expr} = %s
              GROUP BY modalidad_de_contratacion ORDER BY valor DESC",
             $this->current_vigencia(), $dep
@@ -2206,7 +2224,7 @@ final class Tracking
         // contratista cae al del SECOP cuando Sysman no tiene cruce (LEFT JOIN → NULL).
         $sql = "SELECT numero_del_contrato,
                        MAX(" . $this->sysman_label_expr('nombretercero') . ") AS nombretercero,
-                       MAX(valor_contrato)            AS valor_contrato,
+                       SUM(COALESCE(`valordebito`, `valor_contrato`))            AS valor_contrato,
                        MAX(fecha_inicio_ejecucion)    AS fecha_inicio_ejecucion,
                        MAX(fecha_fin_ejecucion)       AS fecha_fin_ejecucion,
                        MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
@@ -2405,7 +2423,7 @@ final class Tracking
         // Sysman caen bajo "No Registra SYSMAN" (dependencia) o el contratista del SECOP.
         $label_expr = $this->sysman_label_expr($column);
         $sql = "SELECT {$label_expr} AS label,
-                       SUM(valor_contrato) AS valor,
+                       SUM(COALESCE(`valordebito`, `valor_contrato`)) AS valor,
                        COUNT(DISTINCT numero_del_contrato) AS conteo
                 FROM `{$view}` WHERE {$where_sql}
                 GROUP BY {$label_expr} ORDER BY valor DESC";
@@ -2461,7 +2479,7 @@ final class Tracking
         // SECOP cuando Sysman no tiene cruce (LEFT JOIN → NULL).
         $sql = "SELECT numero_del_contrato,
                        MAX(" . $this->sysman_label_expr('nombretercero') . ") AS nombretercero,
-                       MAX(valor_contrato)            AS valor_contrato,
+                       SUM(COALESCE(`valordebito`, `valor_contrato`))            AS valor_contrato,
                        MAX(fecha_inicio_ejecucion)    AS fecha_inicio_ejecucion,
                        MAX(fecha_fin_ejecucion)       AS fecha_fin_ejecucion,
                        MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
